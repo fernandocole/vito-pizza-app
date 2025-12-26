@@ -20,7 +20,7 @@ const THEMES = [
 const dictionary = {
   es: {
     welcomeTitle: "Gracias por venir hoy,",
-    welcomeSub: "será un placer cocinar para vos.",
+    welcomeSub: "será un placer cocinar para vos. 🫠",
     whoAreYou: "Tu nombre?",
     namePlaceholder: "Escribilo acá...",
     status: "amigos ya pidieron.",
@@ -31,7 +31,7 @@ const dictionary = {
     completed: "¡COMPLETA!",
     buttonOrder: "PEDIR",
     inOven: "EN HORNO",
-    wait: "Pedidas",
+    wait: "Pediste", 
     ate: "Comiste",
     portions: "porciones",
     customize: "Elige tu estilo:",
@@ -39,7 +39,7 @@ const dictionary = {
     errorOven: "⚠️ Esa porción ya está en el horno.",
     successOrder: "¡Marchando +1 de",
     successCancel: "Cancelado -1 de",
-    readyAlert: "¡TU PIZZA ESTÁ LISTA! 🍕",
+    readyAlert: "¡ESTÁ LISTA!", 
     ovenAlert: "al horno!",
     okBtn: "ENTENDIDO",
     notifOn: "🔔 Notificaciones activadas",
@@ -47,7 +47,7 @@ const dictionary = {
   },
   en: {
     welcomeTitle: "Thanks for coming today,",
-    welcomeSub: "it will be a pleasure to cook for you.",
+    welcomeSub: "it will be a pleasure to cook for you. 🫠",
     whoAreYou: "YOUR NAME?",
     namePlaceholder: "Type it here...",
     status: "friends have ordered.",
@@ -66,7 +66,7 @@ const dictionary = {
     errorOven: "⚠️ That slice is baking!",
     successOrder: "Coming right up! +1 of",
     successCancel: "Removed -1 of",
-    readyAlert: "YOUR PIZZA IS READY! 🍕",
+    readyAlert: "IT'S READY!",
     ovenAlert: "in the oven!",
     okBtn: "OK",
     notifOn: "🔔 Notifications ON",
@@ -74,7 +74,7 @@ const dictionary = {
   },
   it: {
     welcomeTitle: "Grazie per essere venuto,",
-    welcomeSub: "sarà un piacere cucinare per te.",
+    welcomeSub: "sarà un piacere cucinare per te. 🫠",
     whoAreYou: "IL TUO NOME?",
     namePlaceholder: "Scrivilo qui...",
     status: "amici hanno ordinato.",
@@ -93,7 +93,7 @@ const dictionary = {
     errorOven: "⚠️ Già in forno!",
     successOrder: "In arrivo! +1 di",
     successCancel: "Rimosso -1 di",
-    readyAlert: "LA TUA PIZZA È PRONTA! 🍕",
+    readyAlert: "È PRONTA!",
     ovenAlert: "in forno!",
     okBtn: "CAPITO",
     notifOn: "🔔 Notifiche attive",
@@ -121,7 +121,8 @@ export default function VitoPizzaApp() {
   const [invitadosActivos, setInvitadosActivos] = useState(0);
   const [miHistorial, setMiHistorial] = useState<Record<string, { pendientes: number, comidos: number }>>({});
   
-  const prevComidosRef = useRef<number>(0);
+  // Refs para controlar notificaciones específicas
+  const prevComidosPerPizza = useRef<Record<string, number>>({});
   const prevCocinandoData = useRef<Record<string, boolean>>({});
   const firstLoadRef = useRef(true);
 
@@ -193,9 +194,7 @@ export default function VitoPizzaApp() {
   const fetchDatos = useCallback(async () => {
     const now = new Date();
     const corte = new Date(now);
-    if (now.getHours() < 6) {
-        corte.setDate(corte.getDate() - 1);
-    }
+    if (now.getHours() < 6) corte.setDate(corte.getDate() - 1);
     corte.setHours(6, 0, 0, 0);
     const corteISO = corte.toISOString();
 
@@ -214,7 +213,6 @@ export default function VitoPizzaApp() {
         const totalPendientes = pedidosPendientesPizza.reduce((acc, curr) => acc + curr.cantidad_porciones, 0);
         const target = pizza.porciones_individuales || conf.porciones_por_pizza;
         const ocupadasActual = totalPendientes % target;
-        
         return {
           ...pizza,
           target,
@@ -230,7 +228,6 @@ export default function VitoPizzaApp() {
       if (nombreInvitado) {
         const mis = dataPedidos.filter(p => p.invitado_nombre.toLowerCase() === nombreInvitado.toLowerCase().trim());
         const resumen: any = {};
-        let totalComidosAhora = 0;
         const misPizzasPendientesInfo: Record<string, number> = {}; 
 
         dataPizzas.forEach(pz => {
@@ -238,31 +235,34 @@ export default function VitoPizzaApp() {
              const comidos = misDeEsta.filter(p => p.estado === 'entregado').reduce((acc, c) => acc + c.cantidad_porciones, 0);
              const pendientes = misDeEsta.filter(p => p.estado !== 'entregado').reduce((acc, c) => acc + c.cantidad_porciones, 0);
              resumen[pz.id] = { pendientes, comidos };
-             totalComidosAhora += comidos;
              if (pendientes > 0) misPizzasPendientesInfo[pz.id] = pendientes;
+
+             // ALERTA PIZZA LISTA ESPECIFICA POR GUSTO
+             if (!firstLoadRef.current) {
+                 const prevComidos = prevComidosPerPizza.current[pz.id] || 0;
+                 if (comidos > prevComidos) {
+                     const dif = comidos - prevComidos;
+                     const texto = `¡Tus ${dif} porciones de ${pz.nombre} están listas!`;
+                     setMensaje({ texto, tipo: 'alerta' });
+                     enviarNotificacion(t.readyAlert, texto);
+                 }
+             }
+             prevComidosPerPizza.current[pz.id] = comidos;
         });
         setMiHistorial(resumen);
 
         if (firstLoadRef.current) {
-            prevComidosRef.current = totalComidosAhora;
             dataPizzas.forEach(pz => { prevCocinandoData.current[pz.id] = pz.cocinando; });
             firstLoadRef.current = false;
         } else {
-            if (totalComidosAhora > prevComidosRef.current) {
-                const diferencia = totalComidosAhora - prevComidosRef.current;
-                const texto = `¡Tus ${diferencia} porciones están listas! 🍕`;
-                setMensaje({ texto, tipo: 'alerta' }); 
-                enviarNotificacion(t.readyAlert, texto);
-            }
-            prevComidosRef.current = totalComidosAhora;
-
+            // ALERTA EN HORNO
             dataPizzas.forEach(pz => {
                 const estabaCocinando = prevCocinandoData.current[pz.id] || false;
                 if (pz.cocinando && !estabaCocinando && misPizzasPendientesInfo[pz.id]) {
                     const cant = misPizzasPendientesInfo[pz.id];
                     const texto = `¡${cant} porciones de ${pz.nombre} ${t.ovenAlert}`;
                     setMensaje({ texto, tipo: 'alerta' });
-                    enviarNotificacion("🔥 " + t.inOven, texto);
+                    enviarNotificacion("🔥", texto);
                 }
                 prevCocinandoData.current[pz.id] = pz.cocinando;
             });
@@ -303,16 +303,7 @@ export default function VitoPizzaApp() {
                 return; 
             }
         }
-        
-        const { data } = await supabase.from('pedidos')
-            .select('id')
-            .eq('pizza_id', pizza.id)
-            .ilike('invitado_nombre', nombreInvitado.trim())
-            .eq('estado', 'pendiente')
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .single();
-            
+        const { data } = await supabase.from('pedidos').select('id').eq('pizza_id', pizza.id).ilike('invitado_nombre', nombreInvitado.trim()).eq('estado', 'pendiente').order('created_at', { ascending: false }).limit(1).single();
         if (data) {
             await supabase.from('pedidos').delete().eq('id', data.id);
             mostrarMensaje(`${t.successCancel} ${pizza.nombre}`, 'info');
@@ -335,7 +326,6 @@ export default function VitoPizzaApp() {
          <div className="relative z-10">
              <div className="flex justify-between items-center mb-6">
                 
-                {/* LOGO EN HEADER INVITADOS */}
                 <div className="bg-black/30 px-3 py-1 rounded-full backdrop-blur-md border border-white/10 flex items-center">
                     <img src="/logo.png" alt="Logo" className="h-8 w-auto mr-2" />
                     <span className="font-bold tracking-widest text-[10px] uppercase">Il Forno Di Vito</span>
@@ -348,23 +338,12 @@ export default function VitoPizzaApp() {
                    <button onClick={rotarIdioma} className="bg-black/20 px-3 py-2 rounded-full hover:bg-black/40 border border-white/10 text-xs font-bold">
                        {lang.toUpperCase()}
                    </button>
-                   
-                   {/* BOTON ORDENAR INVITADOS */}
-                   <button 
-                       onClick={() => setOrden(orden === 'estado' ? 'nombre' : 'estado')} 
-                       className="bg-black/20 p-2 rounded-full hover:bg-black/40 border border-white/10"
-                   >
+                   <button onClick={() => setOrden(orden === 'estado' ? 'nombre' : 'estado')} className="bg-black/20 p-2 rounded-full hover:bg-black/40 border border-white/10">
                        {orden === 'estado' ? <ArrowUpNarrowWide size={18} /> : <ArrowDownAZ size={18} />}
                    </button>
-
-                   {/* BOTON MODO COMPACTO INVITADOS */}
-                   <button 
-                       onClick={() => setIsCompact(!isCompact)}
-                       className={`p-2 rounded-full border border-white/10 transition-colors ${isCompact ? 'bg-white text-black' : 'bg-black/20 text-white hover:bg-black/40'}`}
-                   >
+                   <button onClick={() => setIsCompact(!isCompact)} className={`p-2 rounded-full border border-white/10 transition-colors ${isCompact ? 'bg-white text-black' : 'bg-black/20 text-white hover:bg-black/40'}`}>
                        {isCompact ? <Maximize2 size={18} /> : <Minimize2 size={18} />}
                    </button>
-
                    <button onClick={() => setShowThemeSelector(!showThemeSelector)} className="bg-black/20 p-2 rounded-full hover:bg-black/40 border border-white/10"><Palette size={18} /></button>
                    <Link href="/admin" className="bg-black/20 p-2 rounded-full hover:bg-black/40 border border-white/10"><Lock size={18} /></Link>
                 </div>
@@ -398,7 +377,8 @@ export default function VitoPizzaApp() {
         {mensaje && (
           <div className={`fixed top-4 left-4 right-4 p-3 rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] z-50 flex flex-col items-center justify-center animate-bounce-in text-center bg-white text-black ${mensaje.tipo === 'alerta' ? 'border-4 border-neutral-900 font-bold' : 'border-2 border-neutral-200 font-bold'}`}>
             <div className="flex items-center gap-2 mb-1 text-sm">
-                {mensaje.tipo === 'alerta' && <PartyPopper size={18} className="text-orange-600" />}
+                {/* SIN ICONO AQUI PARA LA ALERTA DE LISTA */}
+                {mensaje.tipo === 'alerta' && mensaje.texto.includes('horno') && <PartyPopper size={18} className="text-orange-600" />}
                 {mensaje.texto}
             </div>
             {mensaje.tipo === 'alerta' && (
@@ -411,23 +391,18 @@ export default function VitoPizzaApp() {
 
         <div className="space-y-3 pb-10">
            {cargando ? <p className="text-center text-neutral-600 mt-10 animate-pulse">{t.loading}</p> : pizzasOrdenadas.map(pizza => (
-               <div 
-                 key={pizza.id} 
-                 className={`bg-neutral-900 rounded-[36px] border ${pizza.cocinando ? 'border-orange-600/30' : 'border-neutral-800'} shadow-lg relative overflow-hidden group ${isCompact ? 'p-3' : 'p-5'}`}
-               >
-                   
+               <div key={pizza.id} className={`bg-neutral-900 rounded-[36px] border ${pizza.cocinando ? 'border-red-600/30' : 'border-neutral-800'} shadow-lg relative overflow-hidden group ${isCompact ? 'p-3' : 'p-5'}`}>
                    <div className="flex justify-between items-start mb-2">
                        <div className="flex-1">
                            <h2 className={`font-bold text-white flex items-center gap-2 ${isCompact ? 'text-lg' : 'text-2xl'}`}>
                                {pizza.nombre}
-                               {/* BADGE CON NUEVO COLOR ROJIZO */}
-                               {pizza.cocinando && <span className="text-[10px] bg-orange-600 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">{t.inOven}</span>}
+                               {/* BADGE ROJO */}
+                               {pizza.cocinando && <span className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">{t.inOven}</span>}
                            </h2>
                            {!isCompact && (
                                <p className="text-neutral-500 text-xs leading-relaxed max-w-[200px]">{pizza.descripcion}</p>
                            )}
                        </div>
-                       
                        {(miHistorial[pizza.id]?.pendientes > 0 || miHistorial[pizza.id]?.comidos > 0) && (
                            <div className={`bg-neutral-800 rounded-2xl border border-white/5 text-right ${isCompact ? 'p-1 px-2' : 'p-2 px-3'}`}>
                                {miHistorial[pizza.id]?.pendientes > 0 && (
@@ -443,7 +418,6 @@ export default function VitoPizzaApp() {
                            </div>
                        )}
                    </div>
-
                    <div className={`bg-black/40 rounded-2xl border border-white/5 ${isCompact ? 'p-2 mb-2 mt-1' : 'p-3 mb-5 mt-4'}`}>
                        <div className="flex justify-between text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-2">
                            <span>{pizza.faltanParaCompletar === pizza.target ? t.newPizza : t.progress}</span>
@@ -453,25 +427,17 @@ export default function VitoPizzaApp() {
                        </div>
                        <div className={`bg-neutral-800 rounded-full overflow-hidden flex border border-white/5 ${isCompact ? 'h-1.5' : 'h-2'}`}>
                            {[...Array(pizza.target)].map((_, i) => (
-                               <div key={i} className={`flex-1 border-r border-black/50 last:border-0 ${i < pizza.ocupadasActual ? `bg-gradient-to-r ${pizza.cocinando ? 'from-orange-600 to-red-600' : (currentTheme.name === 'Carbone' ? 'from-white to-neutral-300' : currentTheme.gradient)}` : 'bg-transparent'}`}></div>
+                               <div key={i} className={`flex-1 border-r border-black/50 last:border-0 ${i < pizza.ocupadasActual ? `bg-gradient-to-r ${pizza.cocinando ? 'from-orange-500 to-red-600' : (currentTheme.name === 'Carbone' ? 'from-white to-neutral-300' : currentTheme.gradient)}` : 'bg-transparent'}`}></div>
                            ))}
                        </div>
                    </div>
-
                    <div className="flex gap-3">
                        {miHistorial[pizza.id]?.pendientes > 0 && (
-                           <button 
-                               onClick={() => modificarPedido(pizza, 'restar')} 
-                               className={`rounded-2xl flex items-center justify-center border bg-neutral-800 text-neutral-400 border-neutral-700 active:scale-95 transition ${isCompact ? 'w-12 h-10' : 'w-16 h-14'}`}
-                           >
+                           <button onClick={() => modificarPedido(pizza, 'restar')} className={`rounded-2xl flex items-center justify-center border bg-neutral-800 text-neutral-400 border-neutral-700 active:scale-95 transition ${isCompact ? 'w-12 h-10' : 'w-16 h-14'}`}>
                                <Minus size={isCompact ? 16 : 20} />
                            </button>
                        )}
-                       
-                       <button 
-                           onClick={() => modificarPedido(pizza, 'sumar')} 
-                           className={`flex-1 rounded-2xl font-bold text-white shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 bg-gradient-to-r ${currentTheme.gradient} hover:brightness-110 ${isCompact ? 'h-10 text-base' : 'h-14 text-lg'}`}
-                       >
+                       <button onClick={() => modificarPedido(pizza, 'sumar')} className={`flex-1 rounded-2xl font-bold text-white shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 bg-gradient-to-r ${currentTheme.gradient} hover:brightness-110 ${isCompact ? 'h-10 text-base' : 'h-14 text-lg'}`}>
                            <Plus size={isCompact ? 18 : 24} strokeWidth={3} /> {t.buttonOrder}
                        </button>
                    </div>
