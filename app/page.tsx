@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { Plus, Minus, User, Palette, Flame, Lock, Globe, PartyPopper } from 'lucide-react';
+import { Plus, Minus, User, Palette, Flame, Lock, Globe, PartyPopper, Bell, X } from 'lucide-react';
 import Link from 'next/link';
 
 const supabase = createClient(
@@ -40,7 +40,9 @@ const dictionary = {
     successOrder: "¡Marchando +1 de",
     successCancel: "Cancelado -1 de",
     readyAlert: "¡TU PIZZA ESTÁ LISTA! 🍕",
-    ovenAlert: "¡Una pizza que pediste entró al horno! 🔥"
+    ovenAlert: "entraron al horno 🔥",
+    okBtn: "ENTENDIDO",
+    enableNotif: "Activar Alertas"
   },
   en: {
     welcomeTitle: "Thanks for coming today,",
@@ -64,9 +66,13 @@ const dictionary = {
     successOrder: "Coming right up! +1 of",
     successCancel: "Removed -1 of",
     readyAlert: "YOUR PIZZA IS READY! 🍕",
-    ovenAlert: "A pizza you ordered is in the oven! 🔥"
+    ovenAlert: "slices are in the oven! 🔥",
+    okBtn: "OK",
+    enableNotif: "Enable Alerts"
   }
 };
+
+type MensajeTipo = { texto: string, tipo: 'info' | 'alerta' | 'exito' };
 
 export default function VitoPizzaApp() {
   const [lang, setLang] = useState<'es' | 'en'>('es');
@@ -75,14 +81,17 @@ export default function VitoPizzaApp() {
   const [pizzas, setPizzas] = useState<any[]>([]);
   const [cargando, setCargando] = useState(true);
   const [nombreInvitado, setNombreInvitado] = useState('');
-  const [mensaje, setMensaje] = useState('');
+  
+  // Mensajes
+  const [mensaje, setMensaje] = useState<MensajeTipo | null>(null);
+
   const [config, setConfig] = useState({ porciones_por_pizza: 8, total_invitados: 20 });
   const [invitadosActivos, setInvitadosActivos] = useState(0);
   const [miHistorial, setMiHistorial] = useState<Record<string, { pendientes: number, comidos: number }>>({});
   
-  // Refs para notificaciones
+  // Refs
   const prevComidosRef = useRef<number>(0);
-  const prevCocinandoIds = useRef<string[]>([]);
+  const prevCocinandoData = useRef<Record<string, boolean>>({});
 
   const [currentTheme, setCurrentTheme] = useState(THEMES[0]);
   const [showThemeSelector, setShowThemeSelector] = useState(false);
@@ -95,21 +104,24 @@ export default function VitoPizzaApp() {
       const found = THEMES.find(t => t.name === savedTheme);
       if (found) setCurrentTheme(found);
     }
-    // Pedir permisos
-    if (typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
-        Notification.requestPermission();
-    }
   }, []);
 
   const handleNameChange = (val: string) => { setNombreInvitado(val); localStorage.setItem('vito-guest-name', val); };
   const changeTheme = (theme: typeof THEMES[0]) => { setCurrentTheme(theme); localStorage.setItem('vito-guest-theme', theme.name); setShowThemeSelector(false); };
+
+  const activarNotificaciones = () => {
+      Notification.requestPermission().then(perm => {
+          if (perm === 'granted') mostrarMensaje("🔔 Notificaciones activadas", 'info');
+          else alert("Debes permitir notificaciones en el navegador.");
+      });
+  };
 
   const enviarNotificacion = (titulo: string, cuerpo: string) => {
       if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
           new Notification(titulo, { body: cuerpo, icon: '/icon.png' });
           const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
           audio.volume = 0.5;
-          audio.play().catch(e => {});
+          audio.play().catch(() => {});
       }
   };
 
@@ -145,7 +157,7 @@ export default function VitoPizzaApp() {
         const mis = dataPedidos.filter(p => p.invitado_nombre.toLowerCase() === nombreInvitado.toLowerCase().trim());
         const resumen: any = {};
         let totalComidosAhora = 0;
-        const misPizzasPendientesIds: string[] = [];
+        const misPizzasPendientesInfo: Record<string, number> = {}; 
 
         dataPizzas.forEach(pz => {
              const misDeEsta = mis.filter(p => p.pizza_id === pz.id);
@@ -153,31 +165,30 @@ export default function VitoPizzaApp() {
              const pendientes = misDeEsta.filter(p => p.estado !== 'entregado').reduce((acc, c) => acc + c.cantidad_porciones, 0);
              resumen[pz.id] = { pendientes, comidos };
              totalComidosAhora += comidos;
-             if (pendientes > 0) misPizzasPendientesIds.push(pz.id);
+             if (pendientes > 0) misPizzasPendientesInfo[pz.id] = pendientes;
         });
         setMiHistorial(resumen);
 
-        // 1. Notificación: PIZZA LISTA
+        // 1. ALERTA: PIZZA LISTA
         if (totalComidosAhora > prevComidosRef.current && prevComidosRef.current !== 0) {
-            setMensaje(t.readyAlert); 
-            enviarNotificacion(t.readyAlert, "¡Veni a buscarla!");
-            setTimeout(() => setMensaje(''), 5000);
+            const diferencia = totalComidosAhora - prevComidosRef.current;
+            const texto = `¡Tus ${diferencia} porciones están listas! 🍕`;
+            setMensaje({ texto, tipo: 'alerta' }); 
+            enviarNotificacion(t.readyAlert, texto);
         }
         prevComidosRef.current = totalComidosAhora;
 
-        // 2. Notificación: EN HORNO
-        // Detectamos si alguna de MIS pizzas pendientes ahora está cocinándose y antes no estaba
-        const pizzasCocinandoAhora = dataPizzas.filter(p => p.cocinando).map(p => p.id);
-        
-        // Verificamos si hay alguna pizza QUE YO PEDI, que ahora se cocina, y antes no estaba registrada en mi ref
-        const nuevaEnHorno = pizzasCocinandoAhora.find(id => 
-            misPizzasPendientesIds.includes(id) && !prevCocinandoIds.current.includes(id)
-        );
-
-        if (nuevaEnHorno) {
-            enviarNotificacion("🔥 " + t.inOven, t.ovenAlert);
-        }
-        prevCocinandoIds.current = pizzasCocinandoAhora;
+        // 2. ALERTA: EN HORNO
+        dataPizzas.forEach(pz => {
+            const estabaCocinando = prevCocinandoData.current[pz.id] || false;
+            if (pz.cocinando && !estabaCocinando && misPizzasPendientesInfo[pz.id]) {
+                const cant = misPizzasPendientesInfo[pz.id];
+                const texto = `¡Tus ${cant} porciones de ${pz.nombre} ${t.ovenAlert}`;
+                setMensaje({ texto, tipo: 'alerta' });
+                enviarNotificacion("🔥 " + t.inOven, texto);
+            }
+            prevCocinandoData.current[pz.id] = pz.cocinando;
+        });
       }
     }
     setCargando(false);
@@ -194,18 +205,23 @@ export default function VitoPizzaApp() {
 
     if (accion === 'sumar') {
         const { error } = await supabase.from('pedidos').insert([{ invitado_nombre: nombreInvitado, pizza_id: pizza.id, cantidad_porciones: 1, estado: 'pendiente' }]);
-        if (!error) mostrarMensaje(`${t.successOrder} ${pizza.nombre}!`);
+        if (!error) mostrarMensaje(`${t.successOrder} ${pizza.nombre}!`, 'exito');
     } else {
         if (pizza.cocinando) { alert(t.errorOven); return; }
         const { data } = await supabase.from('pedidos').select('id').eq('pizza_id', pizza.id).ilike('invitado_nombre', nombreInvitado.trim()).eq('estado', 'pendiente').order('created_at', { ascending: false }).limit(1).single();
         if (data) {
             await supabase.from('pedidos').delete().eq('id', data.id);
-            mostrarMensaje(`${t.successCancel} ${pizza.nombre}`);
+            mostrarMensaje(`${t.successCancel} ${pizza.nombre}`, 'info');
         }
     }
   }
 
-  const mostrarMensaje = (txt: string) => { setMensaje(txt); setTimeout(() => setMensaje(''), 2500); }
+  const mostrarMensaje = (txt: string, tipo: 'info' | 'alerta' | 'exito') => {
+      setMensaje({ texto: txt, tipo });
+      if (tipo !== 'alerta') {
+          setTimeout(() => setMensaje(null), 2500);
+      }
+  }
 
   return (
     <div className="min-h-screen bg-neutral-950 text-white font-sans pb-20 transition-colors duration-500 overflow-x-hidden">
@@ -216,6 +232,7 @@ export default function VitoPizzaApp() {
              <div className="flex justify-between items-center mb-6">
                 <span className="font-bold tracking-widest text-[10px] uppercase bg-black/30 px-3 py-1 rounded-full backdrop-blur-md border border-white/10">Il Forno Di Vito</span>
                 <div className="flex gap-2">
+                   <button onClick={activarNotificaciones} className="bg-black/20 p-2 rounded-full hover:bg-black/40 border border-white/10"><Bell size={18}/></button>
                    <button onClick={() => setLang(lang === 'es' ? 'en' : 'es')} className="bg-black/20 p-2 rounded-full hover:bg-black/40 border border-white/10"><Globe size={18}/></button>
                    <button onClick={() => setShowThemeSelector(!showThemeSelector)} className="bg-black/20 p-2 rounded-full hover:bg-black/40 border border-white/10"><Palette size={18} /></button>
                    <Link href="/admin" className="bg-black/20 p-2 rounded-full hover:bg-black/40 border border-white/10"><Lock size={18} /></Link>
@@ -248,9 +265,19 @@ export default function VitoPizzaApp() {
         </div>
 
         {mensaje && (
-          <div className="fixed top-4 left-4 right-4 bg-white text-black p-4 rounded-2xl shadow-[0_0_30px_rgba(255,255,255,0.3)] z-50 flex items-center justify-center animate-bounce font-bold text-center border-2 border-black">
-            {mensaje.includes('LISTA') ? <PartyPopper size={24} className="mr-2" /> : null}
-            {mensaje}
+          // AQUI ESTA EL CAMBIO: FONDO BLANCO Y BORDE SI ES ALERTA
+          <div className={`fixed top-4 left-4 right-4 p-4 rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] z-50 flex flex-col items-center justify-center animate-bounce-in text-center bg-white text-black ${mensaje.tipo === 'alerta' ? 'border-4 border-neutral-900 font-black' : 'border-2 border-neutral-200 font-bold'}`}>
+            <div className="flex items-center gap-2 mb-1 text-lg">
+                {mensaje.tipo === 'alerta' && <PartyPopper size={24} className="text-orange-600" />}
+                {mensaje.texto}
+            </div>
+            
+            {/* BOTÓN OK PARA ALERTAS IMPORTANTES */}
+            {mensaje.tipo === 'alerta' && (
+                <button onClick={() => setMensaje(null)} className="mt-2 bg-neutral-900 text-white px-8 py-3 rounded-full text-sm font-bold shadow-lg active:scale-95 hover:bg-black transition-transform">
+                    {t.okBtn}
+                </button>
+            )}
           </div>
         )}
 
