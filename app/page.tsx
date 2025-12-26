@@ -40,7 +40,7 @@ const dictionary = {
     successOrder: "¡Marchando +1 de",
     successCancel: "Cancelado -1 de",
     readyAlert: "¡TU PIZZA ESTÁ LISTA! 🍕",
-    ovenAlert: "al horno! 🔥",
+    ovenAlert: "al horno!", // Sin icono
     okBtn: "ENTENDIDO",
     enableNotif: "Activar Alertas"
   },
@@ -66,7 +66,7 @@ const dictionary = {
     successOrder: "Coming right up! +1 of",
     successCancel: "Removed -1 of",
     readyAlert: "YOUR PIZZA IS READY! 🍕",
-    ovenAlert: "in the oven! 🔥",
+    ovenAlert: "in the oven!",
     okBtn: "OK",
     enableNotif: "Enable Alerts"
   },
@@ -92,7 +92,7 @@ const dictionary = {
     successOrder: "In arrivo! +1 di",
     successCancel: "Rimosso -1 di",
     readyAlert: "LA TUA PIZZA È PRONTA! 🍕",
-    ovenAlert: "in forno! 🔥",
+    ovenAlert: "in forno!",
     okBtn: "CAPITO",
     enableNotif: "Attiva Avvisi"
   }
@@ -154,11 +154,9 @@ export default function VitoPizzaApp() {
 
   const enviarNotificacion = (titulo: string, cuerpo: string) => {
       if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-          // CORRECCIÓN: Quitamos 'vibrate' para evitar error TS
           try {
              navigator.serviceWorker.getRegistration().then(reg => {
                  if (reg) {
-                     // Cast a 'any' para evitar error TS si vibra
                      (reg as any).showNotification(titulo, { body: cuerpo, icon: '/icon.png', vibrate: [200, 100, 200] });
                  } else {
                      new Notification(titulo, { body: cuerpo, icon: '/icon.png' });
@@ -231,7 +229,6 @@ export default function VitoPizzaApp() {
             dataPizzas.forEach(pz => { prevCocinandoData.current[pz.id] = pz.cocinando; });
             firstLoadRef.current = false;
         } else {
-            // ALERTA: PIZZA LISTA
             if (totalComidosAhora > prevComidosRef.current) {
                 const diferencia = totalComidosAhora - prevComidosRef.current;
                 const texto = `¡Tus ${diferencia} porciones están listas! 🍕`;
@@ -240,11 +237,11 @@ export default function VitoPizzaApp() {
             }
             prevComidosRef.current = totalComidosAhora;
 
-            // ALERTA: EN HORNO
             dataPizzas.forEach(pz => {
                 const estabaCocinando = prevCocinandoData.current[pz.id] || false;
                 if (pz.cocinando && !estabaCocinando && misPizzasPendientesInfo[pz.id]) {
                     const cant = misPizzasPendientesInfo[pz.id];
+                    // SIN EMOJI DE FUEGO AQUI PARA AHORRAR ESPACIO
                     const texto = `¡${cant} porciones de ${pz.nombre} ${t.ovenAlert}`;
                     setMensaje({ texto, tipo: 'alerta' });
                     enviarNotificacion("🔥 " + t.inOven, texto);
@@ -296,7 +293,6 @@ export default function VitoPizzaApp() {
                 <span className="font-bold tracking-widest text-[10px] uppercase bg-black/30 px-3 py-1 rounded-full backdrop-blur-md border border-white/10">Il Forno Di Vito</span>
                 <div className="flex gap-2">
                    <button onClick={activarNotificaciones} className="bg-black/20 p-2 rounded-full hover:bg-black/40 border border-white/10"><Bell size={18}/></button>
-                   {/* BOTON IDIOMA TEXTO */}
                    <button onClick={rotarIdioma} className="bg-black/20 px-3 py-2 rounded-full hover:bg-black/40 border border-white/10 text-xs font-bold">
                        {lang.toUpperCase()}
                    </button>
@@ -331,13 +327,14 @@ export default function VitoPizzaApp() {
         </div>
 
         {mensaje && (
+          // NOTIFICACION OPTIMIZADA: Texto mas chico (text-sm), padding reducido (p-3), sin icono en texto
           <div className={`fixed top-4 left-4 right-4 p-3 rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] z-50 flex flex-col items-center justify-center animate-bounce-in text-center bg-white text-black ${mensaje.tipo === 'alerta' ? 'border-4 border-neutral-900 font-bold' : 'border-2 border-neutral-200 font-bold'}`}>
-            <div className="flex items-center gap-2 mb-1 text-base">
-                {mensaje.tipo === 'alerta' && <PartyPopper size={20} className="text-orange-600" />}
+            <div className="flex items-center gap-2 mb-1 text-sm">
+                {mensaje.tipo === 'alerta' && <PartyPopper size={18} className="text-orange-600" />}
                 {mensaje.texto}
             </div>
             {mensaje.tipo === 'alerta' && (
-                <button onClick={() => setMensaje(null)} className="mt-1 bg-neutral-900 text-white px-6 py-2 rounded-full text-xs font-bold shadow-lg active:scale-95 hover:bg-black transition-transform">
+                <button onClick={() => setMensaje(null)} className="mt-1 bg-neutral-900 text-white px-6 py-1.5 rounded-full text-xs font-bold shadow-lg active:scale-95 hover:bg-black transition-transform">
                     {t.okBtn}
                 </button>
             )}
