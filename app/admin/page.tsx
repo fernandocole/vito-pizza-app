@@ -1,8 +1,9 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { Pizza, Settings, Plus, Trash2, ChefHat, Eye, EyeOff, CheckCircle, Clock, Flame, ExternalLink, List, User, Bell, ArrowRight } from 'lucide-react';
-import Link from 'next/link';
+import { Pizza, Settings, Plus, Trash2, ChefHat, Eye, EyeOff, CheckCircle, Clock, Flame, LogOut, List, User, Bell, ArrowRight } from 'lucide-react';
+// Eliminamos Link de next/link ya que usaremos navegación nativa para salir
+// import Link from 'next/link'; 
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -60,6 +61,11 @@ export default function AdminPage() {
     } else { alert('Contraseña incorrecta'); }
   };
 
+  // Función para salir a la home de forma forzada (funciona en Android)
+  const irAInvitados = () => {
+      window.location.href = '/';
+  };
+
   const cargarDatos = async () => {
     const now = new Date();
     const corte = new Date(now);
@@ -93,7 +99,6 @@ export default function AdminPage() {
 
   const enviarNotificacion = (titulo: string, cuerpo: string) => {
       if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-          // CORRECCIÓN: Quitamos 'vibrate' para evitar el error de TypeScript
           try {
              new Notification(titulo, { body: cuerpo, icon: '/icon.png' });
           } catch (e) { console.error(e); }
@@ -178,6 +183,7 @@ export default function AdminPage() {
   if (!autenticado) return (
     <div className="min-h-screen bg-neutral-950 flex items-center justify-center p-4 font-sans overflow-hidden">
       <div className="w-full max-w-md bg-neutral-900 p-8 rounded-3xl border border-neutral-800 shadow-2xl">
+        <div className={`flex justify-center mb-6 ${currentTheme.text}`}><ChefHat size={48} /></div>
         <h1 className="text-2xl font-bold text-center text-white mb-2">Il Forno Di Vito</h1>
         <p className="text-center text-neutral-500 mb-6">Acceso Pizzaiolo</p>
         <form onSubmit={ingresar} className="flex flex-col gap-4">
@@ -185,7 +191,10 @@ export default function AdminPage() {
             <button type="submit" className={`w-full ${currentTheme.color} text-white font-bold py-4 rounded-xl`}>ENTRAR</button>
         </form>
         <div className="mt-8 text-center pt-6 border-t border-neutral-800">
-            <Link href="/" className="text-neutral-500 text-sm hover:text-white flex items-center justify-center gap-2">Ir a modo Invitados</Link>
+            {/* BOTÓN NATIVO PARA VOLVER */}
+            <button onClick={irAInvitados} className="text-neutral-500 text-sm hover:text-white flex items-center justify-center gap-2 w-full py-3">
+                <ArrowRight size={16}/> Ir a modo Invitados
+            </button>
         </div>
       </div>
     </div>
@@ -195,7 +204,15 @@ export default function AdminPage() {
     <div className="min-h-screen bg-neutral-950 text-white font-sans pb-24 overflow-x-hidden w-full">
       <header className="sticky top-0 z-50 bg-neutral-900/90 backdrop-blur-md border-b border-neutral-800 px-4 py-3 flex justify-between items-center shadow-md">
         <div><h1 className={`font-bold text-lg tracking-tight`}><span className={currentTheme.text}>Il Forno Admin</span></h1><p className="text-[10px] text-neutral-400">{invitadosCount} / {config.total_invitados} comensales</p></div>
-        <div className="flex gap-4"><div className="flex gap-2 bg-black/30 p-1.5 rounded-full border border-white/5">{THEMES.map(t => (<button key={t.name} onClick={() => selectTheme(t)} className={`w-4 h-4 rounded-full ${t.color} ${currentTheme.name === t.name ? 'ring-2 ring-white scale-110' : 'opacity-40'}`}></button>))}</div><Link href="/" className="bg-neutral-800 p-2 rounded-full text-neutral-400 hover:text-white"><ExternalLink size={18} /></Link></div>
+        <div className="flex gap-4">
+            <div className="flex gap-2 bg-black/30 p-1.5 rounded-full border border-white/5">
+                {THEMES.map(t => (<button key={t.name} onClick={() => selectTheme(t)} className={`w-4 h-4 rounded-full ${t.color} ${currentTheme.name === t.name ? 'ring-2 ring-white scale-110' : 'opacity-40'}`}></button>))}
+            </div>
+            {/* BOTÓN NATIVO EN EL HEADER */}
+            <button onClick={irAInvitados} className="bg-neutral-800 p-2 rounded-full text-neutral-400 hover:text-white">
+                <LogOut size={18} />
+            </button>
+        </div>
       </header>
       <main className="p-4 max-w-4xl mx-auto space-y-6 w-full">
         {view === 'cocina' && (
