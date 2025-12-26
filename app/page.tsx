@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { Plus, Minus, User, Palette, Flame, Lock, Globe, PartyPopper, Bell, X } from 'lucide-react';
+import { Plus, Minus, User, Palette, Flame, Lock, Globe, PartyPopper, Bell } from 'lucide-react';
 import Link from 'next/link';
 
 const supabase = createClient(
@@ -40,8 +40,8 @@ const dictionary = {
     successOrder: "¡Marchando +1 de",
     successCancel: "Cancelado -1 de",
     readyAlert: "¡TU PIZZA ESTÁ LISTA! 🍕",
-    ovenAlert: "entraron al horno 🔥",
-    okBtn: "ENTENDIDO",
+    ovenAlert: "al horno! 🔥", // Texto más corto
+    okBtn: "OK",
     enableNotif: "Activar Alertas"
   },
   en: {
@@ -66,7 +66,7 @@ const dictionary = {
     successOrder: "Coming right up! +1 of",
     successCancel: "Removed -1 of",
     readyAlert: "YOUR PIZZA IS READY! 🍕",
-    ovenAlert: "slices are in the oven! 🔥",
+    ovenAlert: "in the oven! 🔥",
     okBtn: "OK",
     enableNotif: "Enable Alerts"
   }
@@ -82,16 +82,15 @@ export default function VitoPizzaApp() {
   const [cargando, setCargando] = useState(true);
   const [nombreInvitado, setNombreInvitado] = useState('');
   
-  // Mensajes
   const [mensaje, setMensaje] = useState<MensajeTipo | null>(null);
 
   const [config, setConfig] = useState({ porciones_por_pizza: 8, total_invitados: 20 });
   const [invitadosActivos, setInvitadosActivos] = useState(0);
   const [miHistorial, setMiHistorial] = useState<Record<string, { pendientes: number, comidos: number }>>({});
   
-  // Refs
   const prevComidosRef = useRef<number>(0);
   const prevCocinandoData = useRef<Record<string, boolean>>({});
+  const firstLoadRef = useRef(true);
 
   const [currentTheme, setCurrentTheme] = useState(THEMES[0]);
   const [showThemeSelector, setShowThemeSelector] = useState(false);
@@ -169,26 +168,33 @@ export default function VitoPizzaApp() {
         });
         setMiHistorial(resumen);
 
-        // 1. ALERTA: PIZZA LISTA
-        if (totalComidosAhora > prevComidosRef.current && prevComidosRef.current !== 0) {
-            const diferencia = totalComidosAhora - prevComidosRef.current;
-            const texto = `¡Tus ${diferencia} porciones están listas! 🍕`;
-            setMensaje({ texto, tipo: 'alerta' }); 
-            enviarNotificacion(t.readyAlert, texto);
-        }
-        prevComidosRef.current = totalComidosAhora;
-
-        // 2. ALERTA: EN HORNO
-        dataPizzas.forEach(pz => {
-            const estabaCocinando = prevCocinandoData.current[pz.id] || false;
-            if (pz.cocinando && !estabaCocinando && misPizzasPendientesInfo[pz.id]) {
-                const cant = misPizzasPendientesInfo[pz.id];
-                const texto = `¡Tus ${cant} porciones de ${pz.nombre} ${t.ovenAlert}`;
-                setMensaje({ texto, tipo: 'alerta' });
-                enviarNotificacion("🔥 " + t.inOven, texto);
+        if (firstLoadRef.current) {
+            prevComidosRef.current = totalComidosAhora;
+            dataPizzas.forEach(pz => { prevCocinandoData.current[pz.id] = pz.cocinando; });
+            firstLoadRef.current = false;
+        } else {
+            // ALERTA: PIZZA LISTA
+            if (totalComidosAhora > prevComidosRef.current) {
+                const diferencia = totalComidosAhora - prevComidosRef.current;
+                const texto = `¡Tus ${diferencia} porciones están listas! 🍕`;
+                setMensaje({ texto, tipo: 'alerta' }); 
+                enviarNotificacion(t.readyAlert, texto);
             }
-            prevCocinandoData.current[pz.id] = pz.cocinando;
-        });
+            prevComidosRef.current = totalComidosAhora;
+
+            // ALERTA: EN HORNO
+            dataPizzas.forEach(pz => {
+                const estabaCocinando = prevCocinandoData.current[pz.id] || false;
+                if (pz.cocinando && !estabaCocinando && misPizzasPendientesInfo[pz.id]) {
+                    const cant = misPizzasPendientesInfo[pz.id];
+                    // TEXTO MAS CORTO
+                    const texto = `¡${cant} porciones de ${pz.nombre} ${t.ovenAlert}`;
+                    setMensaje({ texto, tipo: 'alerta' });
+                    enviarNotificacion("🔥 " + t.inOven, texto);
+                }
+                prevCocinandoData.current[pz.id] = pz.cocinando;
+            });
+        }
       }
     }
     setCargando(false);
@@ -265,16 +271,15 @@ export default function VitoPizzaApp() {
         </div>
 
         {mensaje && (
-          // AQUI ESTA EL CAMBIO: FONDO BLANCO Y BORDE SI ES ALERTA
-          <div className={`fixed top-4 left-4 right-4 p-4 rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] z-50 flex flex-col items-center justify-center animate-bounce-in text-center bg-white text-black ${mensaje.tipo === 'alerta' ? 'border-4 border-neutral-900 font-black' : 'border-2 border-neutral-200 font-bold'}`}>
-            <div className="flex items-center gap-2 mb-1 text-lg">
-                {mensaje.tipo === 'alerta' && <PartyPopper size={24} className="text-orange-600" />}
+          // NOTIFICACION MAS PEQUEÑA Y BLANCA
+          <div className={`fixed top-4 left-4 right-4 p-3 rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] z-50 flex flex-col items-center justify-center animate-bounce-in text-center bg-white text-black ${mensaje.tipo === 'alerta' ? 'border-4 border-neutral-900 font-bold' : 'border-2 border-neutral-200 font-bold'}`}>
+            <div className="flex items-center gap-2 mb-1 text-base">
+                {mensaje.tipo === 'alerta' && <PartyPopper size={20} className="text-orange-600" />}
                 {mensaje.texto}
             </div>
             
-            {/* BOTÓN OK PARA ALERTAS IMPORTANTES */}
             {mensaje.tipo === 'alerta' && (
-                <button onClick={() => setMensaje(null)} className="mt-2 bg-neutral-900 text-white px-8 py-3 rounded-full text-sm font-bold shadow-lg active:scale-95 hover:bg-black transition-transform">
+                <button onClick={() => setMensaje(null)} className="mt-1 bg-neutral-900 text-white px-6 py-2 rounded-full text-xs font-bold shadow-lg active:scale-95 hover:bg-black transition-transform">
                     {t.okBtn}
                 </button>
             )}
