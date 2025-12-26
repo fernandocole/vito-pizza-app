@@ -1,7 +1,7 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { Plus, Minus, User, Palette, Lock, Globe, PartyPopper, Bell, BellOff } from 'lucide-react';
+import { Plus, Minus, User, Palette, Flame, Lock, Globe, PartyPopper, Bell, BellOff, ArrowDownAZ, ArrowUpNarrowWide } from 'lucide-react';
 import Link from 'next/link';
 
 const supabase = createClient(
@@ -114,6 +114,8 @@ export default function VitoPizzaApp() {
   
   const [mensaje, setMensaje] = useState<MensajeTipo | null>(null);
   const [notifEnabled, setNotifEnabled] = useState(false);
+  // RECUPERADO: Estado de ordenamiento
+  const [orden, setOrden] = useState<'estado' | 'nombre'>('estado');
 
   const [config, setConfig] = useState({ porciones_por_pizza: 8, total_invitados: 20 });
   const [invitadosActivos, setInvitadosActivos] = useState(0);
@@ -189,7 +191,6 @@ export default function VitoPizzaApp() {
   };
 
   const fetchDatos = useCallback(async () => {
-    // FILTRO DE FECHA (Turno hasta 6AM)
     const now = new Date();
     const corte = new Date(now);
     if (now.getHours() < 6) {
@@ -217,7 +218,7 @@ export default function VitoPizzaApp() {
         return {
           ...pizza,
           target,
-          totalPendientes, // CRUCIAL para validación de borrado
+          totalPendientes,
           ocupadasActual,
           faltanParaCompletar: target - ocupadasActual,
           porcentajeBarra: (ocupadasActual / target) * 100
@@ -247,7 +248,6 @@ export default function VitoPizzaApp() {
             dataPizzas.forEach(pz => { prevCocinandoData.current[pz.id] = pz.cocinando; });
             firstLoadRef.current = false;
         } else {
-            // ALERTA: PIZZA LISTA
             if (totalComidosAhora > prevComidosRef.current) {
                 const diferencia = totalComidosAhora - prevComidosRef.current;
                 const texto = `¡Tus ${diferencia} porciones están listas! 🍕`;
@@ -256,12 +256,10 @@ export default function VitoPizzaApp() {
             }
             prevComidosRef.current = totalComidosAhora;
 
-            // ALERTA: EN HORNO
             dataPizzas.forEach(pz => {
                 const estabaCocinando = prevCocinandoData.current[pz.id] || false;
                 if (pz.cocinando && !estabaCocinando && misPizzasPendientesInfo[pz.id]) {
                     const cant = misPizzasPendientesInfo[pz.id];
-                    // Mensaje limpio sin iconos raros
                     const texto = `¡${cant} porciones de ${pz.nombre} ${t.ovenAlert}`;
                     setMensaje({ texto, tipo: 'alerta' });
                     enviarNotificacion("🔥 " + t.inOven, texto);
@@ -280,6 +278,19 @@ export default function VitoPizzaApp() {
     return () => { supabase.removeChannel(canal); };
   }, [fetchDatos]);
 
+  // RECUPERADO: Lógica de Ordenamiento en Invitados
+  const pizzasOrdenadas = useMemo(() => {
+      return [...pizzas].sort((a, b) => {
+          if (orden === 'estado') {
+              if (a.cocinando && !b.cocinando) return -1;
+              if (!a.cocinando && b.cocinando) return 1;
+              return a.nombre.localeCompare(b.nombre);
+          } else {
+              return a.nombre.localeCompare(b.nombre);
+          }
+      });
+  }, [pizzas, orden]);
+
   async function modificarPedido(pizza: any, accion: 'sumar' | 'restar') {
     if (!nombreInvitado.trim()) { alert(t.errorName); return; }
 
@@ -287,17 +298,13 @@ export default function VitoPizzaApp() {
         const { error } = await supabase.from('pedidos').insert([{ invitado_nombre: nombreInvitado, pizza_id: pizza.id, cantidad_porciones: 1, estado: 'pendiente' }]);
         if (!error) mostrarMensaje(`${t.successOrder} ${pizza.nombre}!`, 'exito');
     } else {
-        // VALIDACIÓN DE BORRADO
         if (pizza.cocinando) { 
-            // Si Total pendientes <= Target, significa que TODO está en el horno. Bloqueamos.
-            // Si Total pendientes > Target, hay sobras fuera del horno. Permitimos borrar.
             if (pizza.totalPendientes <= pizza.target) {
                 alert(t.errorOven); 
                 return; 
             }
         }
         
-        // Borramos el pedido más reciente (LIFO para el usuario)
         const { data } = await supabase.from('pedidos')
             .select('id')
             .eq('pizza_id', pizza.id)
@@ -328,7 +335,13 @@ export default function VitoPizzaApp() {
          <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mt-20 -mr-20 blur-3xl"></div>
          <div className="relative z-10">
              <div className="flex justify-between items-center mb-6">
-                <span className="font-bold tracking-widest text-[10px] uppercase bg-black/30 px-3 py-1 rounded-full backdrop-blur-md border border-white/10">Il Forno Di Vito</span>
+                
+                {/* LOGO EN HEADER INVITADOS */}
+                <div className="bg-black/30 px-3 py-1 rounded-full backdrop-blur-md border border-white/10 flex items-center">
+                    <img src="/logo.png" alt="Logo" className="h-8 w-auto mr-2" />
+                    <span className="font-bold tracking-widest text-[10px] uppercase">Il Forno Di Vito</span>
+                </div>
+
                 <div className="flex gap-2">
                    <button onClick={toggleNotificaciones} className={`p-2 rounded-full hover:bg-black/40 border border-white/10 transition-colors ${notifEnabled ? 'bg-white text-black' : 'bg-black/20 text-white'}`}>
                        {notifEnabled ? <Bell size={18} /> : <BellOff size={18} />}
@@ -336,6 +349,15 @@ export default function VitoPizzaApp() {
                    <button onClick={rotarIdioma} className="bg-black/20 px-3 py-2 rounded-full hover:bg-black/40 border border-white/10 text-xs font-bold">
                        {lang.toUpperCase()}
                    </button>
+                   
+                   {/* RECUPERADO: BOTON ORDENAR */}
+                   <button 
+                       onClick={() => setOrden(orden === 'estado' ? 'nombre' : 'estado')} 
+                       className="bg-black/20 p-2 rounded-full hover:bg-black/40 border border-white/10"
+                   >
+                       {orden === 'estado' ? <ArrowUpNarrowWide size={18} /> : <ArrowDownAZ size={18} />}
+                   </button>
+
                    <button onClick={() => setShowThemeSelector(!showThemeSelector)} className="bg-black/20 p-2 rounded-full hover:bg-black/40 border border-white/10"><Palette size={18} /></button>
                    <Link href="/admin" className="bg-black/20 p-2 rounded-full hover:bg-black/40 border border-white/10"><Lock size={18} /></Link>
                 </div>
@@ -381,14 +403,15 @@ export default function VitoPizzaApp() {
         )}
 
         <div className="space-y-6 pb-10">
-           {cargando ? <p className="text-center text-neutral-600 mt-10 animate-pulse">{t.loading}</p> : pizzas.map(pizza => (
+           {/* IMPORTANTE: Usamos pizzasOrdenadas.map en vez de pizzas.map */}
+           {cargando ? <p className="text-center text-neutral-600 mt-10 animate-pulse">{t.loading}</p> : pizzasOrdenadas.map(pizza => (
                <div key={pizza.id} className={`bg-neutral-900 p-5 rounded-[36px] border ${pizza.cocinando ? 'border-orange-500/30' : 'border-neutral-800'} shadow-lg relative overflow-hidden group`}>
                    
                    <div className="flex justify-between items-start mb-2">
                        <div>
                            <h2 className="text-2xl font-bold text-white flex items-center gap-2">
                                {pizza.nombre}
-                               {/* SE MUESTRA EL BADGE SOLO DE TEXTO SIN ICONO */}
+                               {/* BADGE TEXTO SIN ICONO */}
                                {pizza.cocinando && <span className="bg-orange-500 text-black text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 animate-pulse">{t.inOven}</span>}
                            </h2>
                            <p className="text-neutral-500 text-xs leading-relaxed max-w-[200px]">{pizza.descripcion}</p>
