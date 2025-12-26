@@ -2,53 +2,97 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
+// --- TRADUCCIONES ---
+const dictionary = {
+  es: {
+    welcome: "Gracias por venir, será un placer cocinar para vos.",
+    whoAreYou: "¿Cuál es tu nombre?",
+    namePlaceholder: "Tu nombre aquí...",
+    hello: "Hola",
+    orderPrompt: "pedí lo que quieras.",
+    guestsCount: "amigos ya pidieron.",
+    loading: "Calentando hornos...",
+    progress: "Progreso actual",
+    newPizza: "Empieza una nueva",
+    missing: "Faltan",
+    taken: "tomadas",
+    buttonOrder: "¡QUIERO UNA!",
+    orderedBadge: "Pediste",
+    successMsg: "¡Marchando +1 de",
+    errorMsg: "Error al pedir. Intenta de nuevo.",
+    noName: "¡Hola! Escribí tu nombre arriba para saber quién pide."
+  },
+  en: {
+    welcome: "Thanks for coming, it will be a pleasure to cook for you.",
+    whoAreYou: "Who are you?",
+    namePlaceholder: "Your name here...",
+    hello: "Hi",
+    orderPrompt: "order whatever you like.",
+    guestsCount: "friends have ordered.",
+    loading: "Heating up ovens...",
+    progress: "Current progress",
+    newPizza: "Starting a new one",
+    missing: "Missing",
+    taken: "taken",
+    buttonOrder: "I WANT ONE!",
+    orderedBadge: "You ordered",
+    successMsg: "Coming right up! +1 of",
+    errorMsg: "Error ordering. Try again.",
+    noName: "Hi! Please write your name above so we know who's ordering."
+  }
+};
+
 // --- CONEXIÓN ---
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default function VitoPizzaApp() {
+  const [lang, setLang] = useState<'es' | 'en'>('es'); // Estado del idioma
+  const t = dictionary[lang]; // Alias corto para traducciones
+
   const [pizzas, setPizzas] = useState<any[]>([]);
   const [cargando, setCargando] = useState(true);
   const [nombreInvitado, setNombreInvitado] = useState('');
   const [mensaje, setMensaje] = useState('');
   const [misPedidos, setMisPedidos] = useState<Record<string, number>>({}); 
-  const [config, setConfig] = useState({ porciones_por_pizza: 8 });
+  const [config, setConfig] = useState({ porciones_por_pizza: 8, total_invitados: 20 });
+  const [invitadosActivos, setInvitadosActivos] = useState(0);
 
-  // Función principal de carga de datos
   const fetchDatos = useCallback(async () => {
-    // 1. Traer Config
+    // 1. Configuración
     const { data: dataConfig } = await supabase.from('configuracion_dia').select('*').single();
-    const porcionesPorPizza = dataConfig?.porciones_por_pizza || 8;
-    setConfig({ porciones_por_pizza: porcionesPorPizza });
+    const conf = dataConfig || { porciones_por_pizza: 8, total_invitados: 20 };
+    setConfig(conf);
 
-    // 2. Traer Pedidos
+    // 2. Pedidos
     const { data: dataPedidos } = await supabase.from('pedidos').select('*').neq('estado', 'entregado');
     
-    // 3. Traer Menú
+    // 3. Menú (Solo activas)
     const { data: dataPizzas } = await supabase.from('menu_pizzas').select('*').eq('activa', true);
 
     if (dataPizzas && dataPedidos) {
-      // CALCULO MATEMÁTICO
+      // Calcular métricas
+      const invitadosUnicos = new Set(dataPedidos.map(p => p.invitado_nombre.toLowerCase().trim()));
+      setInvitadosActivos(invitadosUnicos.size);
+
       const pizzasProcesadas = dataPizzas.map(pizza => {
         const pedidosDeEsta = dataPedidos.filter(p => p.pizza_id === pizza.id);
         const totalPorciones = pedidosDeEsta.reduce((acc, curr) => acc + curr.cantidad_porciones, 0);
         
-        const ocupadasActual = totalPorciones % porcionesPorPizza;
-        // Si ocupadas es 0 y hay pedidos, es una pizza nueva (0 ocupadas), si no, es lo que falta
-        const faltanParaCompletar = porcionesPorPizza - ocupadasActual;
+        const ocupadasActual = totalPorciones % conf.porciones_por_pizza;
+        const faltanParaCompletar = conf.porciones_por_pizza - ocupadasActual;
         
         return {
           ...pizza,
           ocupadasActual,
           faltanParaCompletar,
-          porcentajeBarra: (ocupadasActual / porcionesPorPizza) * 100
+          porcentajeBarra: (ocupadasActual / conf.porciones_por_pizza) * 100
         };
       });
 
       setPizzas(pizzasProcesadas);
 
-      // Calcular Mis Pedidos
       if (nombreInvitado) {
         const mis = dataPedidos
           .filter(p => p.invitado_nombre.toLowerCase() === nombreInvitado.toLowerCase().trim())
@@ -62,80 +106,73 @@ export default function VitoPizzaApp() {
     setCargando(false);
   }, [nombreInvitado]);
 
-  // --- EFECTO MAESTRO (Carga Inicial + Tiempo Real) ---
   useEffect(() => {
-    // 1. Cargar datos apenas entramos
     fetchDatos();
-
-    // 2. Suscribirse a cambios en TIEMPO REAL (Websockets)
-    // Esto hace que apenas alguien pida, tu pantalla se actualice sola
-    const canal = supabase
-      .channel('cambios-pizza')
-      .on(
-        'postgres_changes', 
-        { event: '*', schema: 'public', table: 'pedidos' }, 
-        () => {
-          // Si pasa algo en la tabla pedidos (INSERT, UPDATE, DELETE), recargamos los datos
-          fetchDatos();
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'configuracion_dia' },
-        () => {
-           // Si vos cambias el tamaño de pizza en admin, se actualiza acá también
-           fetchDatos();
-        }
-      )
+    const canal = supabase.channel('invitados-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public' }, () => fetchDatos())
       .subscribe();
-
-    // Limpieza al salir
-    return () => {
-      supabase.removeChannel(canal);
-    };
+    return () => { supabase.removeChannel(canal); };
   }, [fetchDatos]);
 
   async function pedirPorcion(pizzaId: string, nombrePizza: string) {
     if (!nombreInvitado.trim()) {
-      alert('¡Hola! Escribí tu nombre arriba para saber quién pide.');
+      alert(t.noName);
       return;
     }
-
-    // Insertar pedido
     const { error } = await supabase.from('pedidos').insert([
       { invitado_nombre: nombreInvitado, pizza_id: pizzaId, cantidad_porciones: 1 }
     ]);
 
     if (error) {
-      alert('Error al pedir. Intenta de nuevo.');
+      alert(t.errorMsg);
     } else {
-      setMensaje(`¡Marchando +1 de ${nombrePizza}!`);
+      setMensaje(`${t.successMsg} ${nombrePizza}!`);
       setTimeout(() => setMensaje(''), 3000);
-      // fetchDatos() se ejecutará solo gracias a la suscripción realtime
     }
   }
 
   return (
-    <div className="min-h-screen bg-neutral-900 text-neutral-100 font-sans p-4 pb-20">
-      <header className="text-center py-6 mb-4">
-        <h1 className="text-4xl font-extrabold text-orange-500 tracking-tight">IL FORNO DI VITO</h1>
-        <p className="text-neutral-400 mt-2 text-xs uppercase tracking-widest">
-          Pizza de {config.porciones_por_pizza} porciones hoy
-        </p>
-      </header>
+    <div className="min-h-screen bg-neutral-900 text-neutral-100 font-sans p-4 pb-24">
+      
+      {/* HEADER & IDIOMA */}
+      <div className="flex justify-between items-start mb-6">
+          <div>
+            <h1 className="text-3xl font-extrabold text-orange-500 tracking-tighter">IL FORNO DI VITO</h1>
+            <p className="text-neutral-400 text-xs mt-1 max-w-[200px] leading-tight">{t.welcome}</p>
+          </div>
+          <button 
+            onClick={() => setLang(lang === 'es' ? 'en' : 'es')}
+            className="bg-neutral-800 border border-neutral-700 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider text-neutral-300"
+          >
+            {lang === 'es' ? '🇺🇸 EN' : '🇦🇷 ES'}
+          </button>
+      </div>
+
+      {/* CONTADOR DE INVITADOS */}
+      <div className="mb-6 bg-neutral-800/50 p-3 rounded-lg border border-neutral-700/50 flex items-center justify-between text-xs text-neutral-400">
+         <span>Status del evento:</span>
+         <span className="text-white font-bold">
+            {invitadosActivos} / {config.total_invitados} {t.guestsCount}
+         </span>
+      </div>
 
       {/* INPUT NOMBRE */}
-      <div className="max-w-md mx-auto mb-10 sticky top-2 z-40">
-        <div className="bg-neutral-800/90 backdrop-blur p-2 rounded-xl flex shadow-lg border border-neutral-700 items-center">
+      <div className="max-w-md mx-auto mb-8 sticky top-2 z-40">
+        <div className="bg-neutral-800/95 backdrop-blur-md p-2 rounded-xl flex shadow-2xl border border-neutral-600 items-center ring-1 ring-black/50">
           <span className="pl-3 pr-2 text-xl">👤</span>
           <input 
             type="text" 
-            placeholder="Tu nombre aquí..." 
+            placeholder={t.namePlaceholder}
             className="w-full bg-transparent text-white outline-none placeholder-neutral-500 font-bold"
             value={nombreInvitado}
             onChange={(e) => setNombreInvitado(e.target.value)}
           />
         </div>
+        {nombreInvitado && (
+          <p className="text-center text-xs text-orange-400 mt-2 font-medium">
+            {t.hello} {nombreInvitado}, {t.orderPrompt}
+          </p>
+        )}
       </div>
 
       {/* NOTIFICACIÓN */}
@@ -148,60 +185,56 @@ export default function VitoPizzaApp() {
       {/* LISTA DE PIZZAS */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
         {cargando && pizzas.length === 0 ? (
-          <p className="text-center text-neutral-500 mt-10 animate-pulse">Cargando hornos...</p>
+          <p className="text-center text-neutral-500 mt-10 animate-pulse">{t.loading}</p>
         ) : (
           pizzas.map((pizza) => (
-            <div key={pizza.id} className="bg-neutral-800 rounded-2xl p-0 border border-neutral-700 shadow-xl overflow-hidden flex flex-col">
+            <div key={pizza.id} className="bg-neutral-800 rounded-2xl border border-neutral-700 shadow-xl overflow-hidden flex flex-col">
               
               <div className="p-5 flex-1 relative">
-                {/* Badge de "Mi Pedido" */}
                 {misPedidos[pizza.id] > 0 && (
-                  <div className="absolute top-4 right-4 bg-orange-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-lg border border-orange-400">
-                    Pediste {misPedidos[pizza.id]}
+                  <div className="absolute top-4 right-4 bg-orange-600 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow border border-orange-400 uppercase tracking-wide">
+                    {t.orderedBadge} {misPedidos[pizza.id]}
                   </div>
                 )}
 
-                <h3 className="text-2xl font-bold text-white mb-1">{pizza.nombre}</h3>
-                <p className="text-neutral-400 text-sm mb-6 leading-relaxed">{pizza.descripcion}</p>
+                <h3 className="text-2xl font-bold text-white mb-1 leading-none">{pizza.nombre}</h3>
+                <p className="text-neutral-400 text-sm mb-5 leading-relaxed mt-2">{pizza.descripcion}</p>
                 
-                {/* BARRA DE PROGRESO */}
-                <div className="bg-black/30 rounded-xl p-3 border border-white/5">
-                  <div className="flex justify-between text-xs text-neutral-400 mb-2 font-mono uppercase">
-                    <span>Progreso actual</span>
+                {/* BARRA */}
+                <div className="bg-black/40 rounded-xl p-3 border border-white/5">
+                  <div className="flex justify-between text-[10px] text-neutral-400 mb-2 font-mono uppercase tracking-wider">
+                    <span>{t.progress}</span>
                     <span className={pizza.faltanParaCompletar === 0 ? "text-green-500 font-bold" : ""}>
                       {pizza.faltanParaCompletar === config.porciones_por_pizza 
-                        ? "Empieza una nueva" 
-                        : `Faltan ${pizza.faltanParaCompletar}`}
+                        ? t.newPizza 
+                        : `${t.missing} ${pizza.faltanParaCompletar}`}
                     </span>
                   </div>
                   
-                  {/* Track */}
-                  <div className="h-4 bg-neutral-700 rounded-full overflow-hidden relative">
-                    {/* Guías */}
+                  <div className="h-3 bg-neutral-700 rounded-full overflow-hidden relative">
                     <div className="absolute inset-0 flex justify-between px-[1px]">
                         {[...Array(config.porciones_por_pizza)].map((_, i) => (
-                             <div key={i} className="w-[1px] h-full bg-black/20 z-10"></div>
+                             <div key={i} className="w-[1px] h-full bg-black/30 z-10"></div>
                         ))}
                     </div>
-                    {/* Relleno */}
                     <div 
-                        className="h-full bg-gradient-to-r from-orange-600 to-orange-400 transition-all duration-500 ease-out relative z-0" 
+                        className="h-full bg-gradient-to-r from-orange-600 to-orange-400 transition-all duration-500 relative z-0" 
                         style={{ width: `${pizza.porcentajeBarra}%` }}
                     ></div>
                   </div>
                   
-                  <p className="text-[10px] text-neutral-500 mt-2 text-right">
-                    {pizza.ocupadasActual} / {config.porciones_por_pizza} tomadas
+                  <p className="text-[9px] text-neutral-500 mt-2 text-right">
+                    {pizza.ocupadasActual} / {config.porciones_por_pizza} {t.taken}
                   </p>
                 </div>
               </div>
 
               <button 
                 onClick={() => pedirPorcion(pizza.id, pizza.nombre)}
-                className="w-full py-4 bg-white text-black font-black hover:bg-orange-500 hover:text-white transition-all active:bg-orange-600 flex justify-center items-center gap-2 text-lg active:scale-95 transform duration-100"
+                className="w-full py-4 bg-white text-black font-black hover:bg-orange-500 hover:text-white transition-all active:bg-orange-600 flex justify-center items-center gap-2 text-base uppercase tracking-widest active:scale-95 transform duration-100"
               >
-                ¡QUIERO UNA! 
-                <span className="text-xl">+</span>
+                {t.buttonOrder} 
+                <span className="text-xl leading-none">+</span>
               </button>
             </div>
           ))

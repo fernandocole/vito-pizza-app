@@ -9,177 +9,244 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 export default function AdminPage() {
   const [autenticado, setAutenticado] = useState(false);
   const [password, setPassword] = useState('');
-  const [errorPass, setErrorPass] = useState('');
   
+  // Datos
   const [pedidos, setPedidos] = useState<any[]>([]);
   const [pizzas, setPizzas] = useState<any[]>([]);
-  const [config, setConfig] = useState<any>({ porciones_por_pizza: 8 });
+  const [config, setConfig] = useState<any>({ porciones_por_pizza: 8, total_invitados: 20 });
+  const [vista, setVista] = useState<'cocina' | 'invitados' | 'menu'>('cocina');
 
-  // Al cargar, intentamos traer datos SOLO si estamos autenticados
   useEffect(() => {
     if (autenticado) {
       cargarDatos();
-      // Auto-refrescar pedidos cada 5 segundos
-      const intervalo = setInterval(cargarDatos, 5000);
-      return () => clearInterval(intervalo);
+      const canal = supabase.channel('admin-realtime')
+        .on('postgres_changes', { event: '*', schema: 'public' }, () => cargarDatos())
+        .subscribe();
+      return () => { supabase.removeChannel(canal); };
     }
   }, [autenticado]);
 
   const ingresar = async () => {
-    setErrorPass('');
-    // Verificamos password contra la base de datos
-    const { data } = await supabase.from('configuracion_dia').select('password_admin').single();
-    
-    // Si la base de datos devuelve data y la pass coincide
+    const { data } = await supabase.from('configuracion_dia').select('*').single();
     if (data && data.password_admin === password) {
       setAutenticado(true);
+      setConfig(data); // Cargamos la config inicial
+      cargarDatos();
     } else {
-      setErrorPass('Contraseña incorrecta');
+      alert('Contraseña incorrecta');
     }
   };
 
-  const salir = () => {
-    setAutenticado(false);
-    setPassword('');
-    setPedidos([]);
-  };
-
   const cargarDatos = async () => {
-    const { data: dataConfig } = await supabase.from('configuracion_dia').select('*').single();
-    if (dataConfig) setConfig(dataConfig);
-
-    const { data: dataPizzas } = await supabase.from('menu_pizzas').select('*').eq('activa', true);
+    // Pizzas (Traemos TODAS, activas e inactivas para poder gestionarlas)
+    const { data: dataPizzas } = await supabase.from('menu_pizzas').select('*').order('nombre');
     if (dataPizzas) setPizzas(dataPizzas);
 
-    // Traemos pedidos NO entregados
+    // Pedidos
     const { data: dataPedidos } = await supabase.from('pedidos').select('*').neq('estado', 'entregado');
     if (dataPedidos) setPedidos(dataPedidos);
+    
+    // Config actualizada
+    const { data: dataConfig } = await supabase.from('configuracion_dia').select('*').single();
+    if (dataConfig) setConfig(dataConfig);
   };
 
-  // --- LÓGICA MATEMÁTICA DEL PIZZAIOLO ---
-  const calcularEstadoPizzas = () => {
+  // --- ACCIONES ---
+  const togglePizza = async (id: string, estadoActual: boolean) => {
+    await supabase.from('menu_pizzas').update({ activa: !estadoActual }).eq('id', id);
+    cargarDatos();
+  };
+
+  const actualizarConfig = async (campo: string, valor: any) => {
+    await supabase.from('configuracion_dia').update({ [campo]: valor }).eq('id', config.id);
+  };
+
+  // --- CÁLCULOS ---
+  const calcularMetricas = () => {
     const porcionesPorPizza = config.porciones_por_pizza || 8;
     
-    return pizzas.map(pizza => {
-      // Filtramos pedidos de esta pizza
-      const pedidosDeEsta = pedidos.filter(p => p.pizza_id === pizza.id);
-      const totalPorciones = pedidosDeEsta.reduce((acc, curr) => acc + curr.cantidad_porciones, 0);
-      
-      const pizzasCompletas = Math.floor(totalPorciones / porcionesPorPizza);
-      const porcionesRestantes = totalPorciones % porcionesPorPizza; // Lo que sobra para la siguiente (la barra)
-      
-      return {
-        ...pizza,
-        totalPorciones,
-        pizzasCompletas,
-        porcionesRestantes,
-        porcentaje: (porcionesRestantes / porcionesPorPizza) * 100
-      };
+    // Agrupar pedidos por invitado
+    const invitadosUnicos = Array.from(new Set(pedidos.map(p => p.invitado_nombre.toLowerCase())));
+    const detalleInvitados = invitadosUnicos.map(nombre => {
+        const susPedidos = pedidos.filter(p => p.invitado_nombre.toLowerCase() === nombre);
+        const totalPorciones = susPedidos.reduce((acc, curr) => acc + curr.cantidad_porciones, 0);
+        // Resumen de qué pidió: "2 Mortapesto, 1 Marinara"
+        const resumen = susPedidos.reduce((acc: any, curr) => {
+             const pizzaNombre = pizzas.find(pz => pz.id === curr.pizza_id)?.nombre || 'Pizza';
+             acc[pizzaNombre] = (acc[pizzaNombre] || 0) + curr.cantidad_porciones;
+             return acc;
+        }, {});
+        return { nombre, totalPorciones, resumen };
     });
+
+    // Calcular pizzas
+    const pizzasCalculadas = pizzas.filter(p => p.activa).map(pizza => {
+      const pedidosDeEsta = pedidos.filter(p => p.pizza_id === pizza.id);
+      const total = pedidosDeEsta.reduce((acc, curr) => acc + curr.cantidad_porciones, 0);
+      const completas = Math.floor(total / porcionesPorPizza);
+      const resto = total % porcionesPorPizza;
+      return { ...pizza, completas, resto, porcentaje: (resto / porcionesPorPizza) * 100 };
+    });
+
+    return { pizzasCalculadas, detalleInvitados, invitadosCount: invitadosUnicos.length };
   };
 
-  const pizzasCalculadas = calcularEstadoPizzas();
+  const { pizzasCalculadas, detalleInvitados, invitadosCount } = calcularMetricas();
 
-  // --- VISTA LOGIN ---
-  if (!autenticado) {
-    return (
-      <div className="min-h-screen bg-neutral-950 flex items-center justify-center p-4 font-sans">
-        <div className="bg-neutral-900 p-8 rounded-2xl border border-neutral-800 w-full max-w-sm text-center shadow-2xl">
-          <div className="text-4xl mb-4">👨‍🍳</div>
-          <h1 className="text-2xl font-bold text-orange-500 mb-2">Acceso Cocina</h1>
-          <p className="text-neutral-500 mb-6 text-sm">Solo para Vito</p>
-          
-          <input 
-            type="password" 
-            placeholder="Contraseña..." 
-            className="w-full bg-black text-white p-4 rounded-lg mb-4 border border-neutral-700 focus:border-orange-500 outline-none text-center text-lg tracking-widest"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && ingresar()}
-          />
-          
-          {errorPass && <p className="text-red-500 text-sm mb-4">{errorPass}</p>}
-          
-          <button 
-            onClick={ingresar} 
-            className="w-full bg-orange-600 text-white font-bold py-4 rounded-lg hover:bg-orange-500 transition-colors"
-          >
-            ENTRAR
-          </button>
-        </div>
+
+  if (!autenticado) return (
+    <div className="min-h-screen bg-black flex items-center justify-center">
+      <div className="bg-neutral-900 p-8 rounded-xl text-center border border-neutral-800">
+        <h1 className="text-orange-500 font-bold mb-4">IL FORNO ADMIN</h1>
+        <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="bg-black text-white p-2 rounded border border-neutral-700 block w-full mb-4" placeholder="Contraseña" />
+        <button onClick={ingresar} className="bg-orange-600 px-6 py-2 rounded text-white font-bold w-full">ENTRAR</button>
       </div>
-    );
-  }
+    </div>
+  );
 
-  // --- VISTA PANEL ---
   return (
-    <div className="min-h-screen bg-neutral-900 text-white p-4 font-sans pb-20">
-      <header className="flex justify-between items-center mb-8 pb-4 border-b border-neutral-800">
-        <div>
-           <h1 className="text-2xl font-bold text-orange-500">Panel de Cocina</h1>
-           <p className="text-neutral-500 text-xs">Pizzas de {config.porciones_por_pizza} porciones</p>
+    <div className="min-h-screen bg-neutral-900 text-white font-sans pb-20">
+      {/* HEADER CONFIG */}
+      <header className="bg-neutral-800 p-4 border-b border-neutral-700 sticky top-0 z-50 shadow-lg">
+        <div className="flex justify-between items-center mb-4">
+           <h1 className="text-xl font-bold text-orange-500">Panel de Mando</h1>
+           <div className="text-xs text-neutral-400">
+             {invitadosCount} / {config.total_invitados} invitados activos
+           </div>
         </div>
-        <button onClick={salir} className="bg-neutral-800 px-4 py-2 rounded text-xs text-red-400 border border-neutral-700 hover:bg-neutral-700">
-          Cerrar Sesión
-        </button>
+        
+        {/* PESTAÑAS */}
+        <div className="flex gap-2">
+            <button onClick={() => setVista('cocina')} className={`flex-1 py-2 rounded text-sm font-bold ${vista === 'cocina' ? 'bg-orange-600 text-white' : 'bg-neutral-700 text-neutral-400'}`}>
+                🔥 Cocina
+            </button>
+            <button onClick={() => setVista('invitados')} className={`flex-1 py-2 rounded text-sm font-bold ${vista === 'invitados' ? 'bg-orange-600 text-white' : 'bg-neutral-700 text-neutral-400'}`}>
+                👥 Invitados
+            </button>
+            <button onClick={() => setVista('menu')} className={`flex-1 py-2 rounded text-sm font-bold ${vista === 'menu' ? 'bg-orange-600 text-white' : 'bg-neutral-700 text-neutral-400'}`}>
+                🍕 Menú
+            </button>
+        </div>
       </header>
 
-      {/* PIZZAS */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {pizzasCalculadas.map(pizza => (
-          <div key={pizza.id} className={`p-6 rounded-2xl border transition-all ${pizza.pizzasCompletas > 0 ? 'bg-green-900/20 border-green-500 shadow-[0_0_30px_rgba(34,197,94,0.2)]' : 'bg-neutral-800 border-neutral-700'}`}>
-            
-            <div className="flex justify-between items-start mb-4">
-               <h2 className="text-xl font-bold">{pizza.nombre}</h2>
-               {pizza.pizzasCompletas > 0 && <span className="text-2xl">🔔</span>}
-            </div>
-            
-            {/* CAJA DE AVISO GRANDE */}
-            {pizza.pizzasCompletas > 0 ? (
-              <div className="bg-green-600 text-white p-6 rounded-xl mb-6 text-center animate-pulse">
-                <span className="text-5xl font-black block mb-1">{pizza.pizzasCompletas}</span>
-                <span className="text-sm font-bold uppercase tracking-wider opacity-90">Completas para hornear</span>
-              </div>
-            ) : (
-              <div className="text-neutral-500 text-sm mb-6 bg-black/20 p-4 rounded-xl text-center">
-                Faltan pedidos para completar una.
-              </div>
-            )}
+      <div className="p-4">
+        
+        {/* VISTA 1: COCINA (Lo que ya tenías) */}
+        {vista === 'cocina' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+             {pizzasCalculadas.map(pizza => (
+                <div key={pizza.id} className={`p-5 rounded-xl border ${pizza.completas > 0 ? 'bg-green-900/30 border-green-500' : 'bg-neutral-800 border-neutral-700'}`}>
+                   <div className="flex justify-between">
+                       <h2 className="font-bold text-lg">{pizza.nombre}</h2>
+                       {pizza.completas > 0 && <span className="text-2xl animate-bounce">🔔</span>}
+                   </div>
+                   
+                   {pizza.completas > 0 ? (
+                       <div className="my-4 bg-green-600 text-white p-4 rounded-lg text-center font-black text-3xl">
+                           MARCHAR {pizza.completas}
+                       </div>
+                   ) : (
+                       <div className="my-4 text-neutral-500 text-sm text-center py-2">Faltan pedidos...</div>
+                   )}
 
-            {/* BARRA DE PROGRESO */}
-            <div>
-              <div className="flex justify-between text-xs text-neutral-400 mb-2 uppercase font-bold tracking-wider">
-                <span>En cola (Próxima)</span>
-                <span>{pizza.porcionesRestantes} / {config.porciones_por_pizza}</span>
-              </div>
-              <div className="w-full bg-black h-3 rounded-full overflow-hidden border border-white/10">
-                <div 
-                  className="bg-orange-500 h-full transition-all duration-500" 
-                  style={{ width: `${pizza.porcentaje}%` }}
-                ></div>
-              </div>
-            </div>
+                   <div className="mt-2">
+                       <div className="flex justify-between text-xs text-neutral-400 mb-1">
+                           <span>Próxima</span>
+                           <span>{pizza.resto} / {config.porciones_por_pizza}</span>
+                       </div>
+                       <div className="h-2 bg-black rounded-full overflow-hidden">
+                           <div className="h-full bg-orange-500 transition-all duration-500" style={{ width: `${pizza.porcentaje}%` }}></div>
+                       </div>
+                   </div>
+                </div>
+             ))}
           </div>
-        ))}
-      </div>
-      
-      {/* Configuración simple al pie */}
-      <div className="fixed bottom-0 left-0 w-full bg-neutral-900 border-t border-neutral-800 p-4 flex justify-center gap-4 text-sm text-neutral-500">
-        <span>Configuración:</span>
-        <button className="hover:text-white" onClick={async () => {
-             await supabase.from('configuracion_dia').update({ porciones_por_pizza: 8 }).eq('id', config.id);
-             cargarDatos();
-        }}>8p</button>
-        <button className="hover:text-white" onClick={async () => {
-             await supabase.from('configuracion_dia').update({ porciones_por_pizza: 6 }).eq('id', config.id);
-             cargarDatos();
-        }}>6p</button>
-        <button className="hover:text-white" onClick={async () => {
-             await supabase.from('configuracion_dia').update({ porciones_por_pizza: 4 }).eq('id', config.id);
-             cargarDatos();
-        }}>4p</button>
-      </div>
+        )}
 
+        {/* VISTA 2: LISTA DE INVITADOS */}
+        {vista === 'invitados' && (
+           <div className="space-y-4">
+               {/* Configurar Total */}
+               <div className="bg-neutral-800 p-4 rounded-xl flex justify-between items-center border border-neutral-700 mb-6">
+                   <span className="text-sm text-neutral-400">Total Invitados Esperados:</span>
+                   <div className="flex items-center gap-3">
+                       <button onClick={() => actualizarConfig('total_invitados', config.total_invitados - 1)} className="w-8 h-8 bg-neutral-700 rounded-full">-</button>
+                       <span className="font-bold text-xl w-8 text-center">{config.total_invitados}</span>
+                       <button onClick={() => actualizarConfig('total_invitados', config.total_invitados + 1)} className="w-8 h-8 bg-neutral-700 rounded-full">+</button>
+                   </div>
+               </div>
+
+               <h3 className="text-neutral-500 text-xs uppercase tracking-widest mb-2">Detalle de pedidos ({invitadosCount})</h3>
+               
+               {detalleInvitados.length === 0 ? (
+                   <p className="text-neutral-500 text-center italic">Nadie ha pedido todavía.</p>
+               ) : (
+                   detalleInvitados.map((inv, i) => (
+                       <div key={i} className="bg-neutral-800 p-4 rounded-xl border border-neutral-700">
+                           <div className="flex justify-between items-center border-b border-neutral-700 pb-2 mb-2">
+                               <span className="font-bold text-lg capitalize">{inv.nombre}</span>
+                               <span className="bg-orange-500/20 text-orange-400 text-xs px-2 py-1 rounded-full font-bold">
+                                   {inv.totalPorciones} porciones
+                               </span>
+                           </div>
+                           <div className="text-sm text-neutral-400 space-y-1">
+                               {Object.entries(inv.resumen).map(([gusto, cantidad]: any) => (
+                                   <div key={gusto} className="flex justify-between">
+                                       <span>{gusto}</span>
+                                       <span className="text-white">x{cantidad}</span>
+                                   </div>
+                               ))}
+                           </div>
+                       </div>
+                   ))
+               )}
+           </div>
+        )}
+
+        {/* VISTA 3: MENÚ (Config) */}
+        {vista === 'menu' && (
+            <div className="space-y-6">
+                
+                {/* Config Porciones */}
+                <div className="bg-neutral-800 p-4 rounded-xl border border-neutral-700">
+                    <h3 className="font-bold mb-4">Configuración del Horno</h3>
+                    <div className="flex justify-between items-center">
+                        <span className="text-sm text-neutral-400">Porciones por Pizza:</span>
+                        <select 
+                            className="bg-black border border-neutral-600 p-2 rounded"
+                            value={config.porciones_por_pizza}
+                            onChange={(e) => actualizarConfig('porciones_por_pizza', parseInt(e.target.value))}
+                        >
+                            <option value="4">4 Porciones</option>
+                            <option value="6">6 Porciones</option>
+                            <option value="8">8 Porciones</option>
+                        </select>
+                    </div>
+                </div>
+
+                {/* Lista de Gustos */}
+                <h3 className="font-bold pt-4">Gestionar Gustos</h3>
+                <div className="space-y-3">
+                    {pizzas.map(pizza => (
+                        <div key={pizza.id} className="flex justify-between items-center bg-neutral-800 p-4 rounded-xl border border-neutral-700">
+                            <div>
+                                <h4 className={`font-bold ${!pizza.activa && 'text-neutral-500 line-through'}`}>{pizza.nombre}</h4>
+                                <p className="text-xs text-neutral-500">{pizza.activa ? 'Visible en menú' : 'Oculta para invitados'}</p>
+                            </div>
+                            
+                            <button 
+                                onClick={() => togglePizza(pizza.id, pizza.activa)}
+                                className={`w-12 h-6 rounded-full transition-colors relative ${pizza.activa ? 'bg-green-500' : 'bg-neutral-600'}`}
+                            >
+                                <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all ${pizza.activa ? 'right-1' : 'left-1'}`}></div>
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        )}
+
+      </div>
     </div>
   );
 }
