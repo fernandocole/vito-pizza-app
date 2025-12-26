@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { Pizza, Settings, Plus, Trash2, ChefHat, Eye, EyeOff, CheckCircle, Clock, Flame, ExternalLink, List, User } from 'lucide-react';
+import { Pizza, Settings, Plus, Trash2, ChefHat, Eye, EyeOff, CheckCircle, Clock, Flame, ExternalLink, List, User, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 
 const supabase = createClient(
@@ -90,23 +90,54 @@ export default function AdminPage() {
       return { nombre: susPedidos[0].invitado_nombre, detalle, total: susPedidos.reduce((acc, c) => acc + c.cantidad_porciones, 0) };
   });
 
+  // --- ACCIONES PRINCIPALES ---
+
+  const toggleCocinando = async (p: any) => {
+      // 1. RESTRICCION: Si quiero PRENDER el horno y faltan porciones, BLOQUEAR.
+      if (!p.cocinando && p.faltan > 0 && p.faltan < p.target) { 
+          // (p.faltan < p.target) asegura que no bloquee si está vacía (0/8), 
+          // aunque normalmente querrías bloquear si no está LLENA.
+          // Si quieres bloquear siempre que no esté al 100% llena:
+          // if (!p.cocinando && p.percent < 100) { ... }
+          
+          if (p.percent < 100) {
+              alert(`⚠️ No podés hornear todavía.\nFaltan ${p.faltan} porciones para completar la pizza.`);
+              return;
+          }
+      }
+
+      // Actualización Optimista (Visual inmediata)
+      setPizzas(prev => prev.map(item => item.id === p.id ? { ...item, cocinando: !p.cocinando } : item));
+      
+      // Actualización Real
+      await supabase.from('menu_pizzas').update({ cocinando: !p.cocinando }).eq('id', p.id);
+  };
+
   const entregarPizza = async (pizzaMetric: any) => {
       if (!confirm(`¿Confirmar que salió 1 ${pizzaMetric.nombre}?`)) return;
+      
       let porcionesAEntregar = pizzaMetric.target;
       const idsAActualizar = [];
+      
+      // Seleccionamos las porciones más viejas
       for (const pedido of pizzaMetric.pedidosPendientes) {
           if (porcionesAEntregar <= 0) break;
           idsAActualizar.push(pedido.id);
           porcionesAEntregar -= pedido.cantidad_porciones;
       }
+
       if (idsAActualizar.length > 0) {
+          // 1. Marcamos pedidos como entregados
           await supabase.from('pedidos').update({ estado: 'entregado' }).in('id', idsAActualizar);
+          
+          // 2. APAGAMOS EL HORNO AUTOMÁTICAMENTE
+          await supabase.from('menu_pizzas').update({ cocinando: false }).eq('id', pizzaMetric.id);
+          
+          // 3. Actualizamos UI Localmente para que se sienta instantáneo
+          setPizzas(prev => prev.map(item => item.id === pizzaMetric.id ? { ...item, cocinando: false } : item));
+          
           cargarDatos();
       }
-  };
-
-  const toggleCocinando = async (id: string, estadoActual: boolean) => {
-      await supabase.from('menu_pizzas').update({ cocinando: !estadoActual }).eq('id', id);
   };
 
   const updatePizzaConfig = async (id: string, f: string, v: any) => {
@@ -119,13 +150,23 @@ export default function AdminPage() {
   const deletePizza = async (id: string) => { if(confirm('¿Borrar?')) await supabase.from('menu_pizzas').delete().eq('id', id); cargarDatos(); };
   const changePassword = async () => { await supabase.from('configuracion_dia').update({password_admin: newPass}).eq('id', config.id); alert('OK'); setNewPass(''); };
 
+  // --- LOGIN SCREEN (CON ENLACE RESTAURADO) ---
   if (!autenticado) return (
     <div className="min-h-screen bg-neutral-950 flex items-center justify-center p-4 font-sans overflow-hidden">
       <div className="w-full max-w-md bg-neutral-900 p-8 rounded-3xl border border-neutral-800 shadow-2xl">
+        <div className={`flex justify-center mb-6 ${currentTheme.text}`}><ChefHat size={48} /></div>
         <h1 className="text-2xl font-bold text-center text-white mb-2">Il Forno Di Vito</h1>
+        <p className="text-center text-neutral-500 mb-6">Acceso Pizzaiolo</p>
         <input type="password" value={password} onChange={e => setPassword(e.target.value)} 
-               className="w-full bg-black text-white p-4 rounded-xl border border-neutral-700 mb-4 outline-none" placeholder="Contraseña..." />
-        <button onClick={ingresar} className={`w-full ${currentTheme.color} text-white font-bold py-4 rounded-xl`}>ENTRAR</button>
+               className="w-full bg-black text-white p-4 rounded-xl border border-neutral-700 mb-4 outline-none transition focus:border-white/30" placeholder="Contraseña..." />
+        <button onClick={ingresar} className={`w-full ${currentTheme.color} text-white font-bold py-4 rounded-xl hover:brightness-110 transition`}>ENTRAR</button>
+        
+        {/* ENLACE PARA IR A MODO INVITADOS */}
+        <div className="mt-8 text-center pt-6 border-t border-neutral-800">
+            <Link href="/" className="text-neutral-500 text-sm hover:text-white flex items-center justify-center gap-2 transition-colors">
+                <ArrowRight size={16}/> Ir a modo Invitados
+            </Link>
+        </div>
       </div>
     </div>
   );
@@ -161,7 +202,11 @@ export default function AdminPage() {
                         </h3>
                         <p className="text-xs text-neutral-500 flex items-center gap-1 mt-1"><Clock size={12}/> Pendientes: {p.totalPendientes}</p>
                     </div>
-                    <button onClick={() => toggleCocinando(p.id, p.cocinando)} className={`p-3 rounded-xl transition-all ${p.cocinando ? 'bg-orange-500 text-white shadow-lg scale-105' : 'bg-neutral-800 text-neutral-500'}`}>
+                    
+                    <button 
+                        onClick={() => toggleCocinando(p)} 
+                        className={`p-3 rounded-xl transition-all ${p.cocinando ? 'bg-orange-500 text-white shadow-lg scale-105' : 'bg-neutral-800 text-neutral-500 hover:bg-neutral-700'}`}
+                    >
                         <Flame size={20} className={p.cocinando ? 'animate-bounce' : ''} />
                     </button>
                 </div>
