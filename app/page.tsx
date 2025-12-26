@@ -1,7 +1,7 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { Plus, Minus, User, Palette, Flame, Lock, Globe } from 'lucide-react';
+import { Pizza, Settings, Plus, Trash2, ChefHat, Eye, EyeOff, CheckCircle, Clock, Flame, ExternalLink, List, User } from 'lucide-react';
 import Link from 'next/link';
 
 const supabase = createClient(
@@ -10,295 +10,245 @@ const supabase = createClient(
 );
 
 const THEMES = [
-  { name: 'Carbone', color: 'bg-neutral-600', gradient: 'from-neutral-700 to-neutral-900', border: 'border-neutral-600/40', text: 'text-neutral-400' },
-  { name: 'Turquesa', color: 'bg-cyan-600', gradient: 'from-cyan-600 to-teal-900', border: 'border-cyan-600/40', text: 'text-cyan-400' },
-  { name: 'Pistacho', color: 'bg-lime-600', gradient: 'from-lime-600 to-green-900', border: 'border-lime-600/40', text: 'text-lime-400' },
-  { name: 'Fuego', color: 'bg-red-600', gradient: 'from-red-600 to-rose-900', border: 'border-red-600/40', text: 'text-red-500' },
-  { name: 'Violeta', color: 'bg-violet-600', gradient: 'from-violet-600 to-purple-900', border: 'border-violet-600/40', text: 'text-violet-400' },
+  { name: 'Carbone', color: 'bg-neutral-600', text: 'text-neutral-400' },
+  { name: 'Turquesa', color: 'bg-cyan-600', text: 'text-cyan-400' },
+  { name: 'Pistacho', color: 'bg-lime-600', text: 'text-lime-400' },
+  { name: 'Fuego', color: 'bg-red-600', text: 'text-red-500' },
+  { name: 'Violeta', color: 'bg-violet-600', text: 'text-violet-400' },
 ];
 
-const dictionary = {
-  es: {
-    welcomeTitle: "Gracias por venir hoy,",
-    welcomeSub: "será un placer cocinar para vos.",
-    whoAreYou: "¿QUIÉN SOS?",
-    namePlaceholder: "Tu nombre...",
-    status: "amigos ya pidieron.",
-    loading: "Encendiendo el horno...",
-    progress: "PROGRESO",
-    newPizza: "NUEVA PIZZA",
-    missing: "FALTAN",
-    completed: "¡COMPLETA!",
-    buttonOrder: "PEDIR",
-    inOven: "EN HORNO",
-    wait: "Espera",
-    ate: "Comiste",
-    customize: "Elige tu estilo:",
-    errorName: "¡Primero decime tu nombre arriba!",
-    errorOven: "⚠️ ¡Ya está en el horno! No podés cancelar ahora.",
-    successOrder: "¡Marchando +1 de",
-    successCancel: "Cancelado -1 de"
-  },
-  en: {
-    welcomeTitle: "Thanks for coming today,",
-    welcomeSub: "it will be a pleasure to cook for you.",
-    whoAreYou: "WHO ARE YOU?",
-    namePlaceholder: "Your name...",
-    status: "friends have ordered.",
-    loading: "Firing up the oven...",
-    progress: "PROGRESS",
-    newPizza: "NEW PIZZA",
-    missing: "MISSING",
-    completed: "COMPLETED!",
-    buttonOrder: "ORDER",
-    inOven: "IN OVEN",
-    wait: "Wait",
-    ate: "Ate",
-    customize: "Choose style:",
-    errorName: "Please enter your name first!",
-    errorOven: "⚠️ Already in the oven! Cannot cancel now.",
-    successOrder: "Coming right up! +1 of",
-    successCancel: "Removed -1 of"
-  }
-};
-
-export default function VitoPizzaApp() {
-  const [lang, setLang] = useState<'es' | 'en'>('es');
-  const t = dictionary[lang];
-
-  // Datos
+export default function AdminPage() {
+  const [autenticado, setAutenticado] = useState(false);
+  const [password, setPassword] = useState('');
+  const [view, setView] = useState<'cocina' | 'pedidos' | 'menu' | 'config'>('cocina');
+  
+  const [pedidos, setPedidos] = useState<any[]>([]); 
   const [pizzas, setPizzas] = useState<any[]>([]);
-  const [cargando, setCargando] = useState(true);
-  const [nombreInvitado, setNombreInvitado] = useState('');
-  const [mensaje, setMensaje] = useState('');
-  const [config, setConfig] = useState({ porciones_por_pizza: 8, total_invitados: 20 });
-  const [invitadosActivos, setInvitadosActivos] = useState(0);
+  const [config, setConfig] = useState<any>({ porciones_por_pizza: 8, total_invitados: 20 });
+  const [invitadosCount, setInvitadosCount] = useState(0);
 
-  // Historial personal
-  const [miHistorial, setMiHistorial] = useState<Record<string, { pendientes: number, comidos: number }>>({});
-
-  // Tema
+  const [newPizzaName, setNewPizzaName] = useState('');
+  const [newPizzaDesc, setNewPizzaDesc] = useState('');
+  const [newPass, setNewPass] = useState('');
   const [currentTheme, setCurrentTheme] = useState(THEMES[0]);
-  const [showThemeSelector, setShowThemeSelector] = useState(false);
 
   useEffect(() => {
-    const savedName = localStorage.getItem('vito-guest-name');
-    if (savedName) setNombreInvitado(savedName);
-    const savedTheme = localStorage.getItem('vito-guest-theme');
+    const savedTheme = localStorage.getItem('vito-theme');
     if (savedTheme) {
       const found = THEMES.find(t => t.name === savedTheme);
       if (found) setCurrentTheme(found);
     }
-  }, []);
+    if (autenticado) {
+      cargarDatos();
+      const channel = supabase.channel('admin-realtime')
+        .on('postgres_changes', { event: '*', schema: 'public' }, () => cargarDatos())
+        .subscribe();
+      return () => { supabase.removeChannel(channel); };
+    }
+  }, [autenticado]);
 
-  const handleNameChange = (val: string) => { setNombreInvitado(val); localStorage.setItem('vito-guest-name', val); };
-  const changeTheme = (theme: typeof THEMES[0]) => { setCurrentTheme(theme); localStorage.setItem('vito-guest-theme', theme.name); setShowThemeSelector(false); };
+  const ingresar = async () => {
+    const { data } = await supabase.from('configuracion_dia').select('*').single();
+    if (data && data.password_admin === password) {
+      setAutenticado(true); setConfig(data); cargarDatos();
+    } else { alert('Contraseña incorrecta'); }
+  };
 
-  const fetchDatos = useCallback(async () => {
-    const { data: dataConfig } = await supabase.from('configuracion_dia').select('*').single();
-    const conf = dataConfig || { porciones_por_pizza: 8, total_invitados: 20 };
-    setConfig(conf);
+  const cargarDatos = async () => {
+    const { data: dPizzas } = await supabase.from('menu_pizzas').select('*').order('created_at');
+    if (dPizzas) setPizzas(dPizzas);
+    const { data: dPedidos } = await supabase.from('pedidos').select('*').order('created_at', { ascending: true });
+    if (dPedidos) {
+        setPedidos(dPedidos);
+        setInvitadosCount(new Set(dPedidos.map(p => p.invitado_nombre.toLowerCase())).size);
+    }
+    const { data: dConfig } = await supabase.from('configuracion_dia').select('*').single();
+    if (dConfig) setConfig(dConfig);
+  };
 
-    const { data: dataPedidos } = await supabase.from('pedidos').select('*');
-    const { data: dataPizzas } = await supabase.from('menu_pizzas').select('*').eq('activa', true).order('created_at');
+  const metricas = pizzas.filter(p => p.activa).map(pizza => {
+    const pendientes = pedidos.filter(p => p.pizza_id === pizza.id && p.estado !== 'entregado');
+    const totalPendientes = pendientes.reduce((acc, curr) => acc + curr.cantidad_porciones, 0);
+    const target = pizza.porciones_individuales || config.porciones_por_pizza;
+    return {
+      ...pizza,
+      totalPendientes,
+      completas: Math.floor(totalPendientes / target),
+      faltan: target - (totalPendientes % target),
+      target,
+      percent: ((totalPendientes % target) / target) * 100,
+      pedidosPendientes: pendientes 
+    };
+  });
 
-    if (dataPizzas && dataPedidos) {
-      setInvitadosActivos(new Set(dataPedidos.map(p => p.invitado_nombre.toLowerCase().trim())).size);
+  const pedidosAgrupados = Array.from(new Set(pedidos.map(p => p.invitado_nombre.toLowerCase()))).map(nombre => {
+      const susPedidos = pedidos.filter(p => p.invitado_nombre.toLowerCase() === nombre);
+      const detalle = pizzas.map(pz => {
+          const count = susPedidos.filter(p => p.pizza_id === pz.id).reduce((acc, c) => acc + c.cantidad_porciones, 0);
+          return count > 0 ? { nombre: pz.nombre, cant: count } : null;
+      }).filter(Boolean);
+      return { nombre: susPedidos[0].invitado_nombre, detalle, total: susPedidos.reduce((acc, c) => acc + c.cantidad_porciones, 0) };
+  });
 
-      const pizzasProcesadas = dataPizzas.map(pizza => {
-        const pedidosPendientesPizza = dataPedidos.filter(p => p.pizza_id === pizza.id && p.estado !== 'entregado');
-        const totalPendientes = pedidosPendientesPizza.reduce((acc, curr) => acc + curr.cantidad_porciones, 0);
-        
-        const target = pizza.porciones_individuales || conf.porciones_por_pizza;
-        const ocupadasActual = totalPendientes % target;
-        
-        return {
-          ...pizza,
-          target,
-          ocupadasActual,
-          faltanParaCompletar: target - ocupadasActual,
-          porcentajeBarra: (ocupadasActual / target) * 100
-        };
-      });
-
-      setPizzas(pizzasProcesadas);
-
-      if (nombreInvitado) {
-        const mis = dataPedidos.filter(p => p.invitado_nombre.toLowerCase() === nombreInvitado.toLowerCase().trim());
-        const resumen: any = {};
-        dataPizzas.forEach(pz => {
-             const misDeEsta = mis.filter(p => p.pizza_id === pz.id);
-             resumen[pz.id] = {
-                 pendientes: misDeEsta.filter(p => p.estado !== 'entregado').reduce((acc, c) => acc + c.cantidad_porciones, 0),
-                 comidos: misDeEsta.filter(p => p.estado === 'entregado').reduce((acc, c) => acc + c.cantidad_porciones, 0)
-             };
-        });
-        setMiHistorial(resumen);
+  const entregarPizza = async (pizzaMetric: any) => {
+      if (!confirm(`¿Confirmar que salió 1 ${pizzaMetric.nombre}?`)) return;
+      let porcionesAEntregar = pizzaMetric.target;
+      const idsAActualizar = [];
+      for (const pedido of pizzaMetric.pedidosPendientes) {
+          if (porcionesAEntregar <= 0) break;
+          idsAActualizar.push(pedido.id);
+          porcionesAEntregar -= pedido.cantidad_porciones;
       }
-    }
-    setCargando(false);
-  }, [nombreInvitado]);
+      if (idsAActualizar.length > 0) {
+          await supabase.from('pedidos').update({ estado: 'entregado' }).in('id', idsAActualizar);
+          cargarDatos();
+      }
+  };
 
-  useEffect(() => {
-    fetchDatos();
-    const canal = supabase.channel('app-realtime').on('postgres_changes', { event: '*', schema: 'public' }, () => fetchDatos()).subscribe();
-    return () => { supabase.removeChannel(canal); };
-  }, [fetchDatos]);
+  const toggleCocinando = async (id: string, estadoActual: boolean) => {
+      await supabase.from('menu_pizzas').update({ cocinando: !estadoActual }).eq('id', id);
+  };
 
-  async function modificarPedido(pizza: any, accion: 'sumar' | 'restar') {
-    if (!nombreInvitado.trim()) { alert(t.errorName); return; }
+  const updatePizzaConfig = async (id: string, f: string, v: any) => {
+      setPizzas(pizzas.map(p => p.id === id ? { ...p, [f]: v } : p));
+      await supabase.from('menu_pizzas').update({[f]: v}).eq('id', id);
+  };
 
-    if (accion === 'sumar') {
-        const { error } = await supabase.from('pedidos').insert([{ invitado_nombre: nombreInvitado, pizza_id: pizza.id, cantidad_porciones: 1, estado: 'pendiente' }]);
-        if (!error) mostrarMensaje(`${t.successOrder} ${pizza.nombre}!`);
-    } else {
-        if (pizza.cocinando) {
-            alert(t.errorOven);
-            return;
-        }
+  const selectTheme = (theme: any) => { setCurrentTheme(theme); localStorage.setItem('vito-theme', theme.name); window.dispatchEvent(new Event('storage')); };
+  const addPizza = async () => { if(!newPizzaName) return; await supabase.from('menu_pizzas').insert([{ nombre: newPizzaName, descripcion: newPizzaDesc, activa: true }]); setNewPizzaName(''); setNewPizzaDesc(''); cargarDatos(); };
+  const deletePizza = async (id: string) => { if(confirm('¿Borrar?')) await supabase.from('menu_pizzas').delete().eq('id', id); cargarDatos(); };
+  const changePassword = async () => { await supabase.from('configuracion_dia').update({password_admin: newPass}).eq('id', config.id); alert('OK'); setNewPass(''); };
 
-        const { data } = await supabase.from('pedidos').select('id').eq('pizza_id', pizza.id).ilike('invitado_nombre', nombreInvitado.trim()).eq('estado', 'pendiente').order('created_at', { ascending: false }).limit(1).single();
-        if (data) {
-            await supabase.from('pedidos').delete().eq('id', data.id);
-            mostrarMensaje(`${t.successCancel} ${pizza.nombre}`);
-        }
-    }
-  }
-
-  const mostrarMensaje = (txt: string) => { setMensaje(txt); setTimeout(() => setMensaje(''), 2500); }
+  if (!autenticado) return (
+    <div className="min-h-screen bg-neutral-950 flex items-center justify-center p-4 font-sans overflow-hidden">
+      <div className="w-full max-w-md bg-neutral-900 p-8 rounded-3xl border border-neutral-800 shadow-2xl">
+        <h1 className="text-2xl font-bold text-center text-white mb-2">Il Forno Di Vito</h1>
+        <input type="password" value={password} onChange={e => setPassword(e.target.value)} 
+               className="w-full bg-black text-white p-4 rounded-xl border border-neutral-700 mb-4 outline-none" placeholder="Contraseña..." />
+        <button onClick={ingresar} className={`w-full ${currentTheme.color} text-white font-bold py-4 rounded-xl`}>ENTRAR</button>
+      </div>
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-white font-sans pb-20 transition-colors duration-500 overflow-x-hidden">
-      
-      {/* HEADER HERO */}
-      <div className={`w-full p-6 pb-12 rounded-b-[40px] bg-gradient-to-br ${currentTheme.gradient} shadow-2xl relative overflow-hidden`}>
-         <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mt-20 -mr-20 blur-3xl"></div>
-         
-         <div className="relative z-10">
-             <div className="flex justify-between items-center mb-6">
-                <span className="font-bold tracking-widest text-[10px] uppercase bg-black/30 px-3 py-1 rounded-full backdrop-blur-md border border-white/10">Il Forno Di Vito</span>
-                <div className="flex gap-2">
-                   {/* Idioma */}
-                   <button onClick={() => setLang(lang === 'es' ? 'en' : 'es')} className="bg-black/20 p-2 rounded-full hover:bg-black/40 border border-white/10"><Globe size={18}/></button>
-                   {/* Temas */}
-                   <button onClick={() => setShowThemeSelector(!showThemeSelector)} className="bg-black/20 p-2 rounded-full hover:bg-black/40 border border-white/10"><Palette size={18} /></button>
-                   {/* Acceso Admin */}
-                   <Link href="/admin" className="bg-black/20 p-2 rounded-full hover:bg-black/40 border border-white/10"><Lock size={18} /></Link>
-                </div>
-             </div>
-
-             {showThemeSelector && (
-               <div className="mb-6 bg-black/40 p-3 rounded-2xl backdrop-blur-md border border-white/10 animate-in fade-in slide-in-from-top-2">
-                 <p className="text-[10px] text-neutral-300 mb-2 font-bold uppercase tracking-wider">{t.customize}</p>
-                 <div className="flex gap-4 justify-center">
-                    {THEMES.map(theme => (
-                      <button key={theme.name} onClick={() => changeTheme(theme)} className={`w-10 h-10 rounded-full ${theme.color} border-2 ${currentTheme.name === theme.name ? 'border-white scale-110 shadow-[0_0_10px_white]' : 'border-transparent opacity-60'}`}></button>
-                    ))}
-                 </div>
-               </div>
-             )}
-             
-             <h1 className="text-3xl font-bold leading-tight mb-2 drop-shadow-md">{t.welcomeTitle} <br/> <span className="opacity-80 font-normal text-xl">{t.welcomeSub}</span></h1>
-             
-             <div className="mt-6 flex items-center gap-3 text-sm font-medium bg-black/30 p-3 rounded-2xl w-max backdrop-blur-md border border-white/10">
-                <div className="flex -space-x-2">
-                    {[1,2,3].map(i => <div key={i} className="w-6 h-6 rounded-full bg-neutral-800 border-2 border-neutral-700"></div>)}
-                </div>
-                <span className="text-neutral-300 text-xs">{invitadosActivos} {t.status}</span>
-             </div>
-         </div>
-      </div>
-
-      <div className="px-4 -mt-8 relative z-20 max-w-lg mx-auto">
-        
-        {/* INPUT USUARIO */}
-        <div className={`bg-neutral-900 p-2 rounded-2xl shadow-xl border ${currentTheme.border} flex items-center gap-3 mb-6`}>
-             <div className={`p-3 rounded-xl bg-gradient-to-br ${currentTheme.gradient} text-white shadow-lg`}>
-                 <User size={24} />
-             </div>
-             <div className="flex-1 pr-2">
-                 <label className="text-[10px] uppercase font-bold text-neutral-500 ml-1">{t.whoAreYou}</label>
-                 <input type="text" value={nombreInvitado} onChange={e => handleNameChange(e.target.value)} placeholder={t.namePlaceholder}
-                    className="w-full text-lg font-bold text-white outline-none placeholder-neutral-600 bg-transparent" />
-             </div>
+    <div className="min-h-screen bg-neutral-950 text-white font-sans pb-24 overflow-x-hidden w-full">
+      <header className="sticky top-0 z-50 bg-neutral-900/90 backdrop-blur-md border-b border-neutral-800 px-4 py-3 flex justify-between items-center shadow-md">
+        <div>
+            <h1 className={`font-bold text-lg tracking-tight`}><span className={currentTheme.text}>Il Forno Admin</span></h1>
+            <p className="text-[10px] text-neutral-400">{invitadosCount} / {config.total_invitados} comensales</p>
         </div>
+        <div className="flex gap-4">
+             <div className="flex gap-2 bg-black/30 p-1.5 rounded-full border border-white/5">
+                 {THEMES.map(t => (
+                     <button key={t.name} onClick={() => selectTheme(t)} className={`w-4 h-4 rounded-full ${t.color} ${currentTheme.name === t.name ? 'ring-2 ring-white scale-110' : 'opacity-40'}`}></button>
+                 ))}
+             </div>
+             <Link href="/" className="bg-neutral-800 p-2 rounded-full text-neutral-400 hover:text-white"><ExternalLink size={18} /></Link>
+        </div>
+      </header>
 
-        {mensaje && (
-          <div className="fixed top-4 left-4 right-4 bg-white text-black p-4 rounded-2xl shadow-[0_0_30px_rgba(255,255,255,0.3)] z-50 flex items-center justify-center animate-bounce font-bold text-center">
-            {mensaje} 🍕
+      <main className="p-4 max-w-4xl mx-auto space-y-6 w-full">
+        {view === 'cocina' && (
+          <div className="grid gap-4">
+            {metricas.map(p => (
+              <div key={p.id} className={`bg-neutral-900 rounded-3xl p-5 border relative overflow-hidden transition-all ${p.cocinando ? 'border-orange-500/50 shadow-[0_0_30px_rgba(234,88,12,0.1)]' : 'border-neutral-800'}`}>
+                {p.cocinando && <div className="absolute -right-10 -bottom-10 text-orange-900/20"><Flame size={150} /></div>}
+                <div className="flex justify-between items-start mb-4 relative z-10">
+                    <div>
+                        <h3 className="font-bold text-xl flex items-center gap-2">
+                            {p.nombre}
+                            {p.cocinando && <span className="text-[10px] bg-orange-500 text-black px-2 py-0.5 rounded-full font-bold animate-pulse">EN HORNO</span>}
+                        </h3>
+                        <p className="text-xs text-neutral-500 flex items-center gap-1 mt-1"><Clock size={12}/> Pendientes: {p.totalPendientes}</p>
+                    </div>
+                    <button onClick={() => toggleCocinando(p.id, p.cocinando)} className={`p-3 rounded-xl transition-all ${p.cocinando ? 'bg-orange-500 text-white shadow-lg scale-105' : 'bg-neutral-800 text-neutral-500'}`}>
+                        <Flame size={20} className={p.cocinando ? 'animate-bounce' : ''} />
+                    </button>
+                </div>
+                
+                <div className="relative h-4 bg-black rounded-full overflow-hidden border border-white/5 z-10 mb-4">
+                    <div className="absolute inset-0 flex justify-between px-[1px] z-20">
+                        {[...Array(p.target)].map((_, i) => <div key={i} className="w-[1px] h-full bg-white/10"></div>)}
+                    </div>
+                    <div className={`absolute h-full ${p.cocinando ? 'bg-orange-500' : currentTheme.color} transition-all duration-700`} style={{ width: `${p.percent}%` }}></div>
+                </div>
+
+                {p.completas > 0 ? (
+                    <button onClick={() => entregarPizza(p)} className="w-full bg-green-600 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 shadow-lg hover:bg-green-500 transition active:scale-95">
+                        <CheckCircle size={20} /> ¡PIZZA LISTA! ({p.completas})
+                    </button>
+                ) : (
+                    <div className="w-full py-2 text-center text-xs text-neutral-500 font-mono border border-neutral-800 rounded-xl">
+                        Faltan {p.faltan} porciones para completar una
+                    </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
 
-        {/* LISTA PIZZAS */}
-        <div className="space-y-6 pb-10">
-           {cargando ? <p className="text-center text-neutral-600 mt-10 animate-pulse">{t.loading}</p> : pizzas.map(pizza => (
-               <div key={pizza.id} className={`bg-neutral-900 p-5 rounded-[36px] border ${pizza.cocinando ? 'border-orange-500/30' : 'border-neutral-800'} shadow-lg relative overflow-hidden group`}>
-                   
-                   {/* HEADER PIZZA */}
-                   <div className="flex justify-between items-start mb-2">
-                       <div>
-                           <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-                               {pizza.nombre}
-                               {pizza.cocinando && <span className="bg-orange-500 text-black text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 animate-pulse"><Flame size={10}/> {t.inOven}</span>}
-                           </h2>
-                           <p className="text-neutral-500 text-xs leading-relaxed max-w-[200px]">{pizza.descripcion}</p>
-                       </div>
-                       
-                       {/* STATUS PERSONAL */}
-                       {(miHistorial[pizza.id]?.pendientes > 0 || miHistorial[pizza.id]?.comidos > 0) && (
-                           <div className="bg-neutral-800 rounded-2xl p-2 px-3 border border-white/5 text-right">
-                               {miHistorial[pizza.id]?.pendientes > 0 && (
-                                   <div className={`text-[10px] font-bold ${currentTheme.text} uppercase`}>
-                                       {t.wait}: {miHistorial[pizza.id].pendientes}
-                                   </div>
-                               )}
-                               {miHistorial[pizza.id]?.comidos > 0 && (
-                                   <div className="text-[10px] text-neutral-500 font-bold uppercase">
-                                       {t.ate}: {miHistorial[pizza.id].comidos}
-                                   </div>
-                               )}
-                           </div>
-                       )}
-                   </div>
+        {view === 'pedidos' && (
+            <div className="space-y-4">
+                <h2 className="text-neutral-500 text-sm font-bold uppercase tracking-widest mb-2">Historial</h2>
+                {pedidosAgrupados.length === 0 ? <p className="text-center text-neutral-600">Sin pedidos.</p> : pedidosAgrupados.map((u, i) => (
+                    <div key={i} className="bg-neutral-900 p-4 rounded-2xl border border-neutral-800">
+                        <div className="flex justify-between border-b border-neutral-800 pb-2 mb-2">
+                            <h3 className="font-bold flex items-center gap-2"><User size={16}/> {u.nombre}</h3>
+                            <span className="text-xs bg-neutral-800 px-2 py-1 rounded-full text-neutral-400">Total: {u.total}</span>
+                        </div>
+                        <div className="space-y-1">
+                            {u.detalle.map((d: any, k: number) => (
+                                <div key={k} className="flex justify-between text-sm text-neutral-400">
+                                    <span>{d.nombre}</span>
+                                    <span className="text-white font-bold">x{d.cant}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        )}
 
-                   {/* BARRA DE PROGRESO */}
-                   <div className="bg-black/40 p-3 rounded-2xl border border-white/5 mb-5 mt-4">
-                       <div className="flex justify-between text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-2">
-                           <span>{pizza.faltanParaCompletar === pizza.target ? t.newPizza : t.progress}</span>
-                           <span className={pizza.faltanParaCompletar === 0 ? currentTheme.text : "text-neutral-400"}>
-                               {pizza.faltanParaCompletar > 0 ? `${t.missing} ${pizza.faltanParaCompletar}` : t.completed}
-                           </span>
-                       </div>
-                       <div className="h-2 bg-neutral-800 rounded-full overflow-hidden flex border border-white/5">
-                           {[...Array(pizza.target)].map((_, i) => (
-                               <div key={i} className={`flex-1 border-r border-black/50 last:border-0 ${i < pizza.ocupadasActual ? `bg-gradient-to-r ${pizza.cocinando ? 'from-orange-500 to-red-600' : currentTheme.gradient}` : 'bg-transparent'}`}></div>
-                           ))}
-                       </div>
-                   </div>
+        {view === 'menu' && (
+          <div className="space-y-6">
+            <div className="bg-neutral-900 p-6 rounded-3xl border border-neutral-800">
+                <h3 className="font-bold mb-4 flex items-center gap-2 text-neutral-300"><Plus size={18}/> Agregar Nueva</h3>
+                <input className="w-full bg-black p-4 rounded-2xl border border-neutral-700 mb-2 text-white outline-none" placeholder="Nombre..." value={newPizzaName} onChange={e => setNewPizzaName(e.target.value)} />
+                <textarea className="w-full bg-black p-4 rounded-2xl border border-neutral-700 mb-4 text-white text-sm outline-none" placeholder="Ingredientes..." value={newPizzaDesc} onChange={e => setNewPizzaDesc(e.target.value)} />
+                <button onClick={addPizza} className={`w-full ${currentTheme.color} text-white font-bold py-4 rounded-2xl`}>AGREGAR</button>
+            </div>
+            <div className="space-y-4">
+                {pizzas.map(p => (
+                    <div key={p.id} className="bg-neutral-900 p-4 rounded-3xl border border-neutral-800 flex flex-col gap-3">
+                        <div className="flex justify-between items-start gap-3">
+                            <input value={p.nombre} onChange={e => updatePizzaConfig(p.id, 'nombre', e.target.value)} className="bg-transparent font-bold text-xl text-white outline-none w-full border-b border-transparent focus:border-neutral-600" />
+                            <div className="flex gap-2">
+                                 <button onClick={() => updatePizzaConfig(p.id, 'activa', !p.activa)} className={`p-2 rounded-xl ${p.activa ? 'text-neutral-400 bg-neutral-800' : 'text-neutral-600 bg-black'}`}>{p.activa ? <Eye size={18}/> : <EyeOff size={18}/>}</button>
+                                 <button onClick={() => deletePizza(p.id)} className="p-2 bg-red-900/10 text-red-500 rounded-xl"><Trash2 size={18}/></button>
+                            </div>
+                        </div>
+                        <textarea value={p.descripcion || ''} onChange={e => updatePizzaConfig(p.id, 'descripcion', e.target.value)} className="w-full bg-black/30 p-2 rounded-xl text-sm text-neutral-400 outline-none resize-none h-16" placeholder="Descripción..." />
+                        <div className="flex items-center justify-between text-sm text-neutral-500 bg-black/20 p-3 rounded-xl border border-white/5">
+                            <span>Corte:</span>
+                            <select value={p.porciones_individuales || ''} onChange={e => updatePizzaConfig(p.id, 'porciones_individuales', e.target.value ? parseInt(e.target.value) : null)} className="bg-neutral-800 text-white p-1 px-3 rounded-lg border border-neutral-700 outline-none">
+                                <option value="">Global ({config.porciones_por_pizza})</option><option value="4">4 Porciones</option><option value="6">6 Porciones</option><option value="8">8 Porciones</option><option value="10">10 Porciones</option>
+                            </select>
+                        </div>
+                    </div>
+                ))}
+            </div>
+          </div>
+        )}
 
-                   {/* CONTROLES */}
-                   <div className="flex gap-3">
-                       {miHistorial[pizza.id]?.pendientes > 0 && (
-                           <button 
-                               onClick={() => modificarPedido(pizza, 'restar')}
-                               disabled={pizza.cocinando}
-                               className={`w-16 h-14 rounded-2xl flex items-center justify-center border transition ${pizza.cocinando ? 'bg-neutral-800/50 border-neutral-800 text-neutral-600 cursor-not-allowed' : 'bg-neutral-800 text-neutral-400 border-neutral-700 active:scale-95'}`}
-                           >
-                               {pizza.cocinando ? <Lock size={16}/> : <Minus size={20} />}
-                           </button>
-                       )}
-                       
-                       <button 
-                           onClick={() => modificarPedido(pizza, 'sumar')}
-                           className={`flex-1 h-14 rounded-2xl font-bold text-lg text-white shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 bg-gradient-to-r ${currentTheme.gradient} hover:brightness-110`}
-                       >
-                           <Plus size={24} strokeWidth={3} /> {t.buttonOrder}
-                       </button>
-                   </div>
-               </div>
-           ))}
-        </div>
-      </div>
+        {view === 'config' && (<div className="bg-neutral-900 p-6 rounded-3xl border border-neutral-800"><h3 className="font-bold mb-4 flex items-center gap-2 text-neutral-300"><Settings size={18}/> Ajustes Globales</h3><div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-2"><label className="text-sm text-neutral-500 w-full">Porciones Estándar</label><select value={config.porciones_por_pizza} onChange={async e => {const v = parseInt(e.target.value); setConfig({...config, porciones_por_pizza: v}); await supabase.from('configuracion_dia').update({ porciones_por_pizza: v }).eq('id', config.id);}} className="w-full sm:w-auto bg-black p-3 rounded-xl border border-neutral-700 text-white outline-none"><option value="4">4</option><option value="6">6</option><option value="8">8</option></select></div><div className="border-t border-neutral-800 pt-4"><label className="text-sm text-neutral-500 mb-2 block">Cambiar Contraseña Admin</label><div className="flex flex-col gap-3"><input type="text" placeholder="Nueva contraseña" value={newPass} onChange={e => setNewPass(e.target.value)} className="w-full bg-black p-3 rounded-xl border border-neutral-700 text-white outline-none" /><button onClick={changePassword} className="w-full bg-white text-black font-bold py-3 rounded-xl hover:bg-neutral-200">GUARDAR</button></div></div></div>)}
+      </main>
+
+      <nav className="fixed bottom-0 w-full bg-neutral-900/90 backdrop-blur-md border-t border-neutral-800 flex justify-around p-4 pb-8 z-50">
+          <button onClick={() => setView('cocina')} className={`flex flex-col items-center gap-1 ${view === 'cocina' ? currentTheme.text : 'text-neutral-600'}`}><Pizza size={24} /> <span className="text-[9px] uppercase font-bold">Cocina</span></button>
+          <button onClick={() => setView('pedidos')} className={`flex flex-col items-center gap-1 ${view === 'pedidos' ? currentTheme.text : 'text-neutral-600'}`}><List size={24} /> <span className="text-[9px] uppercase font-bold">Pedidos</span></button>
+          <button onClick={() => setView('menu')} className={`flex flex-col items-center gap-1 ${view === 'menu' ? currentTheme.text : 'text-neutral-600'}`}><ChefHat size={24} /> <span className="text-[9px] uppercase font-bold">Menú</span></button>
+          <button onClick={() => setView('config')} className={`flex flex-col items-center gap-1 ${view === 'config' ? currentTheme.text : 'text-neutral-600'}`}><Settings size={24} /> <span className="text-[9px] uppercase font-bold">Ajustes</span></button>
+      </nav>
     </div>
   );
 }
