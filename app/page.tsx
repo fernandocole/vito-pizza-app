@@ -25,7 +25,7 @@ const dictionary = {
     namePlaceholder: "Tu nombre...",
     status: "amigos ya pidieron.",
     loading: "Encendiendo el horno...",
-    progress: "PROGRESO PRÓXIMA PIZZA", // Cambio realizado aquí
+    progress: "PROGRESO PRÓXIMA PIZZA",
     newPizza: "EMPEZANDO NUEVA PIZZA",
     missing: "FALTAN",
     completed: "¡COMPLETA!",
@@ -39,7 +39,8 @@ const dictionary = {
     errorOven: "⚠️ ¡Ya está en el horno! No podés cancelar ahora.",
     successOrder: "¡Marchando +1 de",
     successCancel: "Cancelado -1 de",
-    readyAlert: "¡TU PIZZA ESTÁ LISTA! 🍕"
+    readyAlert: "¡TU PIZZA ESTÁ LISTA! 🍕",
+    ovenAlert: "¡Una pizza que pediste entró al horno! 🔥"
   },
   en: {
     welcomeTitle: "Thanks for coming today,",
@@ -48,7 +49,7 @@ const dictionary = {
     namePlaceholder: "Your name...",
     status: "friends have ordered.",
     loading: "Firing up the oven...",
-    progress: "NEXT PIZZA PROGRESS", // Cambio realizado aquí
+    progress: "NEXT PIZZA PROGRESS",
     newPizza: "STARTING NEW PIZZA",
     missing: "MISSING",
     completed: "COMPLETED!",
@@ -62,7 +63,8 @@ const dictionary = {
     errorOven: "⚠️ Already in the oven! Cannot cancel now.",
     successOrder: "Coming right up! +1 of",
     successCancel: "Removed -1 of",
-    readyAlert: "YOUR PIZZA IS READY! 🍕"
+    readyAlert: "YOUR PIZZA IS READY! 🍕",
+    ovenAlert: "A pizza you ordered is in the oven! 🔥"
   }
 };
 
@@ -78,7 +80,9 @@ export default function VitoPizzaApp() {
   const [invitadosActivos, setInvitadosActivos] = useState(0);
   const [miHistorial, setMiHistorial] = useState<Record<string, { pendientes: number, comidos: number }>>({});
   
+  // Refs para notificaciones
   const prevComidosRef = useRef<number>(0);
+  const prevCocinandoIds = useRef<string[]>([]);
 
   const [currentTheme, setCurrentTheme] = useState(THEMES[0]);
   const [showThemeSelector, setShowThemeSelector] = useState(false);
@@ -91,10 +95,23 @@ export default function VitoPizzaApp() {
       const found = THEMES.find(t => t.name === savedTheme);
       if (found) setCurrentTheme(found);
     }
+    // Pedir permisos
+    if (typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+        Notification.requestPermission();
+    }
   }, []);
 
   const handleNameChange = (val: string) => { setNombreInvitado(val); localStorage.setItem('vito-guest-name', val); };
   const changeTheme = (theme: typeof THEMES[0]) => { setCurrentTheme(theme); localStorage.setItem('vito-guest-theme', theme.name); setShowThemeSelector(false); };
+
+  const enviarNotificacion = (titulo: string, cuerpo: string) => {
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          new Notification(titulo, { body: cuerpo, icon: '/icon.png' });
+          const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+          audio.volume = 0.5;
+          audio.play().catch(e => {});
+      }
+  };
 
   const fetchDatos = useCallback(async () => {
     const { data: dataConfig } = await supabase.from('configuracion_dia').select('*').single();
@@ -128,6 +145,7 @@ export default function VitoPizzaApp() {
         const mis = dataPedidos.filter(p => p.invitado_nombre.toLowerCase() === nombreInvitado.toLowerCase().trim());
         const resumen: any = {};
         let totalComidosAhora = 0;
+        const misPizzasPendientesIds: string[] = [];
 
         dataPizzas.forEach(pz => {
              const misDeEsta = mis.filter(p => p.pizza_id === pz.id);
@@ -135,18 +153,35 @@ export default function VitoPizzaApp() {
              const pendientes = misDeEsta.filter(p => p.estado !== 'entregado').reduce((acc, c) => acc + c.cantidad_porciones, 0);
              resumen[pz.id] = { pendientes, comidos };
              totalComidosAhora += comidos;
+             if (pendientes > 0) misPizzasPendientesIds.push(pz.id);
         });
         setMiHistorial(resumen);
 
+        // 1. Notificación: PIZZA LISTA
         if (totalComidosAhora > prevComidosRef.current && prevComidosRef.current !== 0) {
             setMensaje(t.readyAlert); 
+            enviarNotificacion(t.readyAlert, "¡Veni a buscarla!");
             setTimeout(() => setMensaje(''), 5000);
         }
         prevComidosRef.current = totalComidosAhora;
+
+        // 2. Notificación: EN HORNO
+        // Detectamos si alguna de MIS pizzas pendientes ahora está cocinándose y antes no estaba
+        const pizzasCocinandoAhora = dataPizzas.filter(p => p.cocinando).map(p => p.id);
+        
+        // Verificamos si hay alguna pizza QUE YO PEDI, que ahora se cocina, y antes no estaba registrada en mi ref
+        const nuevaEnHorno = pizzasCocinandoAhora.find(id => 
+            misPizzasPendientesIds.includes(id) && !prevCocinandoIds.current.includes(id)
+        );
+
+        if (nuevaEnHorno) {
+            enviarNotificacion("🔥 " + t.inOven, t.ovenAlert);
+        }
+        prevCocinandoIds.current = pizzasCocinandoAhora;
       }
     }
     setCargando(false);
-  }, [nombreInvitado, t.readyAlert]);
+  }, [nombreInvitado, t]);
 
   useEffect(() => {
     fetchDatos();

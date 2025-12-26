@@ -1,7 +1,7 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { Pizza, Settings, Plus, Trash2, ChefHat, Eye, EyeOff, CheckCircle, Clock, Flame, ExternalLink, List, User, ArrowRight } from 'lucide-react';
+import { Pizza, Settings, Plus, Trash2, ChefHat, Eye, EyeOff, CheckCircle, Clock, Flame, ExternalLink, List, User, Bell } from 'lucide-react';
 import Link from 'next/link';
 
 const supabase = createClient(
@@ -27,6 +27,9 @@ export default function AdminPage() {
   const [config, setConfig] = useState<any>({ porciones_por_pizza: 8, total_invitados: 20 });
   const [invitadosCount, setInvitadosCount] = useState(0);
 
+  // Referencia para detectar nuevos pedidos
+  const prevPedidosCount = useRef(0);
+
   const [newPizzaName, setNewPizzaName] = useState('');
   const [newPizzaDesc, setNewPizzaDesc] = useState('');
   const [newPass, setNewPass] = useState('');
@@ -38,6 +41,11 @@ export default function AdminPage() {
       const found = THEMES.find(t => t.name === savedTheme);
       if (found) setCurrentTheme(found);
     }
+    // Pedir permiso para notificaciones al cargar
+    if (typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+        Notification.requestPermission();
+    }
+
     if (autenticado) {
       cargarDatos();
       const channel = supabase.channel('admin-realtime')
@@ -61,9 +69,25 @@ export default function AdminPage() {
     if (dPedidos) {
         setPedidos(dPedidos);
         setInvitadosCount(new Set(dPedidos.map(p => p.invitado_nombre.toLowerCase())).size);
+
+        // Lógica de Notificación de NUEVO PEDIDO
+        if (prevPedidosCount.current > 0 && dPedidos.length > prevPedidosCount.current) {
+            enviarNotificacion("¡NUEVO PEDIDO!", "Alguien quiere pizza 🍕");
+        }
+        prevPedidosCount.current = dPedidos.length;
     }
     const { data: dConfig } = await supabase.from('configuracion_dia').select('*').single();
     if (dConfig) setConfig(dConfig);
+  };
+
+  const enviarNotificacion = (titulo: string, cuerpo: string) => {
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          new Notification(titulo, { body: cuerpo, icon: '/icon.png' });
+          // Sonido simple
+          const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+          audio.volume = 0.5;
+          audio.play().catch(e => console.log("Audio bloqueado por navegador"));
+      }
   };
 
   const metricas = pizzas.filter(p => p.activa).map(pizza => {
@@ -90,52 +114,44 @@ export default function AdminPage() {
       return { nombre: susPedidos[0].invitado_nombre, detalle, total: susPedidos.reduce((acc, c) => acc + c.cantidad_porciones, 0) };
   });
 
-  // --- ACCIONES PRINCIPALES ---
+  // --- ACCIONES ---
+
+  const eliminarInvitado = async (nombre: string) => {
+      if(confirm(`¿Estás seguro de eliminar a ${nombre.toUpperCase()}? Se borrarán todos sus pedidos (pendientes y comidos).`)) {
+          // Buscamos todos los pedidos con ese nombre (case insensitive es dificil en cliente, mejor borrar exacto o normalizar)
+          // Aqui borramos por coincidencia exacta del nombre agrupado
+          const pedidosABorrar = pedidos.filter(p => p.invitado_nombre.toLowerCase() === nombre).map(p => p.id);
+          if (pedidosABorrar.length > 0) {
+              await supabase.from('pedidos').delete().in('id', pedidosABorrar);
+              cargarDatos();
+          }
+      }
+  };
 
   const toggleCocinando = async (p: any) => {
-      // 1. RESTRICCION: Si quiero PRENDER el horno y faltan porciones, BLOQUEAR.
       if (!p.cocinando && p.faltan > 0 && p.faltan < p.target) { 
-          // (p.faltan < p.target) asegura que no bloquee si está vacía (0/8), 
-          // aunque normalmente querrías bloquear si no está LLENA.
-          // Si quieres bloquear siempre que no esté al 100% llena:
-          // if (!p.cocinando && p.percent < 100) { ... }
-          
           if (p.percent < 100) {
-              alert(`⚠️ No podés hornear todavía.\nFaltan ${p.faltan} porciones para completar la pizza.`);
+              alert(`⚠️ No podés hornear todavía.\nFaltan ${p.faltan} porciones.`);
               return;
           }
       }
-
-      // Actualización Optimista (Visual inmediata)
       setPizzas(prev => prev.map(item => item.id === p.id ? { ...item, cocinando: !p.cocinando } : item));
-      
-      // Actualización Real
       await supabase.from('menu_pizzas').update({ cocinando: !p.cocinando }).eq('id', p.id);
   };
 
   const entregarPizza = async (pizzaMetric: any) => {
       if (!confirm(`¿Confirmar que salió 1 ${pizzaMetric.nombre}?`)) return;
-      
       let porcionesAEntregar = pizzaMetric.target;
       const idsAActualizar = [];
-      
-      // Seleccionamos las porciones más viejas
       for (const pedido of pizzaMetric.pedidosPendientes) {
           if (porcionesAEntregar <= 0) break;
           idsAActualizar.push(pedido.id);
           porcionesAEntregar -= pedido.cantidad_porciones;
       }
-
       if (idsAActualizar.length > 0) {
-          // 1. Marcamos pedidos como entregados
           await supabase.from('pedidos').update({ estado: 'entregado' }).in('id', idsAActualizar);
-          
-          // 2. APAGAMOS EL HORNO AUTOMÁTICAMENTE
           await supabase.from('menu_pizzas').update({ cocinando: false }).eq('id', pizzaMetric.id);
-          
-          // 3. Actualizamos UI Localmente para que se sienta instantáneo
           setPizzas(prev => prev.map(item => item.id === pizzaMetric.id ? { ...item, cocinando: false } : item));
-          
           cargarDatos();
       }
   };
@@ -144,28 +160,20 @@ export default function AdminPage() {
       setPizzas(pizzas.map(p => p.id === id ? { ...p, [f]: v } : p));
       await supabase.from('menu_pizzas').update({[f]: v}).eq('id', id);
   };
-
   const selectTheme = (theme: any) => { setCurrentTheme(theme); localStorage.setItem('vito-theme', theme.name); window.dispatchEvent(new Event('storage')); };
   const addPizza = async () => { if(!newPizzaName) return; await supabase.from('menu_pizzas').insert([{ nombre: newPizzaName, descripcion: newPizzaDesc, activa: true }]); setNewPizzaName(''); setNewPizzaDesc(''); cargarDatos(); };
   const deletePizza = async (id: string) => { if(confirm('¿Borrar?')) await supabase.from('menu_pizzas').delete().eq('id', id); cargarDatos(); };
   const changePassword = async () => { await supabase.from('configuracion_dia').update({password_admin: newPass}).eq('id', config.id); alert('OK'); setNewPass(''); };
 
-  // --- LOGIN SCREEN (CON ENLACE RESTAURADO) ---
   if (!autenticado) return (
     <div className="min-h-screen bg-neutral-950 flex items-center justify-center p-4 font-sans overflow-hidden">
       <div className="w-full max-w-md bg-neutral-900 p-8 rounded-3xl border border-neutral-800 shadow-2xl">
-        <div className={`flex justify-center mb-6 ${currentTheme.text}`}><ChefHat size={48} /></div>
         <h1 className="text-2xl font-bold text-center text-white mb-2">Il Forno Di Vito</h1>
-        <p className="text-center text-neutral-500 mb-6">Acceso Pizzaiolo</p>
         <input type="password" value={password} onChange={e => setPassword(e.target.value)} 
-               className="w-full bg-black text-white p-4 rounded-xl border border-neutral-700 mb-4 outline-none transition focus:border-white/30" placeholder="Contraseña..." />
-        <button onClick={ingresar} className={`w-full ${currentTheme.color} text-white font-bold py-4 rounded-xl hover:brightness-110 transition`}>ENTRAR</button>
-        
-        {/* ENLACE PARA IR A MODO INVITADOS */}
+               className="w-full bg-black text-white p-4 rounded-xl border border-neutral-700 mb-4 outline-none" placeholder="Contraseña..." />
+        <button onClick={ingresar} className={`w-full ${currentTheme.color} text-white font-bold py-4 rounded-xl`}>ENTRAR</button>
         <div className="mt-8 text-center pt-6 border-t border-neutral-800">
-            <Link href="/" className="text-neutral-500 text-sm hover:text-white flex items-center justify-center gap-2 transition-colors">
-                <ArrowRight size={16}/> Ir a modo Invitados
-            </Link>
+            <Link href="/" className="text-neutral-500 text-sm hover:text-white flex items-center justify-center gap-2">Ir a modo Invitados</Link>
         </div>
       </div>
     </div>
@@ -202,11 +210,7 @@ export default function AdminPage() {
                         </h3>
                         <p className="text-xs text-neutral-500 flex items-center gap-1 mt-1"><Clock size={12}/> Pendientes: {p.totalPendientes}</p>
                     </div>
-                    
-                    <button 
-                        onClick={() => toggleCocinando(p)} 
-                        className={`p-3 rounded-xl transition-all ${p.cocinando ? 'bg-orange-500 text-white shadow-lg scale-105' : 'bg-neutral-800 text-neutral-500 hover:bg-neutral-700'}`}
-                    >
+                    <button onClick={() => toggleCocinando(p)} className={`p-3 rounded-xl transition-all ${p.cocinando ? 'bg-orange-500 text-white shadow-lg scale-105' : 'bg-neutral-800 text-neutral-500'}`}>
                         <Flame size={20} className={p.cocinando ? 'animate-bounce' : ''} />
                     </button>
                 </div>
@@ -236,9 +240,17 @@ export default function AdminPage() {
             <div className="space-y-4">
                 <h2 className="text-neutral-500 text-sm font-bold uppercase tracking-widest mb-2">Historial</h2>
                 {pedidosAgrupados.length === 0 ? <p className="text-center text-neutral-600">Sin pedidos.</p> : pedidosAgrupados.map((u, i) => (
-                    <div key={i} className="bg-neutral-900 p-4 rounded-2xl border border-neutral-800">
-                        <div className="flex justify-between border-b border-neutral-800 pb-2 mb-2">
-                            <h3 className="font-bold flex items-center gap-2"><User size={16}/> {u.nombre}</h3>
+                    <div key={i} className="bg-neutral-900 p-4 rounded-2xl border border-neutral-800 relative">
+                        {/* BOTON ELIMINAR INVITADO */}
+                        <button 
+                            onClick={() => eliminarInvitado(u.nombre)}
+                            className="absolute top-4 right-4 text-neutral-600 hover:text-red-500 p-1"
+                        >
+                            <Trash2 size={16} />
+                        </button>
+
+                        <div className="flex justify-between border-b border-neutral-800 pb-2 mb-2 pr-8">
+                            <h3 className="font-bold flex items-center gap-2 capitalize"><User size={16}/> {u.nombre}</h3>
                             <span className="text-xs bg-neutral-800 px-2 py-1 rounded-full text-neutral-400">Total: {u.total}</span>
                         </div>
                         <div className="space-y-1">
@@ -254,37 +266,8 @@ export default function AdminPage() {
             </div>
         )}
 
-        {view === 'menu' && (
-          <div className="space-y-6">
-            <div className="bg-neutral-900 p-6 rounded-3xl border border-neutral-800">
-                <h3 className="font-bold mb-4 flex items-center gap-2 text-neutral-300"><Plus size={18}/> Agregar Nueva</h3>
-                <input className="w-full bg-black p-4 rounded-2xl border border-neutral-700 mb-2 text-white outline-none" placeholder="Nombre..." value={newPizzaName} onChange={e => setNewPizzaName(e.target.value)} />
-                <textarea className="w-full bg-black p-4 rounded-2xl border border-neutral-700 mb-4 text-white text-sm outline-none" placeholder="Ingredientes..." value={newPizzaDesc} onChange={e => setNewPizzaDesc(e.target.value)} />
-                <button onClick={addPizza} className={`w-full ${currentTheme.color} text-white font-bold py-4 rounded-2xl`}>AGREGAR</button>
-            </div>
-            <div className="space-y-4">
-                {pizzas.map(p => (
-                    <div key={p.id} className="bg-neutral-900 p-4 rounded-3xl border border-neutral-800 flex flex-col gap-3">
-                        <div className="flex justify-between items-start gap-3">
-                            <input value={p.nombre} onChange={e => updatePizzaConfig(p.id, 'nombre', e.target.value)} className="bg-transparent font-bold text-xl text-white outline-none w-full border-b border-transparent focus:border-neutral-600" />
-                            <div className="flex gap-2">
-                                 <button onClick={() => updatePizzaConfig(p.id, 'activa', !p.activa)} className={`p-2 rounded-xl ${p.activa ? 'text-neutral-400 bg-neutral-800' : 'text-neutral-600 bg-black'}`}>{p.activa ? <Eye size={18}/> : <EyeOff size={18}/>}</button>
-                                 <button onClick={() => deletePizza(p.id)} className="p-2 bg-red-900/10 text-red-500 rounded-xl"><Trash2 size={18}/></button>
-                            </div>
-                        </div>
-                        <textarea value={p.descripcion || ''} onChange={e => updatePizzaConfig(p.id, 'descripcion', e.target.value)} className="w-full bg-black/30 p-2 rounded-xl text-sm text-neutral-400 outline-none resize-none h-16" placeholder="Descripción..." />
-                        <div className="flex items-center justify-between text-sm text-neutral-500 bg-black/20 p-3 rounded-xl border border-white/5">
-                            <span>Corte:</span>
-                            <select value={p.porciones_individuales || ''} onChange={e => updatePizzaConfig(p.id, 'porciones_individuales', e.target.value ? parseInt(e.target.value) : null)} className="bg-neutral-800 text-white p-1 px-3 rounded-lg border border-neutral-700 outline-none">
-                                <option value="">Global ({config.porciones_por_pizza})</option><option value="4">4 Porciones</option><option value="6">6 Porciones</option><option value="8">8 Porciones</option><option value="10">10 Porciones</option>
-                            </select>
-                        </div>
-                    </div>
-                ))}
-            </div>
-          </div>
-        )}
-
+        {/* ... (MENÚ Y CONFIG SE MANTIENEN IGUAL QUE ANTES) ... */}
+        {view === 'menu' && (<div className="space-y-6"><div className="bg-neutral-900 p-6 rounded-3xl border border-neutral-800"><h3 className="font-bold mb-4 flex items-center gap-2 text-neutral-300"><Plus size={18}/> Agregar Nueva</h3><input className="w-full bg-black p-4 rounded-2xl border border-neutral-700 mb-2 text-white outline-none" placeholder="Nombre..." value={newPizzaName} onChange={e => setNewPizzaName(e.target.value)} /><textarea className="w-full bg-black p-4 rounded-2xl border border-neutral-700 mb-4 text-white text-sm outline-none" placeholder="Ingredientes..." value={newPizzaDesc} onChange={e => setNewPizzaDesc(e.target.value)} /><button onClick={addPizza} className={`w-full ${currentTheme.color} text-white font-bold py-4 rounded-2xl`}>AGREGAR</button></div><div className="space-y-4">{pizzas.map(p => (<div key={p.id} className="bg-neutral-900 p-4 rounded-3xl border border-neutral-800 flex flex-col gap-3"><div className="flex justify-between items-start gap-3"><input value={p.nombre} onChange={e => updatePizzaConfig(p.id, 'nombre', e.target.value)} className="bg-transparent font-bold text-xl text-white outline-none w-full border-b border-transparent focus:border-neutral-600" /><div className="flex gap-2"><button onClick={() => updatePizzaConfig(p.id, 'activa', !p.activa)} className={`p-2 rounded-xl ${p.activa ? 'text-neutral-400 bg-neutral-800' : 'text-neutral-600 bg-black'}`}>{p.activa ? <Eye size={18}/> : <EyeOff size={18}/>}</button><button onClick={() => deletePizza(p.id)} className="p-2 bg-red-900/10 text-red-500 rounded-xl"><Trash2 size={18}/></button></div></div><textarea value={p.descripcion || ''} onChange={e => updatePizzaConfig(p.id, 'descripcion', e.target.value)} className="w-full bg-black/30 p-2 rounded-xl text-sm text-neutral-400 outline-none resize-none h-16" placeholder="Descripción..." /><div className="flex items-center justify-between text-sm text-neutral-500 bg-black/20 p-3 rounded-xl border border-white/5"><span>Corte:</span><select value={p.porciones_individuales || ''} onChange={e => updatePizzaConfig(p.id, 'porciones_individuales', e.target.value ? parseInt(e.target.value) : null)} className="bg-neutral-800 text-white p-1 px-3 rounded-lg border border-neutral-700 outline-none"><option value="">Global ({config.porciones_por_pizza})</option><option value="4">4 Porciones</option><option value="6">6 Porciones</option><option value="8">8 Porciones</option><option value="10">10 Porciones</option></select></div></div>))}</div></div>)}
         {view === 'config' && (<div className="bg-neutral-900 p-6 rounded-3xl border border-neutral-800"><h3 className="font-bold mb-4 flex items-center gap-2 text-neutral-300"><Settings size={18}/> Ajustes Globales</h3><div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-2"><label className="text-sm text-neutral-500 w-full">Porciones Estándar</label><select value={config.porciones_por_pizza} onChange={async e => {const v = parseInt(e.target.value); setConfig({...config, porciones_por_pizza: v}); await supabase.from('configuracion_dia').update({ porciones_por_pizza: v }).eq('id', config.id);}} className="w-full sm:w-auto bg-black p-3 rounded-xl border border-neutral-700 text-white outline-none"><option value="4">4</option><option value="6">6</option><option value="8">8</option></select></div><div className="border-t border-neutral-800 pt-4"><label className="text-sm text-neutral-500 mb-2 block">Cambiar Contraseña Admin</label><div className="flex flex-col gap-3"><input type="text" placeholder="Nueva contraseña" value={newPass} onChange={e => setNewPass(e.target.value)} className="w-full bg-black p-3 rounded-xl border border-neutral-700 text-white outline-none" /><button onClick={changePassword} className="w-full bg-white text-black font-bold py-3 rounded-xl hover:bg-neutral-200">GUARDAR</button></div></div></div>)}
       </main>
 

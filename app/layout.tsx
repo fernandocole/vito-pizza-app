@@ -5,16 +5,16 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const viewport: Viewport = {
-  themeColor: '#ea580c',
+  themeColor: '#0a0a0a', // CAMBIADO: Antes era orange, ahora negro/oscuro
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
-  userScalable: false, // Evita que hagan zoom y rompan el diseño de app
+  userScalable: false,
 }
 
 export const metadata: Metadata = {
   title: 'Il Forno Di Vito',
-  description: 'App de pedidos para invitados',
+  description: 'App de pedidos',
   manifest: '/manifest.json',
   icons: {
     icon: '/icon.png',
@@ -22,7 +22,7 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'black-translucent',
+    statusBarStyle: 'black-translucent', // CAMBIADO: Para que se vea transparente/oscuro en iPhone
     title: 'Vito Pizza',
   },
 }
@@ -34,7 +34,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es">
-      <body className={inter.className}>{children}</body>
+      <body className={`${inter.className} bg-neutral-950`}>{children}</body>
     </html>
   )
 }
