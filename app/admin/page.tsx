@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { Pizza, Settings, Plus, Trash2, Lock, ChefHat, Eye, EyeOff, CheckCircle, Clock, Flame, ArrowRight, ExternalLink } from 'lucide-react';
+import { Pizza, Settings, Plus, Trash2, ChefHat, Eye, EyeOff, CheckCircle, Clock, Flame, ArrowRight, ExternalLink, Edit3 } from 'lucide-react';
 import Link from 'next/link';
 
 const supabase = createClient(
@@ -84,6 +84,7 @@ export default function AdminPage() {
       totalPendientes,
       completas: Math.floor(totalPendientes / target),
       resto: totalPendientes % target,
+      faltan: target - (totalPendientes % target),
       target,
       percent: ((totalPendientes % target) / target) * 100,
       pedidosPendientes: pendientes 
@@ -102,13 +103,17 @@ export default function AdminPage() {
       }
       if (idsAActualizar.length > 0) {
           await supabase.from('pedidos').update({ estado: 'entregado' }).in('id', idsAActualizar);
-          // Opcional: Al entregar, dejamos de "cocinar" automáticamente
+          // Opcional: Apagar el horno al entregar
           await supabase.from('menu_pizzas').update({ cocinando: false }).eq('id', pizzaMetric.id);
           cargarDatos();
       }
   };
 
   const toggleCocinando = async (id: string, estadoActual: boolean) => {
+      // Optimizacion optimista para que se sienta instantaneo
+      const nuevasPizzas = pizzas.map(p => p.id === id ? { ...p, cocinando: !estadoActual } : p);
+      setPizzas(nuevasPizzas);
+      
       await supabase.from('menu_pizzas').update({ cocinando: !estadoActual }).eq('id', id);
       cargarDatos();
   };
@@ -119,14 +124,20 @@ export default function AdminPage() {
       window.dispatchEvent(new Event('storage'));
   };
 
-  // ... Funciones Menu/Config (iguales que antes, simplificadas aqui)
-  const addPizza = async () => { if(!newPizzaName) return; await supabase.from('menu_pizzas').insert([{ nombre: newPizzaName, descripcion: newPizzaDesc, activa: true }]); setNewPizzaName(''); cargarDatos(); };
-  const deletePizza = async (id: string) => { if(confirm('Borrar?')) await supabase.from('menu_pizzas').delete().eq('id', id); cargarDatos(); };
-  const updatePizzaConfig = async (id: string, f: string, v: any) => await supabase.from('menu_pizzas').update({[f]: v}).eq('id', id);
-  const changePassword = async () => { await supabase.from('configuracion_dia').update({password_admin: newPass}).eq('id', config.id); alert('OK'); };
+  const addPizza = async () => { if(!newPizzaName) return; await supabase.from('menu_pizzas').insert([{ nombre: newPizzaName, descripcion: newPizzaDesc, activa: true }]); setNewPizzaName(''); setNewPizzaDesc(''); cargarDatos(); };
+  const deletePizza = async (id: string) => { if(confirm('¿Borrar esta pizza del menú permanentemente?')) await supabase.from('menu_pizzas').delete().eq('id', id); cargarDatos(); };
+  
+  // Función genérica para editar cualquier campo de la pizza
+  const updatePizzaConfig = async (id: string, f: string, v: any) => {
+      // Actualizamos UI local primero para que no salte
+      setPizzas(pizzas.map(p => p.id === id ? { ...p, [f]: v } : p));
+      await supabase.from('menu_pizzas').update({[f]: v}).eq('id', id);
+  };
+  
+  const changePassword = async () => { await supabase.from('configuracion_dia').update({password_admin: newPass}).eq('id', config.id); alert('Contraseña actualizada'); setNewPass(''); };
 
   if (!autenticado) return (
-    <div className="min-h-screen bg-neutral-950 flex items-center justify-center p-4 font-sans">
+    <div className="min-h-screen bg-neutral-950 flex items-center justify-center p-4 font-sans overflow-hidden">
       <div className="w-full max-w-md bg-neutral-900 p-8 rounded-3xl border border-neutral-800 shadow-2xl">
         <div className={`flex justify-center mb-6 ${currentTheme.text}`}><ChefHat size={48} /></div>
         <h1 className="text-2xl font-bold text-center text-white mb-2">Il Forno Di Vito</h1>
@@ -142,7 +153,7 @@ export default function AdminPage() {
   );
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-white font-sans pb-24">
+    <div className="min-h-screen bg-neutral-950 text-white font-sans pb-24 overflow-x-hidden w-full">
       {/* HEADER */}
       <header className="sticky top-0 z-50 bg-neutral-900/90 backdrop-blur-md border-b border-neutral-800 px-4 py-3 flex justify-between items-center shadow-md">
         <div>
@@ -153,22 +164,19 @@ export default function AdminPage() {
         </div>
         
         <div className="flex items-center gap-4">
-             {/* Selector Rápido */}
              <div className="flex gap-2 bg-black/30 p-1.5 rounded-full border border-white/5">
                  {THEMES.map(t => (
                      <button key={t.name} onClick={() => selectTheme(t)} 
                              className={`w-4 h-4 rounded-full ${t.color} ${currentTheme.name === t.name ? 'ring-2 ring-white scale-110' : 'opacity-40'}`}></button>
                  ))}
              </div>
-             
-             {/* Salida */}
              <Link href="/" className="bg-neutral-800 p-2 rounded-full text-neutral-400 hover:text-white hover:bg-neutral-700">
                 <ExternalLink size={18} />
              </Link>
         </div>
       </header>
 
-      <main className="p-4 max-w-4xl mx-auto space-y-6">
+      <main className="p-4 max-w-4xl mx-auto space-y-6 w-full">
         
         {/* VISTA COCINA */}
         {view === 'cocina' && (
@@ -176,7 +184,6 @@ export default function AdminPage() {
             {metricas.map(p => (
               <div key={p.id} className={`bg-neutral-900 rounded-3xl p-5 border relative overflow-hidden transition-all ${p.cocinando ? 'border-orange-500/50 shadow-[0_0_30px_rgba(234,88,12,0.1)]' : 'border-neutral-800'}`}>
                 
-                {/* Indicador de Fuego de Fondo */}
                 {p.cocinando && <div className="absolute -right-10 -bottom-10 text-orange-900/20"><Flame size={150} /></div>}
 
                 <div className="flex justify-between items-start mb-4 relative z-10">
@@ -188,56 +195,97 @@ export default function AdminPage() {
                         <p className="text-xs text-neutral-500 flex items-center gap-1 mt-1"><Clock size={12}/> Pendientes: {p.totalPendientes}</p>
                     </div>
                     
-                    {/* Botonera Acción */}
                     <div className="flex gap-2">
+                        {/* BOTÓN FUEGO */}
                         <button 
                             onClick={() => toggleCocinando(p.id, p.cocinando)}
                             className={`p-3 rounded-xl transition-all ${p.cocinando ? 'bg-orange-500 text-white shadow-lg scale-105' : 'bg-neutral-800 text-neutral-500 hover:bg-neutral-700'}`}
-                            title={p.cocinando ? "Detener cocción" : "Poner en horno"}
+                            title={p.cocinando ? "Sacar del horno" : "Poner en horno"}
                         >
                             <Flame size={20} className={p.cocinando ? 'animate-bounce' : ''} />
                         </button>
-
-                        {p.completas > 0 && (
-                            <button 
-                                onClick={() => entregarPizza(p)}
-                                className={`${currentTheme.color} text-white font-bold px-4 py-2 rounded-xl text-xs flex items-center gap-2 shadow-lg hover:brightness-110`}
-                            >
-                                <CheckCircle size={16} /> LISTA ({p.completas})
-                            </button>
-                        )}
                     </div>
                 </div>
                 
-                {/* Barra */}
-                <div className="relative h-4 bg-black rounded-full overflow-hidden border border-white/5 z-10">
+                {/* STATUS BARRA */}
+                <div className="relative h-4 bg-black rounded-full overflow-hidden border border-white/5 z-10 mb-4">
                     <div className="absolute inset-0 flex justify-between px-[1px] z-20">
                         {[...Array(p.target)].map((_, i) => <div key={i} className="w-[1px] h-full bg-white/10"></div>)}
                     </div>
                     <div className={`absolute h-full ${p.cocinando ? 'bg-orange-500' : currentTheme.color} transition-all duration-700`} style={{ width: `${p.percent}%` }}></div>
                 </div>
+
+                {/* BOTÓN DE ENTREGA (ACCION PRINCIPAL) */}
+                {p.completas > 0 ? (
+                    <button 
+                        onClick={() => entregarPizza(p)}
+                        className="w-full bg-green-600 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 shadow-lg hover:bg-green-500 transition active:scale-95"
+                    >
+                        <CheckCircle size={20} /> ¡PIZZA LISTA! ({p.completas})
+                    </button>
+                ) : (
+                    <div className="w-full py-2 text-center text-xs text-neutral-600 font-mono border border-neutral-800 rounded-xl">
+                        Faltan {p.faltan} porciones para completar una
+                    </div>
+                )}
+
               </div>
             ))}
           </div>
         )}
 
-        {/* ... (VISTAS MENU Y CONFIG IGUALES AL ANTERIOR, SOLO CAMBIA EL DISEÑO VISUAL) ... */}
+        {/* VISTA MENU CON EDICIÓN COMPLETA */}
         {view === 'menu' && (
-           /* ... Codigo Menu simplificado ... */
           <div className="space-y-6">
             <div className="bg-neutral-900 p-6 rounded-3xl border border-neutral-800">
-                <h3 className="font-bold mb-4 flex items-center gap-2 text-neutral-300"><Plus size={18}/> Agregar</h3>
+                <h3 className="font-bold mb-4 flex items-center gap-2 text-neutral-300"><Plus size={18}/> Agregar Nueva</h3>
                 <input className="w-full bg-black p-4 rounded-2xl border border-neutral-700 mb-2 text-white outline-none" placeholder="Nombre..." value={newPizzaName} onChange={e => setNewPizzaName(e.target.value)} />
                 <textarea className="w-full bg-black p-4 rounded-2xl border border-neutral-700 mb-4 text-white text-sm outline-none" placeholder="Ingredientes..." value={newPizzaDesc} onChange={e => setNewPizzaDesc(e.target.value)} />
                 <button onClick={addPizza} className={`w-full ${currentTheme.color} text-white font-bold py-4 rounded-2xl`}>AGREGAR</button>
             </div>
-            <div className="space-y-3">
+
+            <div className="space-y-4">
                 {pizzas.map(p => (
-                    <div key={p.id} className="bg-neutral-900 p-4 rounded-2xl border border-neutral-800 flex justify-between items-center">
-                        <input value={p.nombre} onChange={e => updatePizzaConfig(p.id, 'nombre', e.target.value)} className="bg-transparent font-bold text-white outline-none" />
-                        <div className="flex gap-2">
-                             <button onClick={() => updatePizzaConfig(p.id, 'activa', !p.activa)} className="p-2 bg-neutral-800 rounded-lg text-neutral-400">{p.activa ? <Eye size={16}/> : <EyeOff size={16}/>}</button>
-                             <button onClick={() => deletePizza(p.id)} className="p-2 bg-red-900/20 text-red-500 rounded-lg"><Trash2 size={16}/></button>
+                    <div key={p.id} className="bg-neutral-900 p-4 rounded-3xl border border-neutral-800 flex flex-col gap-3">
+                        
+                        {/* Cabecera con Nombre y Controles */}
+                        <div className="flex justify-between items-start gap-3">
+                            <input 
+                                value={p.nombre} 
+                                onChange={e => updatePizzaConfig(p.id, 'nombre', e.target.value)} 
+                                className="bg-transparent font-bold text-xl text-white outline-none w-full border-b border-transparent focus:border-neutral-600" 
+                            />
+                            <div className="flex gap-2">
+                                 <button onClick={() => updatePizzaConfig(p.id, 'activa', !p.activa)} className={`p-2 rounded-xl ${p.activa ? 'text-neutral-400 bg-neutral-800' : 'text-neutral-600 bg-black'}`}>
+                                    {p.activa ? <Eye size={18}/> : <EyeOff size={18}/>}
+                                 </button>
+                                 <button onClick={() => deletePizza(p.id)} className="p-2 bg-red-900/10 text-red-500 rounded-xl"><Trash2 size={18}/></button>
+                            </div>
+                        </div>
+
+                        {/* Descripción Editable */}
+                        <textarea 
+                            value={p.descripcion || ''} 
+                            onChange={e => updatePizzaConfig(p.id, 'descripcion', e.target.value)}
+                            className="w-full bg-black/30 p-2 rounded-xl text-sm text-neutral-400 outline-none border border-transparent focus:border-neutral-700 resize-none h-16"
+                            placeholder="Descripción..."
+                        />
+
+                        {/* Configuración de Porciones */}
+                        <div className="flex items-center justify-between text-sm text-neutral-500 bg-black/20 p-3 rounded-xl border border-white/5">
+                            <span>Corte de porciones:</span>
+                            <select 
+                                value={p.porciones_individuales || ''} 
+                                onChange={e => updatePizzaConfig(p.id, 'porciones_individuales', e.target.value ? parseInt(e.target.value) : null)}
+                                className="bg-neutral-800 text-white p-1 px-3 rounded-lg border border-neutral-700 outline-none"
+                            >
+                                <option value="">Global ({config.porciones_por_pizza})</option>
+                                <option value="4">4 Porciones</option>
+                                <option value="6">6 Porciones</option>
+                                <option value="8">8 Porciones</option>
+                                <option value="10">10 Porciones</option>
+                                <option value="12">12 Porciones</option>
+                            </select>
                         </div>
                     </div>
                 ))}
@@ -247,22 +295,34 @@ export default function AdminPage() {
 
         {view === 'config' && (
           <div className="space-y-6">
-             {/* Solo dejamos ajustes globales aqui ya que el tema esta arriba */}
             <div className="bg-neutral-900 p-6 rounded-3xl border border-neutral-800">
-                <h3 className="font-bold mb-4 flex items-center gap-2 text-neutral-300"><Settings size={18}/> Ajustes</h3>
-                <div className="flex justify-between items-center mb-4">
-                    <label className="text-sm text-neutral-500">Porciones Estándar</label>
+                <h3 className="font-bold mb-4 flex items-center gap-2 text-neutral-300"><Settings size={18}/> Ajustes Globales</h3>
+                
+                {/* Porciones */}
+                <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-2">
+                    <label className="text-sm text-neutral-500 w-full">Porciones Estándar</label>
                     <select value={config.porciones_por_pizza} onChange={async e => {
                         const v = parseInt(e.target.value); setConfig({...config, porciones_por_pizza: v});
                         await supabase.from('configuracion_dia').update({ porciones_por_pizza: v }).eq('id', config.id);
-                    }} className="bg-black p-2 rounded border border-neutral-700 text-white"><option value="4">4</option><option value="6">6</option><option value="8">8</option></select>
+                    }} className="w-full sm:w-auto bg-black p-3 rounded-xl border border-neutral-700 text-white outline-none"><option value="4">4</option><option value="6">6</option><option value="8">8</option></select>
+                </div>
+
+                {/* Contraseña */}
+                <div className="border-t border-neutral-800 pt-4">
+                     <label className="text-sm text-neutral-500 mb-2 block">Cambiar Contraseña Admin</label>
+                     <div className="flex flex-col gap-3">
+                        <input type="text" placeholder="Nueva contraseña" value={newPass} onChange={e => setNewPass(e.target.value)} 
+                               className="w-full bg-black p-3 rounded-xl border border-neutral-700 text-white outline-none" />
+                        <button onClick={changePassword} className="w-full bg-white text-black font-bold py-3 rounded-xl hover:bg-neutral-200">
+                            GUARDAR
+                        </button>
+                     </div>
                 </div>
             </div>
           </div>
         )}
       </main>
 
-      {/* NAVBAR */}
       <nav className="fixed bottom-0 w-full bg-neutral-900/90 backdrop-blur-md border-t border-neutral-800 flex justify-around p-4 pb-8 z-50">
           <button onClick={() => setView('cocina')} className={`flex flex-col items-center gap-1 ${view === 'cocina' ? currentTheme.text : 'text-neutral-600'}`}><Pizza size={24} /> <span className="text-[9px] uppercase font-bold">Cocina</span></button>
           <button onClick={() => setView('menu')} className={`flex flex-col items-center gap-1 ${view === 'menu' ? currentTheme.text : 'text-neutral-600'}`}><ChefHat size={24} /> <span className="text-[9px] uppercase font-bold">Menú</span></button>
