@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { Plus, Minus, User, Palette, Flame, Lock, Globe, PartyPopper, Bell, BellOff, ArrowDownAZ, ArrowUpNarrowWide } from 'lucide-react';
+import { Plus, Minus, User, Palette, Lock, PartyPopper, Bell, BellOff, ArrowDownAZ, ArrowUpNarrowWide, Maximize2, Minimize2 } from 'lucide-react';
 import Link from 'next/link';
 
 const supabase = createClient(
@@ -114,8 +114,8 @@ export default function VitoPizzaApp() {
   
   const [mensaje, setMensaje] = useState<MensajeTipo | null>(null);
   const [notifEnabled, setNotifEnabled] = useState(false);
-  // RECUPERADO: Estado de ordenamiento
   const [orden, setOrden] = useState<'estado' | 'nombre'>('estado');
+  const [isCompact, setIsCompact] = useState(false);
 
   const [config, setConfig] = useState({ porciones_por_pizza: 8, total_invitados: 20 });
   const [invitadosActivos, setInvitadosActivos] = useState(0);
@@ -278,7 +278,6 @@ export default function VitoPizzaApp() {
     return () => { supabase.removeChannel(canal); };
   }, [fetchDatos]);
 
-  // RECUPERADO: Lógica de Ordenamiento en Invitados
   const pizzasOrdenadas = useMemo(() => {
       return [...pizzas].sort((a, b) => {
           if (orden === 'estado') {
@@ -350,12 +349,20 @@ export default function VitoPizzaApp() {
                        {lang.toUpperCase()}
                    </button>
                    
-                   {/* RECUPERADO: BOTON ORDENAR */}
+                   {/* BOTON ORDENAR INVITADOS */}
                    <button 
                        onClick={() => setOrden(orden === 'estado' ? 'nombre' : 'estado')} 
                        className="bg-black/20 p-2 rounded-full hover:bg-black/40 border border-white/10"
                    >
                        {orden === 'estado' ? <ArrowUpNarrowWide size={18} /> : <ArrowDownAZ size={18} />}
+                   </button>
+
+                   {/* BOTON MODO COMPACTO INVITADOS */}
+                   <button 
+                       onClick={() => setIsCompact(!isCompact)}
+                       className={`p-2 rounded-full border border-white/10 transition-colors ${isCompact ? 'bg-white text-black' : 'bg-black/20 text-white hover:bg-black/40'}`}
+                   >
+                       {isCompact ? <Maximize2 size={18} /> : <Minimize2 size={18} />}
                    </button>
 
                    <button onClick={() => setShowThemeSelector(!showThemeSelector)} className="bg-black/20 p-2 rounded-full hover:bg-black/40 border border-white/10"><Palette size={18} /></button>
@@ -402,23 +409,27 @@ export default function VitoPizzaApp() {
           </div>
         )}
 
-        <div className="space-y-6 pb-10">
-           {/* IMPORTANTE: Usamos pizzasOrdenadas.map en vez de pizzas.map */}
+        <div className="space-y-3 pb-10">
            {cargando ? <p className="text-center text-neutral-600 mt-10 animate-pulse">{t.loading}</p> : pizzasOrdenadas.map(pizza => (
-               <div key={pizza.id} className={`bg-neutral-900 p-5 rounded-[36px] border ${pizza.cocinando ? 'border-orange-500/30' : 'border-neutral-800'} shadow-lg relative overflow-hidden group`}>
+               <div 
+                 key={pizza.id} 
+                 className={`bg-neutral-900 rounded-[36px] border ${pizza.cocinando ? 'border-orange-600/30' : 'border-neutral-800'} shadow-lg relative overflow-hidden group ${isCompact ? 'p-3' : 'p-5'}`}
+               >
                    
                    <div className="flex justify-between items-start mb-2">
-                       <div>
-                           <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                       <div className="flex-1">
+                           <h2 className={`font-bold text-white flex items-center gap-2 ${isCompact ? 'text-lg' : 'text-2xl'}`}>
                                {pizza.nombre}
-                               {/* BADGE TEXTO SIN ICONO */}
-                               {pizza.cocinando && <span className="bg-orange-500 text-black text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 animate-pulse">{t.inOven}</span>}
+                               {/* BADGE CON NUEVO COLOR ROJIZO */}
+                               {pizza.cocinando && <span className="text-[10px] bg-orange-600 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">{t.inOven}</span>}
                            </h2>
-                           <p className="text-neutral-500 text-xs leading-relaxed max-w-[200px]">{pizza.descripcion}</p>
+                           {!isCompact && (
+                               <p className="text-neutral-500 text-xs leading-relaxed max-w-[200px]">{pizza.descripcion}</p>
+                           )}
                        </div>
                        
                        {(miHistorial[pizza.id]?.pendientes > 0 || miHistorial[pizza.id]?.comidos > 0) && (
-                           <div className="bg-neutral-800 rounded-2xl p-2 px-3 border border-white/5 text-right">
+                           <div className={`bg-neutral-800 rounded-2xl border border-white/5 text-right ${isCompact ? 'p-1 px-2' : 'p-2 px-3'}`}>
                                {miHistorial[pizza.id]?.pendientes > 0 && (
                                    <div className={`text-[10px] font-bold ${currentTheme.text} uppercase`}>
                                        {t.wait}: {miHistorial[pizza.id].pendientes}
@@ -426,37 +437,42 @@ export default function VitoPizzaApp() {
                                )}
                                {miHistorial[pizza.id]?.comidos > 0 && (
                                    <div className="text-[10px] text-neutral-500 font-bold uppercase">
-                                       {t.ate}: {miHistorial[pizza.id].comidos} {t.portions}
+                                       {t.ate}: {miHistorial[pizza.id].comidos}
                                    </div>
                                )}
                            </div>
                        )}
                    </div>
 
-                   <div className="bg-black/40 p-3 rounded-2xl border border-white/5 mb-5 mt-4">
+                   <div className={`bg-black/40 rounded-2xl border border-white/5 ${isCompact ? 'p-2 mb-2 mt-1' : 'p-3 mb-5 mt-4'}`}>
                        <div className="flex justify-between text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-2">
                            <span>{pizza.faltanParaCompletar === pizza.target ? t.newPizza : t.progress}</span>
                            <span className={pizza.faltanParaCompletar === 0 ? currentTheme.text : "text-neutral-400"}>
-                               {pizza.faltanParaCompletar > 0 ? `${t.missing} ${pizza.faltanParaCompletar} ${t.portions}` : t.completed}
+                               {pizza.faltanParaCompletar > 0 ? `${t.missing} ${pizza.faltanParaCompletar}` : t.completed}
                            </span>
                        </div>
-                       <div className="h-2 bg-neutral-800 rounded-full overflow-hidden flex border border-white/5">
+                       <div className={`bg-neutral-800 rounded-full overflow-hidden flex border border-white/5 ${isCompact ? 'h-1.5' : 'h-2'}`}>
                            {[...Array(pizza.target)].map((_, i) => (
-                               <div key={i} className={`flex-1 border-r border-black/50 last:border-0 ${i < pizza.ocupadasActual ? `bg-gradient-to-r ${pizza.cocinando ? 'from-orange-500 to-red-600' : (currentTheme.name === 'Carbone' ? 'from-white to-neutral-300' : currentTheme.gradient)}` : 'bg-transparent'}`}></div>
+                               <div key={i} className={`flex-1 border-r border-black/50 last:border-0 ${i < pizza.ocupadasActual ? `bg-gradient-to-r ${pizza.cocinando ? 'from-orange-600 to-red-600' : (currentTheme.name === 'Carbone' ? 'from-white to-neutral-300' : currentTheme.gradient)}` : 'bg-transparent'}`}></div>
                            ))}
                        </div>
                    </div>
 
                    <div className="flex gap-3">
-                       {/* BOTON RESTAR SIEMPRE VISIBLE */}
                        {miHistorial[pizza.id]?.pendientes > 0 && (
-                           <button onClick={() => modificarPedido(pizza, 'restar')} className="w-16 h-14 rounded-2xl flex items-center justify-center border bg-neutral-800 text-neutral-400 border-neutral-700 active:scale-95 transition">
-                               <Minus size={20} />
+                           <button 
+                               onClick={() => modificarPedido(pizza, 'restar')} 
+                               className={`rounded-2xl flex items-center justify-center border bg-neutral-800 text-neutral-400 border-neutral-700 active:scale-95 transition ${isCompact ? 'w-12 h-10' : 'w-16 h-14'}`}
+                           >
+                               <Minus size={isCompact ? 16 : 20} />
                            </button>
                        )}
                        
-                       <button onClick={() => modificarPedido(pizza, 'sumar')} className={`flex-1 h-14 rounded-2xl font-bold text-lg text-white shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 bg-gradient-to-r ${currentTheme.gradient} hover:brightness-110`}>
-                           <Plus size={24} strokeWidth={3} /> {t.buttonOrder}
+                       <button 
+                           onClick={() => modificarPedido(pizza, 'sumar')} 
+                           className={`flex-1 rounded-2xl font-bold text-white shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 bg-gradient-to-r ${currentTheme.gradient} hover:brightness-110 ${isCompact ? 'h-10 text-base' : 'h-14 text-lg'}`}
+                       >
+                           <Plus size={isCompact ? 18 : 24} strokeWidth={3} /> {t.buttonOrder}
                        </button>
                    </div>
                </div>
