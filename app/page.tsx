@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { Plus, Minus, User, Palette, Flame, Lock, Globe, PartyPopper, Bell, X } from 'lucide-react';
+import { Plus, Minus, User, Palette, Flame, Lock, Globe, PartyPopper, Bell, BellOff, X } from 'lucide-react';
 import Link from 'next/link';
 
 const supabase = createClient(
@@ -21,8 +21,8 @@ const dictionary = {
   es: {
     welcomeTitle: "Gracias por venir hoy,",
     welcomeSub: "será un placer cocinar para vos.",
-    whoAreYou: "¿QUIÉN SOS?",
-    namePlaceholder: "Tu nombre...",
+    whoAreYou: "Tu nombre?",
+    namePlaceholder: "Escribilo acá...",
     status: "amigos ya pidieron.",
     loading: "Encendiendo el horno...",
     progress: "PROGRESO PRÓXIMA PIZZA",
@@ -40,15 +40,16 @@ const dictionary = {
     successOrder: "¡Marchando +1 de",
     successCancel: "Cancelado -1 de",
     readyAlert: "¡TU PIZZA ESTÁ LISTA! 🍕",
-    ovenAlert: "al horno!", // Sin icono
+    ovenAlert: "al horno!",
     okBtn: "ENTENDIDO",
-    enableNotif: "Activar Alertas"
+    notifOn: "🔔 Notificaciones activadas",
+    notifOff: "🔕 Notificaciones desactivadas"
   },
   en: {
     welcomeTitle: "Thanks for coming today,",
     welcomeSub: "it will be a pleasure to cook for you.",
-    whoAreYou: "WHO ARE YOU?",
-    namePlaceholder: "Your name...",
+    whoAreYou: "YOUR NAME?",
+    namePlaceholder: "Type it here...",
     status: "friends have ordered.",
     loading: "Firing up the oven...",
     progress: "NEXT PIZZA PROGRESS",
@@ -68,13 +69,14 @@ const dictionary = {
     readyAlert: "YOUR PIZZA IS READY! 🍕",
     ovenAlert: "in the oven!",
     okBtn: "OK",
-    enableNotif: "Enable Alerts"
+    notifOn: "🔔 Notifications ON",
+    notifOff: "🔕 Notifications OFF"
   },
   it: {
     welcomeTitle: "Grazie per essere venuto,",
     welcomeSub: "sarà un piacere cucinare per te.",
-    whoAreYou: "CHI SEI?",
-    namePlaceholder: "Il tuo nome...",
+    whoAreYou: "IL TUO NOME?",
+    namePlaceholder: "Scrivilo qui...",
     status: "amici hanno ordinato.",
     loading: "Accensione del forno...",
     progress: "PROSSIMA PIZZA",
@@ -94,7 +96,8 @@ const dictionary = {
     readyAlert: "LA TUA PIZZA È PRONTA! 🍕",
     ovenAlert: "in forno!",
     okBtn: "CAPITO",
-    enableNotif: "Attiva Avvisi"
+    notifOn: "🔔 Notifiche attive",
+    notifOff: "🔕 Notifiche disattive"
   }
 };
 
@@ -110,6 +113,9 @@ export default function VitoPizzaApp() {
   const [nombreInvitado, setNombreInvitado] = useState('');
   
   const [mensaje, setMensaje] = useState<MensajeTipo | null>(null);
+  
+  // NUEVO ESTADO PARA NOTIFICACIONES
+  const [notifEnabled, setNotifEnabled] = useState(false);
 
   const [config, setConfig] = useState({ porciones_por_pizza: 8, total_invitados: 20 });
   const [invitadosActivos, setInvitadosActivos] = useState(0);
@@ -130,6 +136,12 @@ export default function VitoPizzaApp() {
       const found = THEMES.find(t => t.name === savedTheme);
       if (found) setCurrentTheme(found);
     }
+    
+    // Recuperar preferencia de notificaciones
+    const savedNotif = localStorage.getItem('vito-notif-enabled');
+    if (savedNotif === 'true' && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        setNotifEnabled(true);
+    }
   }, []);
 
   const handleNameChange = (val: string) => { setNombreInvitado(val); localStorage.setItem('vito-guest-name', val); };
@@ -141,18 +153,34 @@ export default function VitoPizzaApp() {
       else setLang('es');
   };
 
-  const activarNotificaciones = () => {
-      Notification.requestPermission().then(perm => {
-          if (perm === 'granted') {
-              mostrarMensaje("🔔 Notificaciones activadas", 'info');
-              new Notification("Il Forno di Vito", { body: "Prueba de notificación", icon: "/icon.png" });
-          } else {
-              alert("Debes permitir notificaciones en el navegador. En Android, instala la App.");
-          }
-      });
+  // --- LÓGICA DE ACTIVAR/DESACTIVAR ---
+  const toggleNotificaciones = () => {
+      if (notifEnabled) {
+          // Si están activas, las desactivamos (lógicamente)
+          setNotifEnabled(false);
+          localStorage.setItem('vito-notif-enabled', 'false');
+          mostrarMensaje(t.notifOff, 'info');
+      } else {
+          // Si están desactivadas, pedimos permiso y las activamos
+          Notification.requestPermission().then(perm => {
+              if (perm === 'granted') {
+                  setNotifEnabled(true);
+                  localStorage.setItem('vito-notif-enabled', 'true');
+                  mostrarMensaje(t.notifOn, 'info');
+                  
+                  // Notificación de prueba silenciosa
+                  try { new Notification("Il Forno di Vito", { body: "Ok!", icon: "/icon.png" }); } catch (e) {}
+              } else {
+                  alert("Debes permitir notificaciones en el navegador. En Android, instala la App.");
+              }
+          });
+      }
   };
 
   const enviarNotificacion = (titulo: string, cuerpo: string) => {
+      // SOLO ENVIAR SI EL USUARIO LO ACTIVÓ CON EL BOTÓN
+      if (!notifEnabled) return;
+
       if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
           try {
              navigator.serviceWorker.getRegistration().then(reg => {
@@ -172,7 +200,6 @@ export default function VitoPizzaApp() {
   };
 
   const fetchDatos = useCallback(async () => {
-    // FILTRO DE FECHA (6AM)
     const now = new Date();
     const corte = new Date(now);
     if (now.getHours() < 6) {
@@ -241,7 +268,6 @@ export default function VitoPizzaApp() {
                 const estabaCocinando = prevCocinandoData.current[pz.id] || false;
                 if (pz.cocinando && !estabaCocinando && misPizzasPendientesInfo[pz.id]) {
                     const cant = misPizzasPendientesInfo[pz.id];
-                    // SIN EMOJI DE FUEGO AQUI PARA AHORRAR ESPACIO
                     const texto = `¡${cant} porciones de ${pz.nombre} ${t.ovenAlert}`;
                     setMensaje({ texto, tipo: 'alerta' });
                     enviarNotificacion("🔥 " + t.inOven, texto);
@@ -252,7 +278,7 @@ export default function VitoPizzaApp() {
       }
     }
     setCargando(false);
-  }, [nombreInvitado, t]);
+  }, [nombreInvitado, t, notifEnabled]); // Agregado notifEnabled a dependencias
 
   useEffect(() => {
     fetchDatos();
@@ -292,7 +318,11 @@ export default function VitoPizzaApp() {
              <div className="flex justify-between items-center mb-6">
                 <span className="font-bold tracking-widest text-[10px] uppercase bg-black/30 px-3 py-1 rounded-full backdrop-blur-md border border-white/10">Il Forno Di Vito</span>
                 <div className="flex gap-2">
-                   <button onClick={activarNotificaciones} className="bg-black/20 p-2 rounded-full hover:bg-black/40 border border-white/10"><Bell size={18}/></button>
+                   {/* BOTON NOTIFICACIONES CON CAMBIO DE ICONO */}
+                   <button onClick={toggleNotificaciones} className={`p-2 rounded-full hover:bg-black/40 border border-white/10 transition-colors ${notifEnabled ? 'bg-white text-black' : 'bg-black/20 text-white'}`}>
+                       {notifEnabled ? <Bell size={18} /> : <BellOff size={18} />}
+                   </button>
+                   
                    <button onClick={rotarIdioma} className="bg-black/20 px-3 py-2 rounded-full hover:bg-black/40 border border-white/10 text-xs font-bold">
                        {lang.toUpperCase()}
                    </button>
@@ -327,7 +357,6 @@ export default function VitoPizzaApp() {
         </div>
 
         {mensaje && (
-          // NOTIFICACION OPTIMIZADA: Texto mas chico (text-sm), padding reducido (p-3), sin icono en texto
           <div className={`fixed top-4 left-4 right-4 p-3 rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] z-50 flex flex-col items-center justify-center animate-bounce-in text-center bg-white text-black ${mensaje.tipo === 'alerta' ? 'border-4 border-neutral-900 font-bold' : 'border-2 border-neutral-200 font-bold'}`}>
             <div className="flex items-center gap-2 mb-1 text-sm">
                 {mensaje.tipo === 'alerta' && <PartyPopper size={18} className="text-orange-600" />}
@@ -349,7 +378,7 @@ export default function VitoPizzaApp() {
                        <div>
                            <h2 className="text-2xl font-bold text-white flex items-center gap-2">
                                {pizza.nombre}
-                               {pizza.cocinando && <span className="bg-orange-500 text-black text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 animate-pulse"><Flame size={10}/> {t.inOven}</span>}
+                               {pizza.cocinando && <span className="bg-orange-500 text-black text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 animate-pulse">{t.inOven}</span>}
                            </h2>
                            <p className="text-neutral-500 text-xs leading-relaxed max-w-[200px]">{pizza.descripcion}</p>
                        </div>
