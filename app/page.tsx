@@ -1,19 +1,20 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { Plus, User, Globe } from 'lucide-react';
+import { Plus, Minus, User, Globe, Palette, History } from 'lucide-react';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-const THEMES = {
-  'Pomodoro': 'from-orange-600 to-orange-500',
-  'Basilico': 'from-green-600 to-green-500',
-  'Mare': 'from-blue-600 to-blue-500',
-  'Melanzane': 'from-purple-600 to-purple-500',
-};
+// TEMAS GOURMET OSCUROS
+const THEMES = [
+  { name: 'Turquesa', color: 'bg-cyan-500', gradient: 'from-cyan-500 to-teal-900', border: 'border-cyan-500/40', text: 'text-cyan-400' },
+  { name: 'Pistacho', color: 'bg-lime-400', gradient: 'from-lime-400 to-green-900', border: 'border-lime-400/40', text: 'text-lime-400' },
+  { name: 'Fuego', color: 'bg-red-600', gradient: 'from-red-600 to-rose-900', border: 'border-red-500/40', text: 'text-red-500' },
+  { name: 'Violeta', color: 'bg-violet-600', gradient: 'from-violet-600 to-purple-900', border: 'border-violet-500/40', text: 'text-violet-400' },
+];
 
 const dictionary = {
   es: {
@@ -22,17 +23,20 @@ const dictionary = {
     whoAreYou: "¿Quién sos?",
     namePlaceholder: "Tu nombre...",
     hello: "Hola",
-    orderPrompt: "pedí lo que quieras.",
     status: "amigos ya pidieron.",
     loading: "Encendiendo el horno...",
-    progress: "Progreso",
+    progress: "En marcha",
     newPizza: "Pizza Nueva",
     missing: "Faltan",
     taken: "tomadas",
-    buttonOrder: "Pedir Porción",
-    orderedBadge: "Pediste",
+    buttonOrder: "Pedir",
     successMsg: "¡Marchando +1 de",
+    removedMsg: "Cancelado -1 de",
     errorMsg: "Primero decime tu nombre arriba",
+    customize: "Elige tu estilo:",
+    waiting: "Esperando",
+    ate: "Comiste",
+    ready: "¡Lista!"
   },
   en: {
     welcomeTitle: "Thanks for coming today,",
@@ -40,17 +44,20 @@ const dictionary = {
     whoAreYou: "Who are you?",
     namePlaceholder: "Your name...",
     hello: "Hi",
-    orderPrompt: "order whatever you like.",
     status: "friends have ordered.",
     loading: "Firing up the oven...",
-    progress: "Progress",
+    progress: "Cooking",
     newPizza: "Fresh Pizza",
     missing: "Missing",
     taken: "taken",
-    buttonOrder: "Order Slice",
-    orderedBadge: "You ordered",
+    buttonOrder: "Order",
     successMsg: "Coming up! +1 of",
+    removedMsg: "Removed -1 of",
     errorMsg: "Please enter your name first",
+    customize: "Choose style:",
+    waiting: "Waiting",
+    ate: "Ate",
+    ready: "Ready!"
   }
 };
 
@@ -63,71 +70,81 @@ export default function VitoPizzaApp() {
   const [cargando, setCargando] = useState(true);
   const [nombreInvitado, setNombreInvitado] = useState('');
   const [mensaje, setMensaje] = useState('');
-  const [misPedidos, setMisPedidos] = useState<Record<string, number>>({}); 
   const [config, setConfig] = useState({ porciones_por_pizza: 8, total_invitados: 20 });
   const [invitadosActivos, setInvitadosActivos] = useState(0);
 
-  // Tema
-  const [themeGradient, setThemeGradient] = useState(THEMES['Pomodoro']);
-  const [themeName, setThemeName] = useState('Pomodoro');
+  // Historial personal
+  const [miHistorial, setMiHistorial] = useState<Record<string, { pendientes: number, comidos: number }>>({});
 
-  // Cargar tema
+  // Tema
+  const [currentTheme, setCurrentTheme] = useState(THEMES[0]);
+  const [showThemeSelector, setShowThemeSelector] = useState(false);
+
   useEffect(() => {
-    const loadTheme = () => {
-        const saved = localStorage.getItem('vito-theme') || 'Pomodoro';
-        // @ts-ignore
-        if (THEMES[saved]) {
-            // @ts-ignore
-            setThemeGradient(THEMES[saved]);
-            setThemeName(saved);
-        }
-    };
-    loadTheme();
-    // Escuchar cambios de tema desde otra pestaña (admin)
-    window.addEventListener('storage', loadTheme);
-    return () => window.removeEventListener('storage', loadTheme);
+    const savedName = localStorage.getItem('vito-guest-name');
+    if (savedName) setNombreInvitado(savedName);
+    const savedTheme = localStorage.getItem('vito-guest-theme');
+    if (savedTheme) {
+      const found = THEMES.find(t => t.name === savedTheme);
+      if (found) setCurrentTheme(found);
+    }
   }, []);
+
+  const handleNameChange = (val: string) => {
+    setNombreInvitado(val);
+    localStorage.setItem('vito-guest-name', val);
+  };
+
+  const changeTheme = (theme: typeof THEMES[0]) => {
+    setCurrentTheme(theme);
+    localStorage.setItem('vito-guest-theme', theme.name);
+    setShowThemeSelector(false);
+  };
 
   const fetchDatos = useCallback(async () => {
     const { data: dataConfig } = await supabase.from('configuracion_dia').select('*').single();
     const conf = dataConfig || { porciones_por_pizza: 8, total_invitados: 20 };
     setConfig(conf);
 
-    const { data: dataPedidos } = await supabase.from('pedidos').select('*').neq('estado', 'entregado');
+    // Traemos TODOS los pedidos (pendientes y entregados)
+    const { data: dataPedidos } = await supabase.from('pedidos').select('*');
     const { data: dataPizzas } = await supabase.from('menu_pizzas').select('*').eq('activa', true).order('created_at');
 
     if (dataPizzas && dataPedidos) {
       setInvitadosActivos(new Set(dataPedidos.map(p => p.invitado_nombre.toLowerCase().trim())).size);
 
       const pizzasProcesadas = dataPizzas.map(pizza => {
-        const pedidosDeEsta = dataPedidos.filter(p => p.pizza_id === pizza.id);
-        const totalPorciones = pedidosDeEsta.reduce((acc, curr) => acc + curr.cantidad_porciones, 0);
+        // Para la barra de progreso, SOLO cuentan los pendientes
+        const pedidosPendientesPizza = dataPedidos.filter(p => p.pizza_id === pizza.id && p.estado !== 'entregado');
+        const totalPendientes = pedidosPendientesPizza.reduce((acc, curr) => acc + curr.cantidad_porciones, 0);
         
-        // Lógica Individual vs Global
-        const targetPorciones = pizza.porciones_individuales || conf.porciones_por_pizza;
-
-        const ocupadasActual = totalPorciones % targetPorciones;
-        const faltanParaCompletar = targetPorciones - ocupadasActual;
+        const target = pizza.porciones_individuales || conf.porciones_por_pizza;
+        const ocupadasActual = totalPendientes % target;
         
         return {
           ...pizza,
-          targetPorciones,
+          target,
           ocupadasActual,
-          faltanParaCompletar,
-          porcentajeBarra: (ocupadasActual / targetPorciones) * 100
+          faltanParaCompletar: target - ocupadasActual,
+          porcentajeBarra: (ocupadasActual / target) * 100
         };
       });
 
       setPizzas(pizzasProcesadas);
 
+      // Calcular MI historial (Pendientes vs Comidos)
       if (nombreInvitado) {
-        const mis = dataPedidos
-          .filter(p => p.invitado_nombre.toLowerCase() === nombreInvitado.toLowerCase().trim())
-          .reduce((acc: any, curr) => {
-            acc[curr.pizza_id] = (acc[curr.pizza_id] || 0) + curr.cantidad_porciones;
-            return acc;
-          }, {});
-        setMisPedidos(mis);
+        const mis = dataPedidos.filter(p => p.invitado_nombre.toLowerCase() === nombreInvitado.toLowerCase().trim());
+        const resumen: any = {};
+        
+        dataPizzas.forEach(pz => {
+             const misDeEsta = mis.filter(p => p.pizza_id === pz.id);
+             resumen[pz.id] = {
+                 pendientes: misDeEsta.filter(p => p.estado !== 'entregado').reduce((acc, c) => acc + c.cantidad_porciones, 0),
+                 comidos: misDeEsta.filter(p => p.estado === 'entregado').reduce((acc, c) => acc + c.cantidad_porciones, 0)
+             };
+        });
+        setMiHistorial(resumen);
       }
     }
     setCargando(false);
@@ -141,109 +158,161 @@ export default function VitoPizzaApp() {
     return () => { supabase.removeChannel(canal); };
   }, [fetchDatos]);
 
-  async function pedirPorcion(pizzaId: string, nombrePizza: string) {
-    if (!nombreInvitado.trim()) {
-      alert(t.errorMsg); return;
-    }
-    const { error } = await supabase.from('pedidos').insert([
-      { invitado_nombre: nombreInvitado, pizza_id: pizzaId, cantidad_porciones: 1 }
-    ]);
-    if (!error) {
-      setMensaje(`${t.successMsg} ${nombrePizza}!`);
-      setTimeout(() => setMensaje(''), 3000);
+  // --- ACCIONES ---
+  async function modificarPedido(pizzaId: string, nombrePizza: string, accion: 'sumar' | 'restar') {
+    if (!nombreInvitado.trim()) { alert(t.errorMsg); return; }
+
+    if (accion === 'sumar') {
+        const { error } = await supabase.from('pedidos').insert([
+            { invitado_nombre: nombreInvitado, pizza_id: pizzaId, cantidad_porciones: 1, estado: 'pendiente' }
+        ]);
+        if (!error) mostrarMensaje(`${t.successMsg} ${nombrePizza}!`);
+    } 
+    else {
+        // Buscar el último pedido PENDIENTE de este usuario para esta pizza
+        const { data } = await supabase.from('pedidos')
+            .select('id')
+            .eq('pizza_id', pizzaId)
+            .ilike('invitado_nombre', nombreInvitado.trim())
+            .eq('estado', 'pendiente')
+            .order('created_at', { ascending: false }) // El último
+            .limit(1)
+            .single();
+
+        if (data) {
+            await supabase.from('pedidos').delete().eq('id', data.id);
+            mostrarMensaje(`${t.removedMsg} ${nombrePizza}`);
+        }
     }
   }
 
+  const mostrarMensaje = (txt: string) => {
+      setMensaje(txt); setTimeout(() => setMensaje(''), 2500);
+  }
+
   return (
-    <div className="min-h-screen bg-neutral-50 text-neutral-900 font-sans pb-20 transition-colors duration-500">
+    <div className="min-h-screen bg-neutral-950 text-white font-sans pb-20 transition-colors duration-500">
       
       {/* HEADER HERO */}
-      <div className={`w-full p-8 pb-12 rounded-b-[40px] bg-gradient-to-br ${themeGradient} text-white shadow-xl relative overflow-hidden`}>
-         {/* Círculos decorativos */}
-         <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mt-20 -mr-20 blur-2xl"></div>
-         <div className="absolute bottom-0 left-0 w-32 h-32 bg-black/10 rounded-full -mb-10 -ml-10 blur-xl"></div>
+      <div className={`w-full p-6 pb-12 rounded-b-[40px] bg-gradient-to-br ${currentTheme.gradient} shadow-2xl relative overflow-hidden`}>
+         <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mt-20 -mr-20 blur-3xl"></div>
          
          <div className="relative z-10">
-             <div className="flex justify-between items-start mb-6">
-                <span className="font-bold tracking-widest text-xs uppercase bg-white/20 px-3 py-1 rounded-full backdrop-blur-md">Il Forno Di Vito</span>
-                <button onClick={() => setLang(lang === 'es' ? 'en' : 'es')} className="bg-white/20 p-2 rounded-full hover:bg-white/30 transition"><Globe size={18}/></button>
-             </div>
-             
-             <h1 className="text-3xl font-bold leading-tight mb-2">{t.welcomeTitle} <br/> <span className="opacity-90 font-normal text-xl">{t.welcomeSub}</span></h1>
-             
-             {/* Status Bar */}
-             <div className="mt-6 flex items-center gap-3 text-sm font-medium bg-black/20 p-3 rounded-2xl w-max backdrop-blur-md border border-white/10">
-                <div className="flex -space-x-2">
-                    {[1,2,3].map(i => <div key={i} className="w-6 h-6 rounded-full bg-white/80 border-2 border-transparent"></div>)}
+             <div className="flex justify-between items-center mb-6">
+                <span className="font-bold tracking-widest text-[10px] uppercase bg-black/30 px-3 py-1 rounded-full backdrop-blur-md border border-white/10">Il Forno Di Vito</span>
+                <div className="flex gap-2">
+                   <button onClick={() => setShowThemeSelector(!showThemeSelector)} className="bg-black/20 p-2 rounded-full hover:bg-black/40 border border-white/10"><Palette size={18} /></button>
+                   <button onClick={() => setLang(lang === 'es' ? 'en' : 'es')} className="bg-black/20 p-2 rounded-full hover:bg-black/40 border border-white/10"><Globe size={18}/></button>
                 </div>
-                <span>{invitadosActivos} / {config.total_invitados} {t.status}</span>
+             </div>
+
+             {showThemeSelector && (
+               <div className="mb-6 bg-black/40 p-3 rounded-2xl backdrop-blur-md border border-white/10 animate-in fade-in slide-in-from-top-2">
+                 <p className="text-[10px] text-neutral-300 mb-2 font-bold uppercase tracking-wider">{t.customize}</p>
+                 <div className="flex gap-4 justify-center">
+                    {THEMES.map(theme => (
+                      <button key={theme.name} onClick={() => changeTheme(theme)} className={`w-10 h-10 rounded-full ${theme.color} border-2 ${currentTheme.name === theme.name ? 'border-white scale-110 shadow-[0_0_10px_white]' : 'border-transparent opacity-60'}`}></button>
+                    ))}
+                 </div>
+               </div>
+             )}
+             
+             <h1 className="text-3xl font-bold leading-tight mb-2 drop-shadow-md">{t.welcomeTitle} <br/> <span className="opacity-80 font-normal text-xl">{t.welcomeSub}</span></h1>
+             
+             <div className="mt-6 flex items-center gap-3 text-sm font-medium bg-black/30 p-3 rounded-2xl w-max backdrop-blur-md border border-white/10">
+                <div className="flex -space-x-2">
+                    {[1,2,3].map(i => <div key={i} className="w-6 h-6 rounded-full bg-neutral-800 border-2 border-neutral-700"></div>)}
+                </div>
+                <span className="text-neutral-300 text-xs">{invitadosActivos} {t.status}</span>
              </div>
          </div>
       </div>
 
       <div className="px-4 -mt-8 relative z-20 max-w-lg mx-auto">
-        {/* INPUT USUARIO (Material Card) */}
-        <div className="bg-white p-2 rounded-2xl shadow-lg border border-neutral-100 flex items-center gap-3 mb-6">
-             <div className={`p-3 rounded-xl bg-gradient-to-br ${themeGradient} text-white`}>
+        
+        {/* INPUT USUARIO */}
+        <div className={`bg-neutral-900 p-2 rounded-2xl shadow-xl border ${currentTheme.border} flex items-center gap-3 mb-6`}>
+             <div className={`p-3 rounded-xl bg-gradient-to-br ${currentTheme.gradient} text-white shadow-lg`}>
                  <User size={24} />
              </div>
-             <div className="flex-1">
-                 <label className="text-[10px] uppercase font-bold text-neutral-400 ml-1">{t.whoAreYou}</label>
+             <div className="flex-1 pr-2">
+                 <label className="text-[10px] uppercase font-bold text-neutral-500 ml-1">{t.whoAreYou}</label>
                  <input 
-                    type="text" 
-                    value={nombreInvitado} 
-                    onChange={e => setNombreInvitado(e.target.value)}
+                    type="text" value={nombreInvitado} onChange={e => handleNameChange(e.target.value)}
                     placeholder={t.namePlaceholder}
-                    className="w-full text-lg font-bold text-neutral-800 outline-none placeholder-neutral-300 bg-transparent"
+                    className="w-full text-lg font-bold text-white outline-none placeholder-neutral-600 bg-transparent"
                  />
              </div>
         </div>
 
-        {/* NOTIFICACION */}
         {mensaje && (
-          <div className={`fixed top-4 left-4 right-4 bg-neutral-900 text-white p-4 rounded-2xl shadow-2xl z-50 flex items-center justify-center animate-bounce`}>
+          <div className="fixed top-4 left-4 right-4 bg-white text-black p-4 rounded-2xl shadow-[0_0_30px_rgba(255,255,255,0.3)] z-50 flex items-center justify-center animate-bounce font-bold text-center">
             {mensaje} 🍕
           </div>
         )}
 
         {/* LISTA PIZZAS */}
-        <div className="space-y-5 pb-10">
-           {cargando ? <p className="text-center text-neutral-400 mt-10">{t.loading}</p> : pizzas.map(pizza => (
-               <div key={pizza.id} className="bg-white p-5 rounded-[32px] shadow-sm border border-neutral-100 hover:shadow-md transition-shadow relative overflow-hidden">
+        <div className="space-y-6 pb-10">
+           {cargando ? <p className="text-center text-neutral-600 mt-10 animate-pulse">{t.loading}</p> : pizzas.map(pizza => (
+               <div key={pizza.id} className="bg-neutral-900 p-5 rounded-[36px] border border-neutral-800 shadow-lg relative overflow-hidden group">
                    
-                   {/* Badge Cantidad */}
-                   {misPedidos[pizza.id] > 0 && (
-                       <div className={`absolute top-0 right-0 bg-gradient-to-bl ${themeGradient} text-white px-5 py-3 rounded-bl-3xl font-bold text-sm shadow-sm`}>
-                           x{misPedidos[pizza.id]}
-                       </div>
-                   )}
-
-                   <h2 className="text-2xl font-bold text-neutral-800 mb-1">{pizza.nombre}</h2>
-                   <p className="text-neutral-500 text-sm leading-relaxed mb-6 pr-10">{pizza.descripcion}</p>
-
-                   {/* Progress Section */}
-                   <div className="bg-neutral-50 p-4 rounded-2xl border border-neutral-100 mb-4">
-                       <div className="flex justify-between text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">
-                           <span>{pizza.faltanParaCompletar === pizza.targetPorciones ? t.newPizza : t.progress}</span>
-                           <span className={pizza.faltanParaCompletar === 0 ? "text-green-500" : ""}>
-                               {pizza.faltanParaCompletar > 0 ? `${t.missing} ${pizza.faltanParaCompletar}` : 'Completa!'}
-                           </span>
+                   {/* HEADER PIZZA */}
+                   <div className="flex justify-between items-start mb-2">
+                       <div>
+                           <h2 className="text-2xl font-bold text-white">{pizza.nombre}</h2>
+                           <p className="text-neutral-500 text-xs leading-relaxed max-w-[200px]">{pizza.descripcion}</p>
                        </div>
                        
-                       <div className="h-3 bg-neutral-200 rounded-full overflow-hidden flex">
-                           {[...Array(pizza.targetPorciones)].map((_, i) => (
-                               <div key={i} className={`flex-1 border-r border-white last:border-0 ${i < pizza.ocupadasActual ? `bg-gradient-to-r ${themeGradient}` : 'bg-transparent'}`}></div>
+                       {/* STATUS PERSONAL */}
+                       {(miHistorial[pizza.id]?.pendientes > 0 || miHistorial[pizza.id]?.comidos > 0) && (
+                           <div className="bg-neutral-800 rounded-2xl p-2 px-3 border border-white/5 text-right">
+                               {miHistorial[pizza.id]?.pendientes > 0 && (
+                                   <div className={`text-[10px] font-bold ${currentTheme.text} uppercase`}>
+                                       {t.waiting}: {miHistorial[pizza.id].pendientes}
+                                   </div>
+                               )}
+                               {miHistorial[pizza.id]?.comidos > 0 && (
+                                   <div className="text-[10px] text-neutral-500 font-bold uppercase">
+                                       {t.ate}: {miHistorial[pizza.id].comidos}
+                                   </div>
+                               )}
+                           </div>
+                       )}
+                   </div>
+
+                   {/* BARRA DE PROGRESO */}
+                   <div className="bg-black/40 p-3 rounded-2xl border border-white/5 mb-5 mt-4">
+                       <div className="flex justify-between text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-2">
+                           <span>{pizza.faltanParaCompletar === pizza.target ? t.newPizza : t.progress}</span>
+                           <span className={pizza.faltanParaCompletar === 0 ? currentTheme.text : "text-neutral-400"}>
+                               {pizza.faltanParaCompletar > 0 ? `${t.missing} ${pizza.faltanParaCompletar}` : t.ready}
+                           </span>
+                       </div>
+                       <div className="h-2 bg-neutral-800 rounded-full overflow-hidden flex border border-white/5">
+                           {[...Array(pizza.target)].map((_, i) => (
+                               <div key={i} className={`flex-1 border-r border-black/50 last:border-0 ${i < pizza.ocupadasActual ? `bg-gradient-to-r ${currentTheme.gradient}` : 'bg-transparent'}`}></div>
                            ))}
                        </div>
                    </div>
 
-                   {/* Action Button */}
-                   <button 
-                       onClick={() => pedirPorcion(pizza.id, pizza.nombre)}
-                       className={`w-full py-4 rounded-2xl font-bold text-lg text-white shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2 bg-gradient-to-r ${themeGradient}`}
-                   >
-                       <Plus size={24} strokeWidth={3} /> {t.buttonOrder}
-                   </button>
+                   {/* CONTROLES */}
+                   <div className="flex gap-3">
+                       {miHistorial[pizza.id]?.pendientes > 0 && (
+                           <button 
+                               onClick={() => modificarPedido(pizza.id, pizza.nombre, 'restar')}
+                               className="w-16 h-14 rounded-2xl bg-neutral-800 text-neutral-400 flex items-center justify-center border border-neutral-700 active:scale-95 transition"
+                           >
+                               <Minus size={20} />
+                           </button>
+                       )}
+                       
+                       <button 
+                           onClick={() => modificarPedido(pizza.id, pizza.nombre, 'sumar')}
+                           className={`flex-1 h-14 rounded-2xl font-bold text-lg text-white shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 bg-gradient-to-r ${currentTheme.gradient} hover:brightness-110`}
+                       >
+                           <Plus size={24} strokeWidth={3} /> {t.buttonOrder}
+                       </button>
+                   </div>
                </div>
            ))}
         </div>
