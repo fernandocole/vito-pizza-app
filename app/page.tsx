@@ -26,7 +26,6 @@ const THEMES = [
 // --- DICCIONARIO DE UI ---
 const dictionary = {
   es: {
-    // App Base
     welcomeTitle: "Gracias por venir hoy,",
     welcomeSub: "será un placer cocinar para vos. 🫠",
     whoAreYou: "Tu nombre?",
@@ -83,8 +82,6 @@ const dictionary = {
     emptyOrdered: "¿Estás a dieta? Aún no pediste nada... 🤨",
     emptyNew: "¡Ya probaste todo! Eres un profesional de la pizza 🍕",
     emptyDefault: "No hay pizzas por aquí... ¿Fue magia? 🎩",
-    
-    // Onboarding
     onb_wel_title: "¡Bienvenido! 👋",
     onb_wel_desc: "Tu compañero digital para disfrutar de la mejor pizza casera. Organiza, pide y califica en tiempo real.",
     onb_inst_title: "Installa la App",
@@ -94,7 +91,6 @@ const dictionary = {
     onb_enjoy_desc: "Elige tu gusto favorito, pide tus porciones y espera a que el horno haga su magia.",
     onb_btn_next: "Siguiente",
     onb_btn_start: "Comenzar",
-    // Detailed Explanations
     feat_prog_title: "Progreso de la Pizza",
     feat_prog_desc: "Esta barra se llena a medida que todos piden. Cuando se completa, ¡la pizza va al horno!",
     feat_oven_title: "Estado del Horno",
@@ -159,8 +155,6 @@ const dictionary = {
     emptyOrdered: "On a diet? You haven't ordered anything... 🤨",
     emptyNew: "You tried everything! A true pro 🍕",
     emptyDefault: "No pizzas here... Magic? 🎩",
-    
-    // Onboarding
     onb_wel_title: "Welcome! 👋",
     onb_wel_desc: "Your digital companion for the best homemade pizza. Organize, order, and rate in real-time.",
     onb_inst_title: "Install the App",
@@ -234,8 +228,6 @@ const dictionary = {
     emptyOrdered: "A dieta? Niente ordini... 🤨",
     emptyNew: "Hai provato tutto! 🍕",
     emptyDefault: "Nessuna pizza... Magia? 🎩",
-
-    // Onboarding
     onb_wel_title: "Benvenuto! 👋",
     onb_wel_desc: "Il tuo compagno digitale per la migliore pizza fatta in casa. Organizza, ordina e vota in tempo reale.",
     onb_inst_title: "Installa l'App",
@@ -279,8 +271,12 @@ export default function VitoPizzaApp() {
   const [filter, setFilter] = useState<'all' | 'top' | 'to_rate' | 'ordered' | 'new' | 'stock'>('all');
   
   const [isCompact, setIsCompact] = useState(false);
-  const [textSize, setTextSize] = useState<'xs' | 'sm' | 'base'>('xs'); 
   
+  // ZOOM LEVELS - 0 to 4
+  const [zoomLevel, setZoomLevel] = useState(0);
+  const DESC_SIZES = ['text-xs', 'text-sm', 'text-base', 'text-lg', 'text-xl'];
+  const STOCK_SIZES = ['text-[10px]', 'text-xs', 'text-sm', 'text-base', 'text-lg'];
+
   // DEFAULT SETTINGS: LIGHT & TURQUESA
   const [isDarkMode, setIsDarkMode] = useState(false); 
   const [currentTheme, setCurrentTheme] = useState(THEMES[1]); // Turquesa default
@@ -314,7 +310,6 @@ export default function VitoPizzaApp() {
       card: "bg-neutral-900 border-neutral-800",
       input: "bg-transparent text-white placeholder-neutral-600",
       inputContainer: "bg-neutral-900 border-neutral-800",
-      buttonSec: "bg-black/20 text-white hover:bg-black/40 border-white/10",
       progressBg: "bg-black/40 border-white/5",
       progressTrack: "bg-neutral-800 border-black/50",
       badge: "bg-white/10 text-white border border-white/10",
@@ -328,7 +323,6 @@ export default function VitoPizzaApp() {
       card: "bg-white border-gray-200 shadow-md",
       input: "bg-transparent text-gray-900 placeholder-gray-400",
       inputContainer: "bg-white border-gray-200 shadow-sm",
-      buttonSec: "bg-gray-200 text-gray-600 hover:text-black border-gray-300",
       progressBg: "bg-gray-100 border-gray-200",
       progressTrack: "bg-gray-300 border-white/50",
       badge: "bg-black/5 text-gray-700 border border-black/5",
@@ -337,23 +331,21 @@ export default function VitoPizzaApp() {
       bar: "bg-white/50 backdrop-blur-md border-gray-300 shadow-lg text-gray-900 border"
   };
 
-  // HELPER PARA ESTILOS DE BOTONES INDIVIDUALES (Soluciona el problema de colores mezclados)
-  const getButtonStyle = (isActive: boolean) => {
-      let classes = "p-2 rounded-full transition-all duration-300 flex items-center justify-center ";
+  // --- BOTONES INDEPENDIENTES CON ESTADOS CLAROS ---
+  const getBtnClass = (isActive: boolean) => {
+      const common = "p-2 rounded-full transition-all duration-300 flex items-center justify-center ";
+      
+      // MODO OSCURO
       if (isDarkMode) {
-          if (isActive) {
-              classes += "bg-white/20 text-white shadow-sm"; // Activo en modo oscuro
-          } else {
-              classes += "bg-transparent text-white/60 hover:text-white hover:bg-white/10"; // Inactivo en modo oscuro
-          }
-      } else {
-          if (isActive) {
-              classes += "bg-black/5 text-black shadow-inner"; // Activo en modo claro (Gris muy suave)
-          } else {
-              classes += "bg-transparent text-neutral-500 hover:text-black hover:bg-black/5"; // Inactivo en modo claro
-          }
+          if (isActive) return common + "bg-white/20 text-white shadow-sm"; // Activo: Fondo blanco traslúcido
+          return common + "bg-transparent text-white/60 hover:text-white hover:bg-white/10"; // Inactivo: Transparente
       }
-      return classes;
+      
+      // MODO CLARO
+      else {
+          if (isActive) return common + "bg-black/10 text-black shadow-inner"; // Activo: Fondo negro muy suave
+          return common + "bg-transparent text-neutral-500 hover:text-black hover:bg-black/5"; // Inactivo: Transparente
+      }
   };
 
   const [config, setConfig] = useState({ porciones_por_pizza: 4, total_invitados: 10, modo_estricto: false });
@@ -467,7 +459,12 @@ export default function VitoPizzaApp() {
   const toggleDarkMode = () => { const n = !isDarkMode; setIsDarkMode(n); localStorage.setItem('vito-dark-mode', String(n)); };
   const toggleOrden = () => { const n = orden === 'estado' ? 'nombre' : (orden === 'nombre' ? 'ranking' : 'estado'); setOrden(n); localStorage.setItem('vito-orden', n); };
   const toggleCompact = () => { const n = !isCompact; setIsCompact(n); localStorage.setItem('vito-compact', String(n)); };
-  const cycleTextSize = () => { if (textSize === 'xs') setTextSize('sm'); else if (textSize === 'sm') setTextSize('base'); else setTextSize('xs'); };
+  
+  // ZOOM CYCLE LOGIC (5 LEVELS)
+  const cycleTextSize = () => { 
+      setZoomLevel(prev => (prev + 1) % 5);
+  };
+  
   const changeFilter = (f: any) => { setFilter(f); localStorage.setItem('vito-filter', f); };
   const verifyAccess = (i: string, c: string) => { if (!c || c === '' || i === c) { setAccessGranted(true); if(c !== '') localStorage.setItem('vito-guest-pass-val', i); } else { setAccessGranted(false); } };
   const handleNameChange = (val: string) => { setNombreInvitado(val); localStorage.setItem('vito-guest-name', val); const user = invitadosLista.find(u => u.nombre.toLowerCase() === val.toLowerCase()); if (user && user.bloqueado) { setUsuarioBloqueado(true); setMotivoBloqueo(user.motivo_bloqueo || ''); } else { setUsuarioBloqueado(false); setMotivoBloqueo(''); } };
@@ -710,7 +707,6 @@ export default function VitoPizzaApp() {
                       <div className="flex flex-col items-center gap-4 animate-in slide-in-from-right-10 duration-500 text-left w-full">
                           <h1 className="text-3xl font-bold text-neutral-800 text-center w-full mb-2">{t.onb_how_title}</h1>
                           
-                          {/* Visual Block: Progress Bar */}
                           <div className="bg-white p-3 rounded-2xl flex items-center gap-4 w-full border border-neutral-100 shadow-sm">
                               <div className="bg-teal-50 p-3 rounded-xl text-teal-600"><LayoutTemplate size={24}/></div>
                               <div className="flex-1">
@@ -720,7 +716,6 @@ export default function VitoPizzaApp() {
                               </div>
                           </div>
 
-                          {/* Visual Block: Oven Status */}
                           <div className="bg-white p-3 rounded-2xl flex items-center gap-4 w-full border border-neutral-100 shadow-sm">
                               <div className="bg-orange-50 p-3 rounded-xl text-orange-600"><Flame size={24}/></div>
                               <div className="flex-1">
@@ -730,7 +725,6 @@ export default function VitoPizzaApp() {
                               </div>
                           </div>
 
-                          {/* Visual Block: Controls */}
                           <div className="bg-white p-3 rounded-2xl flex items-center gap-4 w-full border border-neutral-100 shadow-sm">
                               <div className="bg-purple-50 p-3 rounded-xl text-purple-600"><Palette size={24}/></div>
                               <div className="flex-1">
@@ -781,25 +775,61 @@ export default function VitoPizzaApp() {
       {/* HEADER FLOTANTE BOTONES */}
       <div className="fixed top-4 left-4 right-4 z-50 flex items-center justify-between pointer-events-none">
           <div className={`p-2 rounded-full border shadow-lg flex gap-2 pointer-events-auto ${base.bar}`}>
-              <button onClick={toggleNotificaciones} className={`p-2 rounded-full hover:bg-white/20 transition ${notifEnabled ? (isDarkMode ? 'bg-white/20 text-white' : 'bg-black/10 text-black') : 'text-current opacity-70 hover:opacity-100'}`}>{notifEnabled ? <Bell size={18} /> : <BellOff size={18} />}</button>
-              <button onClick={rotarIdioma} className="w-9 h-9 rounded-full hover:bg-white/20 text-xs font-bold flex items-center justify-center border border-white/20">{lang.toUpperCase()}</button>
-              <div className="flex items-center justify-center gap-1 p-2 rounded-full hover:bg-white/20 text-xs font-bold transition-all animate-pulse">
+              {/* NOTIFICACIONES */}
+              <button onClick={toggleNotificaciones} className={getBtnClass(notifEnabled)}>
+                  {notifEnabled ? <Bell size={18} /> : <BellOff size={18} />}
+              </button>
+              
+              {/* IDIOMA (Simple button) */}
+              <button onClick={rotarIdioma} className={getBtnClass(false) + " font-bold text-xs border border-current/20"}>
+                  {lang.toUpperCase()}
+              </button>
+
+              {/* ONLINE USERS */}
+              <div className="flex items-center justify-center gap-1 p-2 rounded-full text-xs font-bold transition-all animate-pulse">
                   <Users size={14} className={isDarkMode ? "text-green-400" : "text-green-700"} />
                   <span className={isDarkMode ? 'text-white' : 'text-black'}>{onlineUsers}</span>
               </div>
           </div>
+
           <div className={`p-2 rounded-full border shadow-lg flex gap-2 pointer-events-auto ${base.bar}`}>
+              {/* INSTALAR APP */}
               {isInstallable && (
-                  <button onClick={handleInstallClick} className="p-2 rounded-full hover:bg-white/20 flex items-center justify-center animate-bounce">
+                  <button onClick={handleInstallClick} className={getBtnClass(false) + " animate-bounce"}>
                       <Download size={18} />
                   </button>
               )}
-              <button onClick={cycleTextSize} className="p-2 rounded-full hover:bg-white/20 flex items-center justify-center"><Type size={18} /></button>
-              <button onClick={toggleOrden} className="p-2 rounded-full hover:bg-white/20 flex items-center justify-center">{orden === 'estado' ? <ArrowUpNarrowWide size={18} /> : (orden === 'nombre' ? <ArrowDownAZ size={18} /> : <TrendingUp size={18}/>)}</button>
-              <button onClick={toggleCompact} className={`p-2 rounded-full hover:bg-white/20 transition ${!isCompact ? (isDarkMode ? 'bg-white/20 text-white' : 'bg-black/10 text-black') : 'text-current opacity-70 hover:opacity-100'}`}><Maximize2 size={18}/></button>
-              <button onClick={toggleDarkMode} className="p-2 rounded-full hover:bg-white/20">{isDarkMode ? <Sun size={18} /> : <Moon size={18} />}</button>
-              <button onClick={() => setShowThemeSelector(!showThemeSelector)} className="p-2 rounded-full hover:bg-white/20"><Palette size={18} /></button>
-              <Link href="/admin" className="p-2 rounded-full hover:bg-white/20"><Lock size={18} /></Link>
+              
+              {/* ZOOM TEXTO */}
+              <button onClick={cycleTextSize} className={getBtnClass(false)}>
+                  <Type size={18} />
+              </button>
+              
+              {/* ORDENAR */}
+              <button onClick={toggleOrden} className={getBtnClass(false)}>
+                  {orden === 'estado' ? <ArrowUpNarrowWide size={18} /> : (orden === 'nombre' ? <ArrowDownAZ size={18} /> : <TrendingUp size={18}/>)}
+              </button>
+
+              {/* EXPANDIR / CONTRAER (Activo si !isCompact) */}
+              <button onClick={toggleCompact} className={getBtnClass(!isCompact)}>
+                  <Maximize2 size={18}/>
+              </button>
+
+              {/* MODO OSCURO */}
+              <button onClick={toggleDarkMode} className={getBtnClass(false)}>
+                  {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+              </button>
+              
+              {/* TEMA */}
+              <button onClick={() => setShowThemeSelector(!showThemeSelector)} className={getBtnClass(false)}>
+                  <Palette size={18} />
+              </button>
+              
+              {/* ADMIN */}
+              <Link href="/admin" className={getBtnClass(false)}>
+                  <Lock size={18} />
+              </Link>
+              
               {showThemeSelector && (<div className="absolute top-14 right-0 bg-black/90 backdrop-blur p-2 rounded-xl flex gap-2 animate-in fade-in border border-white/20 shadow-xl">{THEMES.map(theme => (<button key={theme.name} onClick={() => changeTheme(theme)} className={`w-6 h-6 rounded-full ${theme.color} border-2 border-white ring-2 ring-transparent hover:scale-110 transition-transform`}></button>))}</div>)}
           </div>
       </div>
@@ -849,7 +879,7 @@ export default function VitoPizzaApp() {
                      <h2 className={`font-bold ${isCompact ? 'text-lg' : 'text-2xl'} ${pizza.stockRestante === 0 ? 'text-gray-400 dark:text-neutral-600' : base.text}`}>
                          {pizza.displayName}
                      </h2>
-                     <div className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs ${base.badge}`}><Star size={12} className={pizza.countRating > 0 ? "text-yellow-500" : "text-gray-500 opacity-50"} fill="currentColor" /><span className={`font-bold ${pizza.countRating > 0 ? '' : 'text-gray-500 opacity-50'}`}>{pizza.avgRating || '0.0'}</span><span className={`text-[10px] ${pizza.countRating > 0 ? 'opacity-60' : 'text-gray-500 opacity-40'}`}>({pizza.countRating || 0})</span>{miHistorial[pizza.id]?.comidos > 0 && !misValoraciones.includes(pizza.id) && (<button onClick={() => openRating(pizza)} className="ml-1 bg-yellow-500 text-black px-1.5 py-0.5 rounded text-[9px] font-bold animate-pulse hover:scale-105 transition-transform">{t.rateBtn}</button>)}</div>{pizza.cocinando && <span className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">{t.inOven}</span>}</div>{!isCompact && (<p className={`leading-relaxed max-w-[200px] ${base.subtext} ${textSize === 'xs' ? 'text-xs' : (textSize === 'sm' ? 'text-sm' : 'text-base')}`}>{pizza.displayDesc}</p>)}<p className={`font-mono mt-1 ${pizza.stockRestante === 0 ? 'text-red-500 font-bold' : base.subtext} ${textSize === 'xs' ? 'text-[10px]' : (textSize === 'sm' ? 'text-xs' : 'text-sm')}`}>{pizza.stockRestante === 0 ? t.soldOut : `${t.ingredientsFor} ${pizza.stockRestante} ${t.portionsMore}`}</p></div></div>
+                     <div className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs ${base.badge}`}><Star size={12} className={pizza.countRating > 0 ? "text-yellow-500" : "text-gray-500 opacity-50"} fill="currentColor" /><span className={`font-bold ${pizza.countRating > 0 ? '' : 'text-gray-500 opacity-50'}`}>{pizza.avgRating || '0.0'}</span><span className={`text-[10px] ${pizza.countRating > 0 ? 'opacity-60' : 'text-gray-500 opacity-40'}`}>({pizza.countRating || 0})</span>{miHistorial[pizza.id]?.comidos > 0 && !misValoraciones.includes(pizza.id) && (<button onClick={() => openRating(pizza)} className="ml-1 bg-yellow-500 text-black px-1.5 py-0.5 rounded text-[9px] font-bold animate-pulse hover:scale-105 transition-transform">{t.rateBtn}</button>)}</div>{pizza.cocinando && <span className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">{t.inOven}</span>}</div>{!isCompact && (<p className={`leading-relaxed max-w-[200px] ${base.subtext} ${DESC_SIZES[zoomLevel]}`}>{pizza.displayDesc}</p>)}<p className={`font-mono mt-1 ${pizza.stockRestante === 0 ? 'text-red-500 font-bold' : base.subtext} ${STOCK_SIZES[zoomLevel]}`}>{pizza.stockRestante === 0 ? t.soldOut : `${t.ingredientsFor} ${pizza.stockRestante} ${t.portionsMore}`}</p></div></div>
                    <div className={`rounded-2xl border ${isCompact ? 'p-2 mb-2 mt-1' : 'p-3 mb-5 mt-4'} ${base.progressBg}`}><div className={`flex justify-between text-[10px] font-bold uppercase tracking-wider mb-2 ${base.subtext}`}><span>{pizza.faltanParaCompletar === pizza.target ? t.newPizza : t.progress}</span><span className={pizza.faltanParaCompletar === 0 ? currentTheme.text : base.subtext}>{pizza.faltanParaCompletar > 0 ? `${t.missing} ${pizza.faltanParaCompletar}` : t.completed}</span></div><div className={`rounded-full overflow-hidden flex border ${isCompact ? 'h-1.5' : 'h-2'} ${base.progressTrack}`}>{[...Array(pizza.target)].map((_, i) => (<div key={i} className={`flex-1 border-r last:border-0 ${isDarkMode ? 'border-black/50' : 'border-white/50'} ${i < pizza.ocupadasActual ? `bg-gradient-to-r ${currentTheme.name === 'Carbone' ? 'from-white to-neutral-300' : currentTheme.gradient}` : 'bg-transparent'}`}></div>))}</div></div>
                    <div className="flex gap-3">{miHistorial[pizza.id]?.pendientes > 0 && (<button onClick={() => modificarPedido(pizza, 'restar')} className={`rounded-2xl flex items-center justify-center border active:scale-95 transition ${base.buttonSec} ${isCompact ? 'w-12 h-10' : 'w-16 h-14'}`}><Minus size={isCompact ? 16 : 20} /></button>)}{pizza.stockRestante > 0 ? (<button onClick={() => modificarPedido(pizza, 'sumar')} className={`flex-1 rounded-2xl font-bold text-white shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 bg-gradient-to-r ${currentTheme.gradient} hover:brightness-110 ${isCompact ? 'h-10 text-base' : 'h-14 text-lg'}`}><Plus size={isCompact ? 18 : 24} strokeWidth={3} /> {t.buttonOrder}</button>) : (<div className={`flex-1 rounded-2xl font-bold flex items-center justify-center border ${isDarkMode ? 'text-neutral-500 bg-neutral-900 border-neutral-800' : 'text-gray-400 bg-gray-100 border-gray-200'} ${isCompact ? 'h-10 text-xs' : 'h-14 text-sm'}`}>{t.soldOut}</div>)}</div>
                </div>
