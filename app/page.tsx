@@ -340,17 +340,18 @@ export default function VitoPizzaApp() {
   const getBtnClass = (isActive: boolean) => {
       // BASE: Fondo Transparente Siempre
       const common = "p-2 rounded-full transition-all duration-300 flex items-center justify-center bg-transparent ";
-      
+      const scale = isActive ? "scale-110" : "hover:scale-105";
+
       // MODO OSCURO
       if (isDarkMode) {
-          if (isActive) return common + "text-white scale-110"; // Activo: Blanco brillante, un poco más grande
-          return common + "text-neutral-500 hover:text-white"; // Inactivo: Gris medio
+          // Activo: Blanco brillante. Inactivo: Gris muy claro (200)
+          return `${common} ${scale} ${isActive ? 'text-white' : 'text-neutral-200 hover:text-white'}`; 
       }
       
       // MODO CLARO
       else {
-          if (isActive) return common + "text-black scale-110"; // Activo: Negro total, un poco más grande
-          return common + "text-neutral-500 hover:text-black"; // Inactivo: Gris medio
+          // Activo: Negro total. Inactivo: Gris oscuro (800)
+          return `${common} ${scale} ${isActive ? 'text-black' : 'text-neutral-800 hover:text-black'}`; 
       }
   };
 
@@ -713,6 +714,7 @@ export default function VitoPizzaApp() {
                       <div className="flex flex-col items-center gap-4 animate-in slide-in-from-right-10 duration-500 text-left w-full">
                           <h1 className="text-3xl font-bold text-neutral-800 text-center w-full mb-2">{t.onb_how_title}</h1>
                           
+                          {/* Visual Block: Progress Bar */}
                           <div className="bg-white p-3 rounded-2xl flex items-center gap-4 w-full border border-neutral-100 shadow-sm">
                               <div className="bg-teal-50 p-3 rounded-xl text-teal-600"><LayoutTemplate size={24}/></div>
                               <div className="flex-1">
@@ -722,6 +724,7 @@ export default function VitoPizzaApp() {
                               </div>
                           </div>
 
+                          {/* Visual Block: Oven Status */}
                           <div className="bg-white p-3 rounded-2xl flex items-center gap-4 w-full border border-neutral-100 shadow-sm">
                               <div className="bg-orange-50 p-3 rounded-xl text-orange-600"><Flame size={24}/></div>
                               <div className="flex-1">
@@ -731,6 +734,7 @@ export default function VitoPizzaApp() {
                               </div>
                           </div>
 
+                          {/* Visual Block: Controls */}
                           <div className="bg-white p-3 rounded-2xl flex items-center gap-4 w-full border border-neutral-100 shadow-sm">
                               <div className="bg-purple-50 p-3 rounded-xl text-purple-600"><Palette size={24}/></div>
                               <div className="flex-1">
@@ -818,7 +822,7 @@ export default function VitoPizzaApp() {
 
               {/* EXPANDIR / CONTRAER (Activo si !isCompact) */}
               <button onClick={toggleCompact} className={getBtnClass(!isCompact)}>
-                  {!isCompact ? <Minimize2 size={18}/> : <Maximize2 size={18}/>}
+                  {!isCompact ? <Maximize2 size={18}/> : <Minimize2 size={18}/>}
               </button>
 
               {/* MODO OSCURO */}
