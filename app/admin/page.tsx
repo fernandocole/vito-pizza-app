@@ -4,9 +4,9 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { 
   Pizza, Settings, Plus, Trash2, ChefHat, Eye, EyeOff, CheckCircle, 
-  Clock, Flame, LogOut, List, User, Bell, ArrowRight, ArrowDownAZ, // Agregado ArrowRight
+  Clock, Flame, LogOut, List, User, Bell, ArrowRight, ArrowDownAZ, 
   ArrowUpNarrowWide, Maximize2, Minimize2, Users, Ban, RotateCcw, 
-  KeyRound, LayoutDashboard, XCircle, Sun, Moon, BarChart3, Star, MessageSquare 
+  KeyRound, LayoutDashboard, XCircle, Sun, Moon, BarChart3, Star, MessageSquare, Palette 
 } from 'lucide-react';
 
 const supabase = createClient(
@@ -43,6 +43,7 @@ export default function AdminPage() {
   const [confirmPass, setConfirmPass] = useState('');
   
   const [currentTheme, setCurrentTheme] = useState(THEMES[0]);
+  const [showThemeSelector, setShowThemeSelector] = useState(false);
   const [orden, setOrden] = useState<'estado' | 'nombre'>('estado');
   const [isCompact, setIsCompact] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(true);
@@ -92,7 +93,7 @@ export default function AdminPage() {
   const toggleDarkMode = () => { setIsDarkMode(!isDarkMode); localStorage.setItem('vito-dark-mode', String(!isDarkMode)); };
   const toggleOrden = () => { const n = orden === 'estado' ? 'nombre' : 'estado'; setOrden(n); localStorage.setItem('vito-orden', n); };
   const toggleCompact = () => { setIsCompact(!isCompact); localStorage.setItem('vito-compact', String(!isCompact)); };
-  const selectTheme = (t: any) => { setCurrentTheme(t); localStorage.setItem('vito-theme', t.name); window.dispatchEvent(new Event('storage')); };
+  const selectTheme = (t: any) => { setCurrentTheme(t); localStorage.setItem('vito-theme', t.name); setShowThemeSelector(false); window.dispatchEvent(new Event('storage')); };
 
   const ingresar = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -187,7 +188,7 @@ export default function AdminPage() {
   if (!autenticado) return (
     <div className={`min-h-screen flex items-center justify-center p-4 ${base.bg}`}>
       <div className={`w-full max-w-md p-8 rounded-3xl border shadow-xl ${base.card}`}>
-        <div className="flex justify-center mb-6"><img src="/logo.png" alt="Logo" className="h-48 w-auto object-contain" /></div>
+        <div className="flex justify-center mb-6"><img src="/logo.png" alt="Logo" className="h-48 w-auto object-contain drop-shadow-xl" /></div>
         <form onSubmit={ingresar} className="flex flex-col gap-4">
             <input type="password" value={password} onChange={e => setPassword(e.target.value)} className={`w-full p-4 rounded-xl border outline-none ${base.input}`} placeholder="Contraseña..." autoFocus />
             <button type="submit" className={`w-full ${currentTheme.color} text-white font-bold py-4 rounded-xl hover:opacity-90 transition`}>ENTRAR</button>
@@ -199,16 +200,39 @@ export default function AdminPage() {
 
   return (
     <div className={`min-h-screen font-sans pb-24 w-full ${base.bg}`}>
-      <header className={`sticky top-0 z-50 backdrop-blur-md border-b px-4 py-3 flex flex-col gap-3 shadow-sm ${base.header}`}>
-        <div className="flex justify-between items-center">
-            <div className="flex items-center gap-3"><img src="/logo.png" alt="Logo" className="h-10 w-auto" /><div><h1 className={`font-bold text-lg leading-none ${currentTheme.text}`}>Il Forno Admin</h1><p className={`text-[10px] ${base.subtext}`}>{invitadosCount} / {config.total_invitados} comensales</p></div></div>
+      
+      {/* HEADER DISEÑO MODIFICADO */}
+      <header className={`sticky top-0 z-50 backdrop-blur-md border-b px-4 py-3 flex flex-col gap-2 shadow-sm ${base.header}`}>
+        <div className="flex justify-between items-start">
+            <img src="/logo.png" alt="Logo" className="h-20 w-auto object-contain" />
             <button onClick={() => window.location.href='/'} className={`p-2 rounded-full ${base.buttonIcon}`}><LogOut size={18} /></button>
         </div>
+
+        {/* BARRA DE HERRAMIENTAS (Recuadro) */}
         <div className={`flex justify-between items-center p-2 rounded-xl border ${base.metric}`}>
-            <div className="flex gap-2">{THEMES.map(t => (<button key={t.name} onClick={() => selectTheme(t)} className={`w-5 h-5 rounded-full ${t.color} ${currentTheme.name === t.name ? 'ring-2 ring-offset-2 ring-offset-black scale-110' : 'opacity-40'}`}></button>))}</div>
-            <div className="flex gap-2">
+            {/* Título y Comensales DENTRO del recuadro */}
+            <div className="flex flex-col px-2">
+                <span className={`font-bold leading-none ${currentTheme.text}`}>Admin</span>
+                <span className={`text-[10px] opacity-70 ${base.subtext}`}>{invitadosCount} / {config.total_invitados} comensales</span>
+            </div>
+
+            <div className="flex gap-2 relative">
+                {/* BOTON PALETA (MOVIDO A LA DERECHA) */}
+                <button onClick={() => setShowThemeSelector(!showThemeSelector)} className={`p-2 rounded-full border ${base.buttonSec}`}><Palette size={16}/></button>
+                {showThemeSelector && (
+                    <div className="absolute top-12 right-0 bg-black/90 backdrop-blur p-2 rounded-xl flex gap-2 animate-in fade-in z-50 border border-white/10 shadow-xl">
+                        {THEMES.map(t => (<button key={t.name} onClick={() => selectTheme(t)} className={`w-6 h-6 rounded-full ${t.color} border-2 border-white ring-2 ring-transparent hover:scale-110 transition-transform`}></button>))}
+                    </div>
+                )}
+                
                 <button onClick={toggleDarkMode} className={`p-2 rounded-full border ${base.buttonSec}`}>{isDarkMode ? <Sun size={16}/> : <Moon size={16}/>}</button>
-                {view === 'cocina' && (<><button onClick={toggleOrden} className={`p-2 rounded-full border flex items-center gap-1 ${base.buttonSec}`}>{orden === 'estado' ? <ArrowUpNarrowWide size={16}/> : <ArrowDownAZ size={16}/>}</button><button onClick={toggleCompact} className={`p-2 rounded-full border flex items-center gap-1 ${base.buttonSec}`}>{isCompact ? <Maximize2 size={16}/> : <Minimize2 size={16}/>}</button></>)}
+                
+                {view === 'cocina' && (
+                    <>
+                    <button onClick={toggleOrden} className={`p-2 rounded-full border flex items-center gap-1 ${base.buttonSec}`}>{orden === 'estado' ? <ArrowUpNarrowWide size={16}/> : <ArrowDownAZ size={16}/>}</button>
+                    <button onClick={toggleCompact} className={`p-2 rounded-full border flex items-center gap-1 ${base.buttonSec}`}>{isCompact ? <Maximize2 size={16}/> : <Minimize2 size={16}/>}</button>
+                    </>
+                )}
             </div>
         </div>
       </header>
@@ -292,7 +316,7 @@ export default function AdminPage() {
         )}
       </main>
 
-      <nav className={`fixed bottom-0 w-full backdrop-blur-md border-t flex justify-around p-4 pb-8 z-50 ${base.header}`}>
+      <nav className={`fixed bottom-0 w-full backdrop-blur-md border-t flex justify-around p-4 pb-2 z-50 ${base.header}`}>
           <button onClick={() => setView('cocina')} className={`flex flex-col items-center gap-1 ${view === 'cocina' ? currentTheme.text : base.subtext}`}><LayoutDashboard size={24} /><span className="text-[9px] uppercase font-bold">Cocina</span></button>
           <button onClick={() => setView('pedidos')} className={`flex flex-col items-center gap-1 ${view === 'pedidos' ? currentTheme.text : base.subtext}`}><List size={24} /><span className="text-[9px] uppercase font-bold">Pedidos</span></button>
           <button onClick={() => setView('menu')} className={`flex flex-col items-center gap-1 ${view === 'menu' ? currentTheme.text : base.subtext}`}><ChefHat size={24} /><span className="text-[9px] uppercase font-bold">Menú</span></button>

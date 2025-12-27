@@ -5,7 +5,7 @@ import {
   Plus, Minus, User, Palette, Lock, PartyPopper, Bell, BellOff, 
   ArrowDownAZ, ArrowUpNarrowWide, Maximize2, Minimize2, AlertCircle, 
   KeyRound, ArrowRight, Sun, Moon, Star, X, Filter, TrendingUp, 
-  CheckCircle, Clock, Package // Agregado Package
+  CheckCircle, Clock, Package 
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -66,7 +66,7 @@ const dictionary = {
     fRate: "Por calificar",
     fOrdered: "Pedidas",
     fNew: "Por Probar",
-    fStock: "Con Stock", // Nuevo
+    fStock: "Con Stock",
     sortRank: "Ranking"
   },
   en: {
@@ -185,7 +185,6 @@ export default function VitoPizzaApp() {
   const [mensaje, setMensaje] = useState<MensajeTipo | null>(null);
   const [notifEnabled, setNotifEnabled] = useState(false);
   const [orden, setOrden] = useState<'estado' | 'nombre' | 'ranking'>('estado');
-  // NUEVO: Agregado 'stock' al tipo de filtro
   const [filter, setFilter] = useState<'all' | 'top' | 'to_rate' | 'ordered' | 'new' | 'stock'>('all');
   
   const [isCompact, setIsCompact] = useState(false);
@@ -414,7 +413,7 @@ export default function VitoPizzaApp() {
               if (filter === 'to_rate') return miHistorial[p.id]?.comidos > 0 && !misValoraciones.includes(p.id);
               if (filter === 'ordered') return (miHistorial[p.id]?.pendientes > 0 || miHistorial[p.id]?.comidos > 0);
               if (filter === 'new') return (!miHistorial[p.id]?.pendientes && !miHistorial[p.id]?.comidos);
-              if (filter === 'stock') return p.stockRestante > 0; // NUEVO FILTRO
+              if (filter === 'stock') return p.stockRestante > 0;
               return true;
           });
       }
@@ -498,7 +497,7 @@ export default function VitoPizzaApp() {
       return (
         <div className={`min-h-screen flex items-center justify-center p-4 font-sans ${base.bg}`}>
             <div className={`w-full max-w-md p-8 rounded-3xl border shadow-2xl text-center ${base.card}`}>
-                <div className="flex justify-center mb-6"><img src="/logo.png" alt="Logo" className="h-24 w-auto object-contain" /></div>
+                <div className="flex justify-center mb-2"><img src="/logo.png" alt="Logo" className="h-48 w-auto object-contain" /></div>
                 <h2 className={`text-xl font-bold mb-4 ${base.text}`}>{t.enterPass}</h2>
                 <div className="flex gap-2">
                     <input type="password" value={guestPassInput} onChange={e => setGuestPassInput(e.target.value)} className={`w-full p-4 rounded-xl border outline-none text-center text-lg tracking-widest ${base.inputContainer} ${base.text}`} placeholder="****" />
