@@ -6,7 +6,7 @@ import {
   ArrowDownAZ, ArrowUpNarrowWide, Maximize2, Minimize2, AlertCircle, 
   KeyRound, ArrowRight, Sun, Moon, Star, X, Filter, TrendingUp, 
   CheckCircle, Clock, Package, ChefHat, Flame, Type, Download, ChevronRight, Check, Languages, LayoutTemplate, Users
-} from 'lucide-react'; // Agregado Users
+} from 'lucide-react';
 import Link from 'next/link';
 
 const supabase = createClient(
@@ -395,7 +395,6 @@ export default function VitoPizzaApp() {
     presenceChannel
       .on('presence', { event: 'sync' }, () => {
         const state = presenceChannel.presenceState();
-        // Contamos cuántas claves únicas (usuarios) hay en el estado
         setOnlineUsers(Object.keys(state).length);
       })
       .subscribe(async (status) => {
@@ -651,7 +650,7 @@ export default function VitoPizzaApp() {
   return (
     <div className={`min-h-screen font-sans pb-28 transition-colors duration-500 overflow-x-hidden ${base.bg}`}>
       
-      {/* ONBOARDING OVERLAY EN MODO CLARO Y ESTILIZADO */}
+      {/* ONBOARDING OVERLAY */}
       {showOnboarding && (
           <div 
             onTouchStart={onTouchStart} 
@@ -692,7 +691,6 @@ export default function VitoPizzaApp() {
                       <div className="flex flex-col items-center gap-4 animate-in slide-in-from-right-10 duration-500 text-left w-full">
                           <h1 className="text-3xl font-bold text-neutral-800 text-center w-full mb-2">{t.onb_how_title}</h1>
                           
-                          {/* Visual Block: Progress Bar */}
                           <div className="bg-white p-3 rounded-2xl flex items-center gap-4 w-full border border-neutral-100 shadow-sm">
                               <div className="bg-teal-50 p-3 rounded-xl text-teal-600"><LayoutTemplate size={24}/></div>
                               <div className="flex-1">
@@ -702,7 +700,6 @@ export default function VitoPizzaApp() {
                               </div>
                           </div>
 
-                          {/* Visual Block: Oven Status */}
                           <div className="bg-white p-3 rounded-2xl flex items-center gap-4 w-full border border-neutral-100 shadow-sm">
                               <div className="bg-orange-50 p-3 rounded-xl text-orange-600"><Flame size={24}/></div>
                               <div className="flex-1">
@@ -712,7 +709,6 @@ export default function VitoPizzaApp() {
                               </div>
                           </div>
 
-                          {/* Visual Block: Controls */}
                           <div className="bg-white p-3 rounded-2xl flex items-center gap-4 w-full border border-neutral-100 shadow-sm">
                               <div className="bg-purple-50 p-3 rounded-xl text-purple-600"><Palette size={24}/></div>
                               <div className="flex-1">
@@ -763,10 +759,10 @@ export default function VitoPizzaApp() {
       {/* HEADER FLOTANTE BOTONES */}
       <div className="fixed top-4 left-4 right-4 z-50 flex items-center justify-between pointer-events-none">
           <div className={`p-2 rounded-full border shadow-lg flex gap-2 pointer-events-auto ${base.bar}`}>
-              <button onClick={toggleNotificaciones} className={`p-2 rounded-full hover:bg-white/20 transition ${notifEnabled ? 'bg-white text-black' : ''}`}>{notifEnabled ? <Bell size={18} /> : <BellOff size={18} />}</button>
+              <button onClick={toggleNotificaciones} className={`p-2 rounded-full hover:bg-white/20 transition ${notifEnabled ? (isDarkMode ? 'bg-white/20 text-white' : 'bg-black/10 text-black') : 'text-current opacity-70 hover:opacity-100'}`}>{notifEnabled ? <Bell size={18} /> : <BellOff size={18} />}</button>
               <button onClick={rotarIdioma} className="w-9 h-9 rounded-full hover:bg-white/20 text-xs font-bold flex items-center justify-center border border-white/20">{lang.toUpperCase()}</button>
               <div className="flex items-center justify-center gap-1 p-2 rounded-full hover:bg-white/20 text-xs font-bold transition-all animate-pulse">
-                  <Users size={14} className="text-green-500" />
+                  <Users size={14} className={isDarkMode ? "text-green-400" : "text-green-700"} />
                   <span className={isDarkMode ? 'text-white' : 'text-black'}>{onlineUsers}</span>
               </div>
           </div>
@@ -778,7 +774,7 @@ export default function VitoPizzaApp() {
               )}
               <button onClick={cycleTextSize} className="p-2 rounded-full hover:bg-white/20 flex items-center justify-center"><Type size={18} /></button>
               <button onClick={toggleOrden} className="p-2 rounded-full hover:bg-white/20 flex items-center justify-center">{orden === 'estado' ? <ArrowUpNarrowWide size={18} /> : (orden === 'nombre' ? <ArrowDownAZ size={18} /> : <TrendingUp size={18}/>)}</button>
-              <button onClick={toggleCompact} className={`p-2 rounded-full hover:bg-white/20 transition ${!isCompact ? 'bg-white text-black' : ''}`}><Maximize2 size={18}/></button>
+              <button onClick={toggleCompact} className={`p-2 rounded-full hover:bg-white/20 transition ${!isCompact ? (isDarkMode ? 'bg-white/20 text-white' : 'bg-black/10 text-black') : 'text-current opacity-70 hover:opacity-100'}`}><Maximize2 size={18}/></button>
               <button onClick={toggleDarkMode} className="p-2 rounded-full hover:bg-white/20">{isDarkMode ? <Sun size={18} /> : <Moon size={18} />}</button>
               <button onClick={() => setShowThemeSelector(!showThemeSelector)} className="p-2 rounded-full hover:bg-white/20"><Palette size={18} /></button>
               <Link href="/admin" className="p-2 rounded-full hover:bg-white/20"><Lock size={18} /></Link>
