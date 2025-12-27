@@ -14,6 +14,34 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+// --- COMPONENTE TIMER (NUEVO) ---
+const Timer = ({ startTime }: { startTime: string }) => {
+  const [elapsed, setElapsed] = useState('');
+
+  useEffect(() => {
+    const update = () => {
+      const start = new Date(startTime).getTime();
+      const now = new Date().getTime();
+      const diff = Math.max(0, now - start);
+      
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      
+      setElapsed(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`);
+    };
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [startTime]);
+
+  return (
+    <span className="ml-2 font-mono text-[10px] opacity-70 bg-black/10 dark:bg-white/10 px-1 rounded border border-current">
+      {elapsed}
+    </span>
+  );
+};
+
 const THEMES = [
   { name: 'Carbone', color: 'bg-neutral-600', gradient: 'from-neutral-700 to-neutral-900', text: 'text-neutral-400' },
   { name: 'Turquesa', color: 'bg-cyan-600', gradient: 'from-cyan-600 to-teal-900', text: 'text-cyan-400' },
@@ -148,10 +176,26 @@ export default function AdminPage() {
       const susPedidos = pedidos.filter(p => p.invitado_nombre.toLowerCase() === nombre);
       const nombreReal = susPedidos[0]?.invitado_nombre || nombre;
       const detalle = pizzas.map(pz => {
-          const ped = susPedidos.filter(p => p.pizza_id === pz.id); if (ped.length === 0) return null;
+          const ped = susPedidos.filter(p => p.pizza_id === pz.id); 
+          if (ped.length === 0) return null;
+          
           const entr = ped.filter(p => p.estado === 'entregado').reduce((acc, c) => acc + c.cantidad_porciones, 0);
-          const pend = ped.filter(p => p.estado === 'pendiente').reduce((acc, c) => acc + c.cantidad_porciones, 0);
-          return { id: pz.id, nombre: pz.nombre, entregada: entr, enHorno: pz.cocinando ? pend : 0, enEspera: pz.cocinando ? 0 : pend };
+          
+          // Modificación para obtener el tiempo
+          const pendientesArr = ped.filter(p => p.estado === 'pendiente');
+          const pend = pendientesArr.reduce((acc, c) => acc + c.cantidad_porciones, 0);
+          const oldestPending = pendientesArr.length > 0 
+              ? pendientesArr.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0].created_at 
+              : null;
+
+          return { 
+              id: pz.id, 
+              nombre: pz.nombre, 
+              entregada: entr, 
+              enHorno: pz.cocinando ? pend : 0, 
+              enEspera: pz.cocinando ? 0 : pend,
+              oldestPending: oldestPending 
+          };
       }).filter(Boolean);
       
       const totalEnHorno = detalle.reduce((acc, d) => acc + (d?.enHorno || 0), 0);
@@ -325,7 +369,11 @@ export default function AdminPage() {
                                 <div className="space-y-2">
                                     {u.detalle.map((d: any, k: number) => (
                                         <div key={k} className={`flex justify-between items-center text-sm p-2 rounded-lg border ${isDarkMode ? 'bg-black/20 border-white/5' : 'bg-gray-50 border-gray-200'}`}>
-                                            <span>{d.nombre}</span>
+                                            <div className="flex items-center">
+                                                <span>{d.nombre}</span>
+                                                {/* TIMER INSERTADO AQUÍ */}
+                                                {d.oldestPending && <Timer startTime={d.oldestPending} />}
+                                            </div>
                                             <div className="flex items-center gap-2 text-xs font-bold">
                                                 {d.enHorno > 0 && (<span className="text-red-500 flex items-center gap-1"><Flame size={12}/> {d.enHorno}</span>)}
                                                 {d.enEspera > 0 && (<span className="text-yellow-500 flex items-center gap-1"><Clock size={12}/> {d.enEspera}</span>)}
@@ -385,41 +433,21 @@ export default function AdminPage() {
                             <div key={u.nombre} className={`p-4 rounded-2xl border flex flex-col gap-2 ${u.bloqueado ? base.blocked : base.card}`}>
                                 <div className="flex justify-between items-center">
                                     <div className="flex items-center gap-2">
-                                        {/* ICONO DE TIPO DE USUARIO */}
-                                        {u.source === 'db' ? (
-                                            <UserCheck size={16} className="text-blue-500" />
-                                        ) : (
-                                            <User size={16} className="text-orange-400" />
-                                        )}
+                                        {u.source === 'db' ? (<UserCheck size={16} className="text-blue-500" />) : (<User size={16} className="text-orange-400" />)}
                                         <span className={`font-bold ${u.bloqueado ? 'text-red-500 line-through' : ''}`}>{u.nombre}</span>
                                         {u.source === 'ped' && <span className="text-[9px] bg-orange-500/10 text-orange-500 px-1.5 py-0.5 rounded border border-orange-500/20">Guest</span>}
                                     </div>
                                     <div className="flex gap-2 items-center">
-                                        {/* CONTADOR DE PEDIDOS TOTALES (COLOR CORREGIDO) */}
-                                        <span className="text-xs font-mono font-bold bg-neutral-200 dark:bg-neutral-700 text-neutral-800 dark:text-white px-2 py-1 rounded-lg border border-neutral-300 dark:border-neutral-600">
-                                            {u.totalOrders || 0}
-                                        </span>
-                                        
+                                        <span className="text-xs font-mono font-bold bg-neutral-200 dark:bg-neutral-700 text-neutral-800 dark:text-white px-2 py-1 rounded-lg border border-neutral-300 dark:border-neutral-600">{u.totalOrders || 0}</span>
                                         <button onClick={() => resetU(u.nombre)} className="p-2 bg-yellow-500/10 text-yellow-500 rounded-xl hover:bg-yellow-500/20"><RotateCcw size={16}/></button>
                                         <button onClick={() => toggleB(u)} className={`p-2 rounded-xl ${u.bloqueado ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>{u.bloqueado ? <CheckCircle size={16}/> : <Ban size={16}/>}</button>
                                         <button onClick={() => eliminarUsuario(u.nombre, u.source === 'db' ? u : null)} className="p-2 text-gray-500 hover:text-red-500"><Trash2 size={16}/></button>
                                     </div>
                                 </div>
-                                {/* INPUT MOTIVO + BOTON GUARDAR */}
                                 {u.bloqueado && (
                                     <div className="flex gap-2 mt-2">
-                                        <input 
-                                            className={`w-full p-2 rounded-lg text-sm outline-none border ${base.input} text-red-400`} 
-                                            placeholder="Motivo..." 
-                                            value={tempMotivos[u.nombre] !== undefined ? tempMotivos[u.nombre] : (u.motivo_bloqueo || '')} 
-                                            onChange={(e) => setTempMotivos({ ...tempMotivos, [u.nombre]: e.target.value })}
-                                        />
-                                        <button 
-                                            onClick={() => guardarMotivo(u.nombre, u)} 
-                                            className="p-2 bg-neutral-800 text-white rounded-lg border border-white/10 hover:bg-neutral-700"
-                                        >
-                                            <Save size={16}/>
-                                        </button>
+                                        <input className={`w-full p-2 rounded-lg text-sm outline-none border ${base.input} text-red-400`} placeholder="Motivo..." value={tempMotivos[u.nombre] !== undefined ? tempMotivos[u.nombre] : (u.motivo_bloqueo || '')} onChange={(e) => setTempMotivos({ ...tempMotivos, [u.nombre]: e.target.value })} />
+                                        <button onClick={() => guardarMotivo(u.nombre, u)} className="p-2 bg-neutral-800 text-white rounded-lg border border-white/10 hover:bg-neutral-700"><Save size={16}/></button>
                                     </div>
                                 )}
                             </div>

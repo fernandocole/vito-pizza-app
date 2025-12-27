@@ -337,9 +337,10 @@ export default function VitoPizzaApp() {
   };
 
   // HELPER PARA ESTILOS DE BOTONES INDIVIDUALES (Sin fondo)
+  // MODIFICADO: Aumenté p-1 a p-1.5
   const getBtnClass = (isActive: boolean) => {
       // BASE: Fondo Transparente Siempre
-      const common = "p-1 rounded-full transition-all duration-300 flex items-center justify-center bg-transparent ";
+      const common = "p-1.5 rounded-full transition-all duration-300 flex items-center justify-center bg-transparent ";
       const scale = isActive ? "scale-110" : "hover:scale-105";
 
       // MODO OSCURO
@@ -357,7 +358,7 @@ export default function VitoPizzaApp() {
 
   const [config, setConfig] = useState({ porciones_por_pizza: 4, total_invitados: 10, modo_estricto: false });
   const [invitadosActivos, setInvitadosActivos] = useState(0);
-  const [miHistorial, setMiHistorial] = useState<Record<string, { pendientes: number, comidos: number }>>({});
+  const [miHistorial, setMiHistorial] = useState<Record<string, { pendientes: number, comidos: number, minCreatedAt?: string }>>({});
   
   const [invitadosLista, setInvitadosLista] = useState<any[]>([]);
   const [usuarioBloqueado, setUsuarioBloqueado] = useState(false);
@@ -366,6 +367,26 @@ export default function VitoPizzaApp() {
   const prevComidosPerPizza = useRef<Record<string, number>>({});
   const prevCocinandoData = useRef<Record<string, boolean>>({});
   const firstLoadRef = useRef(true);
+
+  // --- COMPONENTE RELATIVE TIME ---
+  const RelativeTime = ({ isoString }: { isoString: string }) => {
+    const [elapsed, setElapsed] = useState('');
+    useEffect(() => {
+        const update = () => {
+            const start = new Date(isoString).getTime();
+            const now = new Date().getTime();
+            const diff = Math.max(0, now - start);
+            const h = Math.floor(diff / 3600000);
+            const m = Math.floor((diff % 3600000) / 60000);
+            const s = Math.floor((diff % 60000) / 1000);
+            setElapsed(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`);
+        };
+        update();
+        const timer = setInterval(update, 1000);
+        return () => clearInterval(timer);
+    }, [isoString]);
+    return <span className="font-mono text-[10px] opacity-60 ml-2 border border-current px-1 rounded">{elapsed}</span>;
+  };
 
   const getEmptyStateMessage = () => {
     switch(filter) {
@@ -378,116 +399,28 @@ export default function VitoPizzaApp() {
     }
   };
 
-  useEffect(() => {
-    // ONBOARDING CHECK
-    const hasSeenOnboarding = localStorage.getItem('vito-onboarding-seen');
-    if (!hasSeenOnboarding) setShowOnboarding(true);
-
-    const savedName = localStorage.getItem('vito-guest-name');
-    if (savedName) setNombreInvitado(savedName);
-    
-    // THEME & MODE INIT
-    const savedTheme = localStorage.getItem('vito-guest-theme');
-    if (savedTheme) setCurrentTheme(THEMES.find(t => t.name === savedTheme) || THEMES[1]);
-    else setCurrentTheme(THEMES[1]);
-
-    const savedMode = localStorage.getItem('vito-dark-mode');
-    if (savedMode !== null) setIsDarkMode(savedMode === 'true');
-    else setIsDarkMode(false);
-
-    // LANGUAGE INIT
-    const savedLang = localStorage.getItem('vito-lang');
-    if (savedLang) setLang(savedLang as LangType);
-
-    const savedNotif = localStorage.getItem('vito-notif-enabled');
-    if (savedNotif === 'true' && typeof Notification !== 'undefined' && Notification.permission === 'granted') setNotifEnabled(true);
-    const savedOrden = localStorage.getItem('vito-orden');
-    if (savedOrden) setOrden(savedOrden as any);
-    const savedCompact = localStorage.getItem('vito-compact');
-    if (savedCompact) setIsCompact(savedCompact === 'true');
-    const savedFilter = localStorage.getItem('vito-filter');
-    if (savedFilter) setFilter(savedFilter as any);
-    const savedPass = localStorage.getItem('vito-guest-pass-val');
-    if(savedPass) setGuestPassInput(savedPass);
-    const interval = setInterval(() => { setBannerIndex((prev) => prev + 1); }, 3000);
-
-    // PWA INSTALL LISTENER
-    const handleBeforeInstallPrompt = (e: any) => {
-        e.preventDefault();
-        setDeferredPrompt(e);
-        setIsInstallable(true);
-    };
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-
-    // ONLINE PRESENCE TRACKING
-    const presenceChannel = supabase.channel('online-users');
-    presenceChannel
-      .on('presence', { event: 'sync' }, () => {
-        const state = presenceChannel.presenceState();
-        setOnlineUsers(Object.keys(state).length);
-      })
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          await presenceChannel.track({
-            online_at: new Date().toISOString(),
-          });
-        }
-      });
-
-    return () => {
-        clearInterval(interval);
-        window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-        supabase.removeChannel(presenceChannel);
-    };
-  }, []);
-
-  // SWIPE HANDLERS
-  const onTouchStart = (e: any) => setTouchStart(e.targetTouches[0].clientX);
-  const onTouchMove = (e: any) => setTouchEnd(e.targetTouches[0].clientX);
-  const onTouchEnd = () => {
-      if (!touchStart || !touchEnd) return;
-      const distance = touchStart - touchEnd;
-      const isLeftSwipe = distance > 50;
-      const isRightSwipe = distance < -50;
-      
-      if (isLeftSwipe && onboardingStep < 3) {
-          setOnboardingStep(prev => prev + 1);
-      }
-      if (isRightSwipe && onboardingStep > 0) {
-          setOnboardingStep(prev => prev - 1);
-      }
-      // Reset
-      setTouchStart(0);
-      setTouchEnd(0);
+  const verifyAccess = (i: string, c: string) => { 
+      if (!c || c === '' || i === c) { 
+          setAccessGranted(true); 
+          if(c !== '') localStorage.setItem('vito-guest-pass-val', i); 
+      } else { 
+          setAccessGranted(false); 
+      } 
   };
 
-  const handleInstallClick = async () => {
-      if (!deferredPrompt) return;
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') setIsInstallable(false);
-      setDeferredPrompt(null);
+  const handleNameChange = (val: string) => { 
+      setNombreInvitado(val); 
+      localStorage.setItem('vito-guest-name', val); 
+      const user = invitadosLista.find(u => u.nombre.toLowerCase() === val.toLowerCase()); 
+      if (user && user.bloqueado) { 
+          setUsuarioBloqueado(true); 
+          setMotivoBloqueo(user.motivo_bloqueo || ''); 
+      } else { 
+          setUsuarioBloqueado(false); 
+          setMotivoBloqueo(''); 
+      } 
   };
 
-  const completeOnboarding = () => {
-      localStorage.setItem('vito-onboarding-seen', 'true');
-      setShowOnboarding(false);
-  };
-
-  const toggleDarkMode = () => { const n = !isDarkMode; setIsDarkMode(n); localStorage.setItem('vito-dark-mode', String(n)); };
-  const toggleOrden = () => { const n = orden === 'estado' ? 'nombre' : (orden === 'nombre' ? 'ranking' : 'estado'); setOrden(n); localStorage.setItem('vito-orden', n); };
-  const toggleCompact = () => { const n = !isCompact; setIsCompact(n); localStorage.setItem('vito-compact', String(n)); };
-  
-  // ZOOM CYCLE LOGIC (5 LEVELS)
-  const cycleTextSize = () => { 
-      setZoomLevel(prev => (prev + 1) % 5);
-  };
-  
-  const changeFilter = (f: any) => { setFilter(f); localStorage.setItem('vito-filter', f); };
-  const verifyAccess = (i: string, c: string) => { if (!c || c === '' || i === c) { setAccessGranted(true); if(c !== '') localStorage.setItem('vito-guest-pass-val', i); } else { setAccessGranted(false); } };
-  const handleNameChange = (val: string) => { setNombreInvitado(val); localStorage.setItem('vito-guest-name', val); const user = invitadosLista.find(u => u.nombre.toLowerCase() === val.toLowerCase()); if (user && user.bloqueado) { setUsuarioBloqueado(true); setMotivoBloqueo(user.motivo_bloqueo || ''); } else { setUsuarioBloqueado(false); setMotivoBloqueo(''); } };
-  const changeTheme = (t: typeof THEMES[0]) => { setCurrentTheme(t); localStorage.setItem('vito-guest-theme', t.name); setShowThemeSelector(false); };
-  
   const rotarIdioma = () => { 
       let nextLang: LangType = 'es';
       if (lang === 'es') nextLang = 'en'; 
@@ -497,6 +430,19 @@ export default function VitoPizzaApp() {
   };
 
   const toggleNotificaciones = () => { if (notifEnabled) { setNotifEnabled(false); localStorage.setItem('vito-notif-enabled', 'false'); mostrarMensaje(t.notifOff, 'info'); } else { Notification.requestPermission().then(perm => { if (perm === 'granted') { setNotifEnabled(true); localStorage.setItem('vito-notif-enabled', 'true'); mostrarMensaje(t.notifOn, 'info'); try { new Notification("Il Forno di Vito", { body: "Ok!", icon: "/icon.png" }); } catch (e) {} } else { alert("Activa las notificaciones en la configuración de tu navegador."); } }); } };
+
+  // Funciones faltantes agregadas
+  const toggleOrden = () => { const n = orden === 'estado' ? 'nombre' : (orden === 'nombre' ? 'ranking' : 'estado'); setOrden(n); localStorage.setItem('vito-orden', n); };
+  const toggleCompact = () => { const n = !isCompact; setIsCompact(n); localStorage.setItem('vito-compact', String(n)); };
+  const toggleDarkMode = () => { const n = !isDarkMode; setIsDarkMode(n); localStorage.setItem('vito-dark-mode', String(n)); };
+  const cycleTextSize = () => { setZoomLevel(prev => (prev + 1) % 5); };
+  const changeFilter = (f: any) => { setFilter(f); localStorage.setItem('vito-filter', f); };
+  const changeTheme = (theme: typeof THEMES[0]) => { setCurrentTheme(theme); localStorage.setItem('vito-guest-theme', theme.name); setShowThemeSelector(false); };
+  const handleInstallClick = async () => { if (!deferredPrompt) return; deferredPrompt.prompt(); const { outcome } = await deferredPrompt.userChoice; if (outcome === 'accepted') setIsInstallable(false); setDeferredPrompt(null); };
+  const completeOnboarding = () => { localStorage.setItem('vito-onboarding-seen', 'true'); setShowOnboarding(false); };
+  const onTouchStart = (e: any) => setTouchStart(e.targetTouches[0].clientX);
+  const onTouchMove = (e: any) => setTouchEnd(e.targetTouches[0].clientX);
+  const onTouchEnd = () => { if (!touchStart || !touchEnd) return; const distance = touchStart - touchEnd; if (distance > 50 && onboardingStep < 3) setOnboardingStep(prev => prev + 1); if (distance < -50 && onboardingStep > 0) setOnboardingStep(prev => prev - 1); setTouchStart(0); setTouchEnd(0); };
   
   const translateText = async (text: string, targetLang: string) => {
     try {
@@ -517,7 +463,6 @@ export default function VitoPizzaApp() {
           let hasChanges = false;
 
           for (const p of pizzas) {
-              // Si no existe la entrada para esta pizza o para este idioma
               if (!newTrans[p.id]) newTrans[p.id] = {};
               if (!newTrans[p.id][lang]) {
                   const tName = await translateText(p.nombre, lang);
@@ -555,8 +500,8 @@ export default function VitoPizzaApp() {
              const m = mis.filter(p => p.pizza_id === pz.id);
              const c = m.filter(p => p.estado === 'entregado').reduce((acc, x) => acc + x.cantidad_porciones, 0);
              const p = m.filter(p => p.estado !== 'entregado').reduce((acc, x) => acc + x.cantidad_porciones, 0);
-             res[pz.id] = { pendientes: p, comidos: c };
-             if (p > 0) penInfo[pz.id] = p;
+             const penList = m.filter(p => p.estado !== 'entregado').sort((a,b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+             res[pz.id] = { pendientes: p, comidos: c, minCreatedAt: penList[0]?.created_at };
              if (!firstLoadRef.current) { const prev = prevComidosPerPizza.current[pz.id] || 0; if (c > prev) { const dif = c - prev; mostrarMensaje(`¡${dif} de ${pz.nombre} listas!`, 'alerta'); } } prevComidosPerPizza.current[pz.id] = c;
         });
         setMiHistorial(res);
@@ -794,11 +739,11 @@ export default function VitoPizzaApp() {
       )}
 
       {/* HEADER FLOTANTE BOTONES */}
-      <div className="fixed top-4 left-4 right-4 z-50 flex items-center justify-between pointer-events-none">
-          <div className={`p-1 rounded-full border shadow-lg flex gap-1 pointer-events-auto ${base.bar}`}>
+      <div className="fixed top-3 left-3 right-3 z-50 flex items-center justify-between pointer-events-none">
+          <div className={`p-1.5 rounded-full border shadow-lg flex gap-1.5 pointer-events-auto ${base.bar}`}>
               {/* NOTIFICACIONES */}
               <button onClick={toggleNotificaciones} className={getBtnClass(notifEnabled)}>
-                  {notifEnabled ? <Bell size={14} /> : <BellOff size={14} />}
+                  {notifEnabled ? <Bell size={16} /> : <BellOff size={16} />}
               </button>
               
               {/* IDIOMA (Simple button) */}
@@ -807,48 +752,48 @@ export default function VitoPizzaApp() {
               </button>
 
               {/* ONLINE USERS */}
-              <div className="flex items-center justify-center gap-1 p-1 rounded-full text-[10px] font-bold transition-all animate-pulse">
-                  <Users size={12} className={isDarkMode ? "text-green-400" : "text-green-700"} />
+              <div className="flex items-center justify-center gap-1 p-1.5 rounded-full text-[10px] font-bold transition-all animate-pulse">
+                  <Users size={16} className={isDarkMode ? "text-green-400" : "text-green-700"} />
                   <span className={isDarkMode ? 'text-white' : 'text-black'}>{onlineUsers}</span>
               </div>
           </div>
 
-          <div className={`p-1 rounded-full border shadow-lg flex gap-1 pointer-events-auto ${base.bar}`}>
+          <div className={`p-1.5 rounded-full border shadow-lg flex gap-1.5 pointer-events-auto ${base.bar}`}>
               {/* INSTALAR APP */}
               {isInstallable && (
                   <button onClick={handleInstallClick} className={getBtnClass(false) + " animate-bounce"}>
-                      <Download size={14} />
+                      <Download size={16} />
                   </button>
               )}
               
               {/* ZOOM TEXTO */}
               <button onClick={cycleTextSize} className={getBtnClass(false)}>
-                  <Type size={14} />
+                  <Type size={16} />
               </button>
               
               {/* ORDENAR */}
               <button onClick={toggleOrden} className={getBtnClass(false)}>
-                  {orden === 'estado' ? <ArrowUpNarrowWide size={14} /> : (orden === 'nombre' ? <ArrowDownAZ size={14} /> : <TrendingUp size={14}/>)}
+                  {orden === 'estado' ? <ArrowUpNarrowWide size={16} /> : (orden === 'nombre' ? <ArrowDownAZ size={16} /> : <TrendingUp size={16}/>)}
               </button>
 
               {/* EXPANDIR / CONTRAER (Activo si !isCompact) */}
               <button onClick={toggleCompact} className={getBtnClass(!isCompact)}>
-                  {!isCompact ? <Minimize2 size={14}/> : <Maximize2 size={14}/>}
+                  {!isCompact ? <Minimize2 size={16}/> : <Maximize2 size={16}/>}
               </button>
 
               {/* MODO OSCURO */}
               <button onClick={toggleDarkMode} className={getBtnClass(false)}>
-                  {isDarkMode ? <Sun size={14} /> : <Moon size={14} />}
+                  {isDarkMode ? <Sun size={16} /> : <Moon size={16} />}
               </button>
               
               {/* TEMA */}
               <button onClick={() => setShowThemeSelector(!showThemeSelector)} className={getBtnClass(false)}>
-                  <Palette size={14} />
+                  <Palette size={16} />
               </button>
               
               {/* ADMIN */}
               <Link href="/admin" className={getBtnClass(false)}>
-                  <Lock size={14} />
+                  <Lock size={16} />
               </Link>
               
               {showThemeSelector && (<div className="absolute top-14 right-0 bg-black/90 backdrop-blur p-2 rounded-xl flex gap-2 animate-in fade-in border border-white/20 shadow-xl">{THEMES.map(theme => (<button key={theme.name} onClick={() => changeTheme(theme)} className={`w-6 h-6 rounded-full ${theme.color} border-2 border-white ring-2 ring-transparent hover:scale-110 transition-transform`}></button>))}</div>)}
@@ -900,7 +845,19 @@ export default function VitoPizzaApp() {
                      <h2 className={`font-bold ${isCompact ? 'text-lg' : 'text-2xl'} ${pizza.stockRestante === 0 ? 'text-gray-400 dark:text-neutral-600' : base.text}`}>
                          {pizza.displayName}
                      </h2>
-                     <div className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs ${base.badge}`}><Star size={12} className={pizza.countRating > 0 ? "text-yellow-500" : "text-gray-500 opacity-50"} fill="currentColor" /><span className={`font-bold ${pizza.countRating > 0 ? '' : 'text-gray-500 opacity-50'}`}>{pizza.avgRating || '0.0'}</span><span className={`text-[10px] ${pizza.countRating > 0 ? 'opacity-60' : 'text-gray-500 opacity-40'}`}>({pizza.countRating || 0})</span>{miHistorial[pizza.id]?.comidos > 0 && !misValoraciones.includes(pizza.id) && (<button onClick={() => openRating(pizza)} className="ml-1 bg-yellow-500 text-black px-1.5 py-0.5 rounded text-[9px] font-bold animate-pulse hover:scale-105 transition-transform">{t.rateBtn}</button>)}</div>{pizza.cocinando && <span className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">{t.inOven}</span>}</div>{!isCompact && (<p className={`leading-relaxed max-w-[200px] ${base.subtext} ${DESC_SIZES[zoomLevel]}`}>{pizza.displayDesc}</p>)}<p className={`font-mono mt-1 ${pizza.stockRestante === 0 ? 'text-red-500 font-bold' : base.subtext} ${STOCK_SIZES[zoomLevel]}`}>{pizza.stockRestante === 0 ? t.soldOut : `${t.ingredientsFor} ${pizza.stockRestante} ${t.portionsMore}`}</p></div></div>
+                     <div className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs ${base.badge}`}><Star size={12} className={pizza.countRating > 0 ? "text-yellow-500" : "text-gray-500 opacity-50"} fill="currentColor" /><span className={`font-bold ${pizza.countRating > 0 ? '' : 'text-gray-500 opacity-50'}`}>{pizza.avgRating || '0.0'}</span><span className={`text-[10px] ${pizza.countRating > 0 ? 'opacity-60' : 'text-gray-500 opacity-40'}`}>({pizza.countRating || 0})</span>{miHistorial[pizza.id]?.comidos > 0 && !misValoraciones.includes(pizza.id) && (<button onClick={() => openRating(pizza)} className="ml-1 bg-yellow-500 text-black px-1.5 py-0.5 rounded text-[9px] font-bold animate-pulse hover:scale-105 transition-transform">{t.rateBtn}</button>)}</div>{pizza.cocinando && <span className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">{t.inOven}</span>}
+                     {miHistorial[pizza.id]?.pendientes > 0 && <RelativeTime isoString={miHistorial[pizza.id].minCreatedAt!} />}
+                     </div>{!isCompact && (<p className={`leading-relaxed max-w-[200px] ${base.subtext} ${DESC_SIZES[zoomLevel]}`}>{pizza.displayDesc}</p>)}
+                     <p className={`font-mono mt-1 ${
+                         pizza.stockRestante === 0 
+                            ? 'text-red-500 font-bold' 
+                            : pizza.stockRestante < 5 
+                                ? 'text-orange-500 font-bold' 
+                                : base.subtext
+                     } ${STOCK_SIZES[zoomLevel]}`}>
+                         {pizza.stockRestante === 0 ? t.soldOut : `${t.ingredientsFor} ${pizza.stockRestante} ${t.portionsMore}`}
+                     </p>
+                   </div></div>
                    <div className={`rounded-2xl border ${isCompact ? 'p-2 mb-2 mt-1' : 'p-3 mb-5 mt-4'} ${base.progressBg}`}><div className={`flex justify-between text-[10px] font-bold uppercase tracking-wider mb-2 ${base.subtext}`}><span>{pizza.faltanParaCompletar === pizza.target ? t.newPizza : t.progress}</span><span className={pizza.faltanParaCompletar === 0 ? currentTheme.text : base.subtext}>{pizza.faltanParaCompletar > 0 ? `${t.missing} ${pizza.faltanParaCompletar}` : t.completed}</span></div><div className={`rounded-full overflow-hidden flex border ${isCompact ? 'h-1.5' : 'h-2'} ${base.progressTrack}`}>{[...Array(pizza.target)].map((_, i) => (<div key={i} className={`flex-1 border-r last:border-0 ${isDarkMode ? 'border-black/50' : 'border-white/50'} ${i < pizza.ocupadasActual ? `bg-gradient-to-r ${currentTheme.name === 'Carbone' ? 'from-white to-neutral-300' : currentTheme.gradient}` : 'bg-transparent'}`}></div>))}</div></div>
                    <div className="flex gap-3">{miHistorial[pizza.id]?.pendientes > 0 && (<button onClick={() => modificarPedido(pizza, 'restar')} className={`rounded-2xl flex items-center justify-center border active:scale-95 transition ${base.buttonSec} ${isCompact ? 'w-12 h-10' : 'w-16 h-14'}`}><Minus size={isCompact ? 16 : 20} /></button>)}{pizza.stockRestante > 0 ? (<button onClick={() => modificarPedido(pizza, 'sumar')} className={`flex-1 rounded-2xl font-bold text-white shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 bg-gradient-to-r ${currentTheme.gradient} hover:brightness-110 ${isCompact ? 'h-10 text-base' : 'h-14 text-lg'}`}><Plus size={isCompact ? 18 : 24} strokeWidth={3} /> {t.buttonOrder}</button>) : (<div className={`flex-1 rounded-2xl font-bold flex items-center justify-center border ${isDarkMode ? 'text-neutral-500 bg-neutral-900 border-neutral-800' : 'text-gray-400 bg-gray-100 border-gray-200'} ${isCompact ? 'h-10 text-xs' : 'h-14 text-sm'}`}>{t.soldOut}</div>)}</div>
                </div>
