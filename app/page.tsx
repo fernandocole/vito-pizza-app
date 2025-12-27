@@ -819,4 +819,12 @@ export default function VitoPizzaApp() {
 
       <div className={`fixed bottom-4 left-4 right-4 z-50 rounded-full p-3 shadow-2xl ${base.bar}`}>
           <div className="max-w-lg mx-auto flex justify-around items-center text-xs font-bold">
-              <div className="flex flex-col items-center"><span className="opacity-60 text-[9px] uppercase tracking-wider">{t.sumTotal}</span><span className="text-base">{mySummary.total}</span></div><div className="h-6 w-[1px
+              <div className="flex flex-col items-center"><span className="opacity-60 text-[9px] uppercase tracking-wider">{t.sumTotal}</span><span className="text-base">{mySummary.total}</span></div><div className="h-6 w-[1px] bg-current opacity-20"></div>
+              <div className="flex flex-col items-center"><span className="opacity-60 text-[9px] uppercase tracking-wider flex items-center gap-1"><Clock size={10}/> {t.sumWait}</span><span className="text-base">{mySummary.wait}</span></div><div className="h-6 w-[1px] bg-current opacity-20"></div>
+              <div className="flex flex-col items-center"><span className="opacity-60 text-[9px] uppercase tracking-wider flex items-center gap-1"><Flame size={10}/> {t.sumOven}</span><span className="text-base">{mySummary.oven}</span></div><div className="h-6 w-[1px] bg-current opacity-20"></div>
+              <div className="flex flex-col items-center"><span className="opacity-60 text-[9px] uppercase tracking-wider flex items-center gap-1"><ChefHat size={10}/> {t.sumReady}</span><span className="text-base">{mySummary.ready}</span></div>
+          </div>
+      </div>
+    </div>
+  );
+}
