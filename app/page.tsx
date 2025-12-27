@@ -23,14 +23,10 @@ const RelativeTime = ({ isoString }: { isoString: string }) => {
             const start = new Date(isoString).getTime();
             const now = new Date().getTime();
             const diff = Math.max(0, now - start);
-
             const h = Math.floor(diff / 3600000);
             const m = Math.floor((diff % 3600000) / 60000);
             const s = Math.floor((diff % 60000) / 1000);
-
-            setElapsed(
-                `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
-            );
+            setElapsed(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`);
         };
         update();
         const timer = setInterval(update, 1000);
@@ -376,6 +372,18 @@ export default function VitoPizzaApp() {
   const prevCocinandoData = useRef<Record<string, boolean>>({});
   const firstLoadRef = useRef(true);
 
+  // --- FUNCIÓN RESTAURADA PARA VERCEL ---
+  const getEmptyStateMessage = () => {
+      switch(filter) {
+          case 'stock': return t.emptyStock;
+          case 'top': return t.emptyTop;
+          case 'to_rate': return t.emptyRate;
+          case 'ordered': return t.emptyOrdered;
+          case 'new': return t.emptyNew;
+          default: return t.emptyDefault;
+      }
+  };
+
   useEffect(() => {
     const hasSeenOnboarding = localStorage.getItem('vito-onboarding-seen');
     if (!hasSeenOnboarding) setShowOnboarding(true);
@@ -509,8 +517,8 @@ export default function VitoPizzaApp() {
     const { data: dPed } = await supabase.from('pedidos').select('*').gte('created_at', iso);
     const { data: dPiz } = await supabase.from('menu_pizzas').select('*').eq('activa', true).order('created_at');
     const { data: dInv } = await supabase.from('lista_invitados').select('*');
-    const { data: dVal } = await supabase.from('valoraciones').select('*').gte('created_at', iso); 
-    if (dVal) setAllRatings(dVal);
+    const { data: dVal = [] } = await supabase.from('valoraciones').select('*').gte('created_at', iso); 
+    setAllRatings(dVal || []);
     if (dInv) { setInvitadosLista(dInv); const u = dInv.find(u => u.nombre.toLowerCase() === nombreInvitado.toLowerCase()); if (u?.bloqueado) { setUsuarioBloqueado(true); setMotivoBloqueo(u.motivo_bloqueo || ''); } else { setUsuarioBloqueado(false); setMotivoBloqueo(''); } }
     if (dPiz && dPed) {
       setPedidos(dPed); setInvitadosActivos(new Set(dPed.map(p => p.invitado_nombre.toLowerCase().trim())).size); setPizzas(dPiz);
@@ -521,7 +529,6 @@ export default function VitoPizzaApp() {
              const m = mis.filter(p => p.pizza_id === pz.id);
              const c = m.filter(p => p.estado === 'entregado').reduce((acc, x) => acc + x.cantidad_porciones, 0);
              const p = m.filter(p => p.estado !== 'entregado').reduce((acc, x) => acc + x.cantidad_porciones, 0);
-             // Obtener el pedido más antiguo de este gusto que aún no fue entregado
              const penList = m.filter(p => p.estado !== 'entregado').sort((a,b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
              res[pz.id] = { pendientes: p, comidos: c, minCreatedAt: penList[0]?.created_at };
              if (!firstLoadRef.current) { const prev = prevComidosPerPizza.current[pz.id] || 0; if (c > prev) { const dif = c - prev; mostrarMensaje(`¡${dif} de ${pz.nombre} listas!`, 'alerta'); } } prevComidosPerPizza.current[pz.id] = c;
@@ -543,25 +550,21 @@ export default function VitoPizzaApp() {
           const stockRestante = Math.max(0, totalStock - used);
           const pen = pedidos.filter(p => p.pizza_id === pizza.id && p.estado !== 'entregado').reduce((a, c) => a + c.cantidad_porciones, 0);
           const target = pizza.porciones_individuales || config.porciones_por_pizza;
-          
           const rats = allRatings.filter(r => r.pizza_id === pizza.id);
           const avg = rats.length > 0 ? (rats.reduce((a, b) => a + b.rating, 0) / rats.length).toFixed(1) : null;
           const sortR = rats.length > 0 ? (rats.reduce((a, b) => a + b.rating, 0) / rats.length) : globalAvg;
-
           let displayName = pizza.nombre;
           let displayDesc = pizza.descripcion;
           if (lang !== 'es' && autoTranslations[pizza.id] && autoTranslations[pizza.id][lang]) {
               displayName = autoTranslations[pizza.id][lang].name;
               displayDesc = autoTranslations[pizza.id][lang].desc;
           }
-
           return { 
               ...pizza, displayName, displayDesc, stockRestante, target, 
               ocupadasActual: pen % target, faltanParaCompletar: target - (pen % target), 
               avgRating: avg, countRating: rats.length, sortRating: sortR 
           };
       });
-
       if (filter !== 'all') {
           lista = lista.filter(p => {
               if (filter === 'top') return p.avgRating && parseFloat(p.avgRating) >= 4.5;
@@ -572,26 +575,12 @@ export default function VitoPizzaApp() {
               return true;
           });
       }
-
       return lista.sort((a, b) => {
           if (orden === 'ranking') return b.sortRating - a.sortRating;
           if (orden === 'estado') { if (a.cocinando && !b.cocinando) return -1; if (!a.cocinando && b.cocinando) return 1; if (a.stockRestante > 0 && b.stockRestante <= 0) return -1; if (a.stockRestante <= 0 && b.stockRestante > 0) return 1; }
           return a.displayName.localeCompare(b.displayName); 
       });
   }, [pizzas, pedidos, orden, config, allRatings, filter, miHistorial, misValoraciones, lang, autoTranslations]);
-
-  const mySummary = useMemo(() => {
-      let t = 0, w = 0, o = 0, r = 0;
-      pizzas.forEach(p => {
-          const h = miHistorial[p.id];
-          if(h) {
-              const pen = h.pendientes;
-              if (pen > 0) { if (p.cocinando) o += pen; else w += pen; }
-              r += h.comidos; t += (h.comidos + pen);
-          }
-      });
-      return { total: t, wait: w, oven: o, ready: r };
-  }, [miHistorial, pizzas]);
 
   const currentBannerText = useMemo(() => {
       if (cargando) return t.loading;
