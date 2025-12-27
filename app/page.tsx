@@ -5,8 +5,8 @@ import {
   Plus, Minus, User, Palette, Lock, PartyPopper, Bell, BellOff, 
   ArrowDownAZ, ArrowUpNarrowWide, Maximize2, Minimize2, AlertCircle, 
   KeyRound, ArrowRight, Sun, Moon, Star, X, Filter, TrendingUp, 
-  CheckCircle, Clock, Package, ChefHat, Flame, Type, Download, ChevronRight, Check
-} from 'lucide-react'; // Agregados ChevronRight y Check
+  CheckCircle, Clock, Package, ChefHat, Flame, Type, Download, ChevronRight, Check, Info, LayoutTemplate
+} from 'lucide-react';
 import Link from 'next/link';
 
 const supabase = createClient(
@@ -14,6 +14,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+// --- COLORES / TEMAS ---
 const THEMES = [
   { name: 'Carbone', color: 'bg-neutral-600', gradient: 'from-neutral-700 to-neutral-900', border: 'border-neutral-600/40', text: 'text-neutral-400' },
   { name: 'Turquesa', color: 'bg-cyan-600', gradient: 'from-cyan-600 to-teal-900', border: 'border-cyan-600/40', text: 'text-cyan-400' },
@@ -22,6 +23,7 @@ const THEMES = [
   { name: 'Violeta', color: 'bg-violet-600', gradient: 'from-violet-600 to-purple-900', border: 'border-violet-600/40', text: 'text-violet-400' },
 ];
 
+// --- DICCIONARIO DE UI ---
 const dictionary = {
   es: {
     welcomeTitle: "Gracias por venir hoy,",
@@ -225,7 +227,12 @@ export default function VitoPizzaApp() {
   
   const [isCompact, setIsCompact] = useState(false);
   const [textSize, setTextSize] = useState<'xs' | 'sm' | 'base'>('xs'); 
-  const [isDarkMode, setIsDarkMode] = useState(true);
+  
+  // DEFAULT SETTINGS: LIGHT & TURQUESA
+  const [isDarkMode, setIsDarkMode] = useState(false); 
+  const [currentTheme, setCurrentTheme] = useState(THEMES[1]); // Turquesa default
+  const [showThemeSelector, setShowThemeSelector] = useState(false);
+
   const [bannerIndex, setBannerIndex] = useState(0);
 
   // PWA & ONBOARDING
@@ -284,9 +291,6 @@ export default function VitoPizzaApp() {
   const prevCocinandoData = useRef<Record<string, boolean>>({});
   const firstLoadRef = useRef(true);
 
-  const [currentTheme, setCurrentTheme] = useState(THEMES[0]);
-  const [showThemeSelector, setShowThemeSelector] = useState(false);
-
   useEffect(() => {
     // ONBOARDING CHECK
     const hasSeenOnboarding = localStorage.getItem('vito-onboarding-seen');
@@ -294,16 +298,26 @@ export default function VitoPizzaApp() {
 
     const savedName = localStorage.getItem('vito-guest-name');
     if (savedName) setNombreInvitado(savedName);
+    
+    // THEME & MODE INIT (Defaults applied if null)
     const savedTheme = localStorage.getItem('vito-guest-theme');
-    if (savedTheme) setCurrentTheme(THEMES.find(t => t.name === savedTheme) || THEMES[0]);
+    if (savedTheme) setCurrentTheme(THEMES.find(t => t.name === savedTheme) || THEMES[1]);
+    else setCurrentTheme(THEMES[1]); // Default Turquesa
+
+    const savedMode = localStorage.getItem('vito-dark-mode');
+    if (savedMode !== null) setIsDarkMode(savedMode === 'true');
+    else setIsDarkMode(false); // Default Light Mode
+
+    // LANGUAGE INIT
+    const savedLang = localStorage.getItem('vito-lang');
+    if (savedLang) setLang(savedLang as LangType);
+
     const savedNotif = localStorage.getItem('vito-notif-enabled');
     if (savedNotif === 'true' && typeof Notification !== 'undefined' && Notification.permission === 'granted') setNotifEnabled(true);
     const savedOrden = localStorage.getItem('vito-orden');
     if (savedOrden) setOrden(savedOrden as any);
     const savedCompact = localStorage.getItem('vito-compact');
     if (savedCompact) setIsCompact(savedCompact === 'true');
-    const savedMode = localStorage.getItem('vito-dark-mode');
-    if (savedMode) setIsDarkMode(savedMode === 'true');
     const savedFilter = localStorage.getItem('vito-filter');
     if (savedFilter) setFilter(savedFilter as any);
     const savedPass = localStorage.getItem('vito-guest-pass-val');
@@ -345,7 +359,15 @@ export default function VitoPizzaApp() {
   const verifyAccess = (i: string, c: string) => { if (!c || c === '' || i === c) { setAccessGranted(true); if(c !== '') localStorage.setItem('vito-guest-pass-val', i); } else { setAccessGranted(false); } };
   const handleNameChange = (val: string) => { setNombreInvitado(val); localStorage.setItem('vito-guest-name', val); const user = invitadosLista.find(u => u.nombre.toLowerCase() === val.toLowerCase()); if (user && user.bloqueado) { setUsuarioBloqueado(true); setMotivoBloqueo(user.motivo_bloqueo || ''); } else { setUsuarioBloqueado(false); setMotivoBloqueo(''); } };
   const changeTheme = (t: typeof THEMES[0]) => { setCurrentTheme(t); localStorage.setItem('vito-guest-theme', t.name); setShowThemeSelector(false); };
-  const rotarIdioma = () => { if (lang === 'es') setLang('en'); else if (lang === 'en') setLang('it'); else setLang('es'); };
+  
+  const rotarIdioma = () => { 
+      let nextLang: LangType = 'es';
+      if (lang === 'es') nextLang = 'en'; 
+      else if (lang === 'en') nextLang = 'it'; 
+      setLang(nextLang);
+      localStorage.setItem('vito-lang', nextLang);
+  };
+
   const toggleNotificaciones = () => { if (notifEnabled) { setNotifEnabled(false); localStorage.setItem('vito-notif-enabled', 'false'); mostrarMensaje(t.notifOff, 'info'); } else { Notification.requestPermission().then(perm => { if (perm === 'granted') { setNotifEnabled(true); localStorage.setItem('vito-notif-enabled', 'true'); mostrarMensaje(t.notifOn, 'info'); try { new Notification("Il Forno di Vito", { body: "Ok!", icon: "/icon.png" }); } catch (e) {} } else { alert("Activa las notificaciones en la configuración de tu navegador."); } }); } };
   
   const translateText = async (text: string, targetLang: string) => {
@@ -534,16 +556,17 @@ export default function VitoPizzaApp() {
   return (
     <div className={`min-h-screen font-sans pb-28 transition-colors duration-500 overflow-x-hidden ${base.bg}`}>
       
-      {/* ONBOARDING OVERLAY */}
+      {/* ONBOARDING OVERLAY EN MODO CLARO */}
       {showOnboarding && (
-          <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-xl flex flex-col items-center justify-center p-8 text-center text-white animate-in fade-in duration-500">
+          <div className="fixed inset-0 z-[100] bg-white/95 backdrop-blur-xl flex flex-col items-center justify-center p-8 text-center text-neutral-900 animate-in fade-in duration-500">
               <div className="max-w-md w-full relative">
+                  
                   {/* SLIDE 1: WELCOME */}
                   {onboardingStep === 0 && (
                       <div className="flex flex-col items-center gap-6 animate-in slide-in-from-right-10 duration-500">
-                          <img src="/logo.png" alt="Logo" className="h-32 w-auto object-contain drop-shadow-2xl" />
-                          <h1 className="text-3xl font-bold">¡Bienvenido! 👋</h1>
-                          <p className="text-neutral-300 text-lg leading-relaxed">
+                          <img src="/logo.png" alt="Logo" className="h-32 w-auto object-contain drop-shadow-lg" />
+                          <h1 className="text-3xl font-bold text-black">¡Bienvenido! 👋</h1>
+                          <p className="text-neutral-500 text-lg leading-relaxed">
                               Tu compañero digital para disfrutar de la mejor pizza casera. Organiza, pide y califica en tiempo real.
                           </p>
                       </div>
@@ -552,44 +575,66 @@ export default function VitoPizzaApp() {
                   {/* SLIDE 2: INSTALL APP */}
                   {onboardingStep === 1 && (
                       <div className="flex flex-col items-center gap-6 animate-in slide-in-from-right-10 duration-500">
-                          <div className="w-24 h-24 rounded-full bg-white/10 flex items-center justify-center mb-2">
-                              <Download size={48} className="text-white animate-bounce" />
+                          <div className="w-24 h-24 rounded-full bg-neutral-100 flex items-center justify-center mb-2">
+                              <Download size={48} className="text-teal-600 animate-bounce" />
                           </div>
-                          <h1 className="text-3xl font-bold">Instala la App</h1>
-                          <p className="text-neutral-300 text-lg leading-relaxed">
-                              Para una mejor experiencia, puedes instalarla en tu celular tocando el botón de descarga <Download size={14} className="inline"/> en la barra superior.
+                          <h1 className="text-3xl font-bold text-black">Instala la App</h1>
+                          <p className="text-neutral-500 text-lg leading-relaxed">
+                              Para una mejor experiencia, instala la app en tu celular tocando el botón de descarga <Download size={14} className="inline text-teal-600"/> en la barra superior.
                           </p>
                       </div>
                   )}
 
-                  {/* SLIDE 3: HOW IT WORKS */}
+                  {/* SLIDE 3: HOW IT WORKS (PARTS) */}
                   {onboardingStep === 2 && (
-                      <div className="flex flex-col items-center gap-6 animate-in slide-in-from-right-10 duration-500">
-                          <div className="w-24 h-24 rounded-full bg-white/10 flex items-center justify-center mb-2">
-                              <Flame size={48} className="text-orange-500" />
+                      <div className="flex flex-col items-center gap-4 animate-in slide-in-from-right-10 duration-500 text-left w-full">
+                          <h1 className="text-2xl font-bold text-black text-center w-full mb-2">Conoce la App</h1>
+                          
+                          <div className="bg-neutral-50 p-3 rounded-xl flex items-center gap-3 w-full border border-neutral-100">
+                              <div className="bg-teal-100 p-2 rounded-lg text-teal-700"><LayoutTemplate size={20}/></div>
+                              <div><p className="font-bold text-sm">Barra de Progreso</p><p className="text-xs text-neutral-500">Mira cuánto falta para completar una pizza.</p></div>
                           </div>
-                          <h1 className="text-3xl font-bold">¡A comer!</h1>
-                          <p className="text-neutral-300 text-lg leading-relaxed">
-                              Elige tu gusto favorito, pide tus porciones y espera a que el horno haga su magia. ¡Te avisaremos cuando esté lista!
+
+                          <div className="bg-neutral-50 p-3 rounded-xl flex items-center gap-3 w-full border border-neutral-100">
+                              <div className="bg-orange-100 p-2 rounded-lg text-orange-700"><Flame size={20}/></div>
+                              <div><p className="font-bold text-sm">Estado del Horno</p><p className="text-xs text-neutral-500">Sabrás cuando tu pizza se esté cocinando.</p></div>
+                          </div>
+
+                          <div className="bg-neutral-50 p-3 rounded-xl flex items-center gap-3 w-full border border-neutral-100">
+                              <div className="bg-blue-100 p-2 rounded-lg text-blue-700"><TrendingUp size={20}/></div>
+                              <div><p className="font-bold text-sm">Resumen Inferior</p><p className="text-xs text-neutral-500">Controla el total de porciones que pediste.</p></div>
+                          </div>
+                      </div>
+                  )}
+
+                  {/* SLIDE 4: ENJOY */}
+                  {onboardingStep === 3 && (
+                      <div className="flex flex-col items-center gap-6 animate-in slide-in-from-right-10 duration-500">
+                          <div className="w-24 h-24 rounded-full bg-neutral-100 flex items-center justify-center mb-2">
+                              <PartyPopper size={48} className="text-teal-600" />
+                          </div>
+                          <h1 className="text-3xl font-bold text-black">¡A comer!</h1>
+                          <p className="text-neutral-500 text-lg leading-relaxed">
+                              Elige tu gusto favorito, pide tus porciones y espera a que el horno haga su magia.
                           </p>
                       </div>
                   )}
 
                   {/* NAVIGATION */}
-                  <div className="mt-12 flex items-center justify-between w-full">
+                  <div className="mt-10 flex items-center justify-between w-full">
                       <div className="flex gap-2">
-                          {[0, 1, 2].map(i => (
-                              <div key={i} className={`w-2 h-2 rounded-full transition-all ${i === onboardingStep ? 'bg-white w-6' : 'bg-white/30'}`}></div>
+                          {[0, 1, 2, 3].map(i => (
+                              <div key={i} className={`w-2 h-2 rounded-full transition-all ${i === onboardingStep ? 'bg-teal-600 w-6' : 'bg-neutral-300'}`}></div>
                           ))}
                       </div>
                       <button 
                           onClick={() => {
-                              if (onboardingStep < 2) setOnboardingStep(prev => prev + 1);
+                              if (onboardingStep < 3) setOnboardingStep(prev => prev + 1);
                               else completeOnboarding();
                           }}
-                          className="bg-white text-black px-6 py-3 rounded-full font-bold flex items-center gap-2 hover:scale-105 transition-transform"
+                          className="bg-teal-600 text-white px-6 py-3 rounded-full font-bold flex items-center gap-2 hover:bg-teal-700 transition-colors shadow-lg shadow-teal-200"
                       >
-                          {onboardingStep === 2 ? 'Comenzar' : 'Siguiente'} {onboardingStep < 2 ? <ChevronRight size={18} /> : <Check size={18}/>}
+                          {onboardingStep === 3 ? 'Comenzar' : 'Siguiente'} {onboardingStep < 3 ? <ChevronRight size={18} /> : <Check size={18}/>}
                       </button>
                   </div>
               </div>
@@ -603,7 +648,6 @@ export default function VitoPizzaApp() {
               <button onClick={rotarIdioma} className="w-9 h-9 rounded-full hover:bg-white/20 text-xs font-bold flex items-center justify-center border border-white/20">{lang.toUpperCase()}</button>
           </div>
           <div className={`p-2 rounded-full border shadow-lg flex gap-2 pointer-events-auto ${base.bar}`}>
-              {/* BOTON DE INSTALAR APP (Solo si es instalable) */}
               {isInstallable && (
                   <button onClick={handleInstallClick} className="p-2 rounded-full hover:bg-white/20 flex items-center justify-center animate-bounce">
                       <Download size={18} />
