@@ -26,6 +26,7 @@ const THEMES = [
 // --- DICCIONARIO DE UI ---
 const dictionary = {
   es: {
+    // App Base
     welcomeTitle: "Gracias por venir hoy,",
     welcomeSub: "será un placer cocinar para vos. 🫠",
     whoAreYou: "Tu nombre?",
@@ -302,7 +303,7 @@ export default function VitoPizzaApp() {
   const [misValoraciones, setMisValoraciones] = useState<string[]>([]);
   const [autoTranslations, setAutoTranslations] = useState<Record<string, Record<string, { name: string, desc: string }>>>({});
 
-  // ESTILOS BASE
+  // ESTILOS BASE (Corregido con buttonSec)
   const base = isDarkMode ? {
       bg: "bg-neutral-950",
       text: "text-white",
@@ -310,6 +311,7 @@ export default function VitoPizzaApp() {
       card: "bg-neutral-900 border-neutral-800",
       input: "bg-transparent text-white placeholder-neutral-600",
       inputContainer: "bg-neutral-900 border-neutral-800",
+      buttonSec: "bg-black/20 text-white hover:bg-black/40 border-white/10",
       progressBg: "bg-black/40 border-white/5",
       progressTrack: "bg-neutral-800 border-black/50",
       badge: "bg-white/10 text-white border border-white/10",
@@ -323,6 +325,7 @@ export default function VitoPizzaApp() {
       card: "bg-white border-gray-200 shadow-md",
       input: "bg-transparent text-gray-900 placeholder-gray-400",
       inputContainer: "bg-white border-gray-200 shadow-sm",
+      buttonSec: "bg-gray-200 text-gray-600 hover:text-black border-gray-300",
       progressBg: "bg-gray-100 border-gray-200",
       progressTrack: "bg-gray-300 border-white/50",
       badge: "bg-black/5 text-gray-700 border border-black/5",
@@ -331,20 +334,20 @@ export default function VitoPizzaApp() {
       bar: "bg-white/50 backdrop-blur-md border-gray-300 shadow-lg text-gray-900 border"
   };
 
-  // --- BOTONES INDEPENDIENTES CON ESTADOS CLAROS ---
+  // HELPER PARA ESTILOS DE BOTONES INDIVIDUALES
   const getBtnClass = (isActive: boolean) => {
       const common = "p-2 rounded-full transition-all duration-300 flex items-center justify-center ";
       
       // MODO OSCURO
       if (isDarkMode) {
-          if (isActive) return common + "bg-white/20 text-white shadow-sm"; // Activo: Fondo blanco traslúcido
-          return common + "bg-transparent text-white/60 hover:text-white hover:bg-white/10"; // Inactivo: Transparente
+          if (isActive) return common + "bg-white/20 text-white shadow-sm"; 
+          return common + "bg-transparent text-white/60 hover:text-white hover:bg-white/10";
       }
       
       // MODO CLARO
       else {
-          if (isActive) return common + "bg-black/10 text-black shadow-inner"; // Activo: Fondo negro muy suave
-          return common + "bg-transparent text-neutral-500 hover:text-black hover:bg-black/5"; // Inactivo: Transparente
+          if (isActive) return common + "bg-black/10 text-black shadow-inner"; 
+          return common + "bg-transparent text-neutral-500 hover:text-black hover:bg-black/5";
       }
   };
 
@@ -707,6 +710,7 @@ export default function VitoPizzaApp() {
                       <div className="flex flex-col items-center gap-4 animate-in slide-in-from-right-10 duration-500 text-left w-full">
                           <h1 className="text-3xl font-bold text-neutral-800 text-center w-full mb-2">{t.onb_how_title}</h1>
                           
+                          {/* Visual Block: Progress Bar */}
                           <div className="bg-white p-3 rounded-2xl flex items-center gap-4 w-full border border-neutral-100 shadow-sm">
                               <div className="bg-teal-50 p-3 rounded-xl text-teal-600"><LayoutTemplate size={24}/></div>
                               <div className="flex-1">
@@ -716,6 +720,7 @@ export default function VitoPizzaApp() {
                               </div>
                           </div>
 
+                          {/* Visual Block: Oven Status */}
                           <div className="bg-white p-3 rounded-2xl flex items-center gap-4 w-full border border-neutral-100 shadow-sm">
                               <div className="bg-orange-50 p-3 rounded-xl text-orange-600"><Flame size={24}/></div>
                               <div className="flex-1">
@@ -725,6 +730,7 @@ export default function VitoPizzaApp() {
                               </div>
                           </div>
 
+                          {/* Visual Block: Controls */}
                           <div className="bg-white p-3 rounded-2xl flex items-center gap-4 w-full border border-neutral-100 shadow-sm">
                               <div className="bg-purple-50 p-3 rounded-xl text-purple-600"><Palette size={24}/></div>
                               <div className="flex-1">
