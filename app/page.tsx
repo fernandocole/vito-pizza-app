@@ -26,7 +26,6 @@ const THEMES = [
 // --- DICCIONARIO DE UI ---
 const dictionary = {
   es: {
-    // App Base
     welcomeTitle: "Gracias por venir hoy,",
     welcomeSub: "será un placer cocinar para vos. 🫠",
     whoAreYou: "Tu nombre?",
@@ -337,7 +336,7 @@ export default function VitoPizzaApp() {
   };
 
   // HELPER PARA ESTILOS DE BOTONES INDIVIDUALES (Sin fondo)
-  // MODIFICADO: Aumenté p-1 a p-1.5
+  // MODIFICADO: Aumenté p-1 a p-1.5, gap-1.5, size-16
   const getBtnClass = (isActive: boolean) => {
       // BASE: Fondo Transparente Siempre
       const common = "p-1.5 rounded-full transition-all duration-300 flex items-center justify-center bg-transparent ";
@@ -421,6 +420,7 @@ export default function VitoPizzaApp() {
       } 
   };
 
+  // --- PERSISTENCIA DE CONFIGURACIONES ---
   const rotarIdioma = () => { 
       let nextLang: LangType = 'es';
       if (lang === 'es') nextLang = 'en'; 
@@ -429,20 +429,24 @@ export default function VitoPizzaApp() {
       localStorage.setItem('vito-lang', nextLang);
   };
 
-  const toggleNotificaciones = () => { if (notifEnabled) { setNotifEnabled(false); localStorage.setItem('vito-notif-enabled', 'false'); mostrarMensaje(t.notifOff, 'info'); } else { Notification.requestPermission().then(perm => { if (perm === 'granted') { setNotifEnabled(true); localStorage.setItem('vito-notif-enabled', 'true'); mostrarMensaje(t.notifOn, 'info'); try { new Notification("Il Forno di Vito", { body: "Ok!", icon: "/icon.png" }); } catch (e) {} } else { alert("Activa las notificaciones en la configuración de tu navegador."); } }); } };
-
-  // Funciones faltantes agregadas
-  const toggleOrden = () => { const n = orden === 'estado' ? 'nombre' : (orden === 'nombre' ? 'ranking' : 'estado'); setOrden(n); localStorage.setItem('vito-orden', n); };
-  const toggleCompact = () => { const n = !isCompact; setIsCompact(n); localStorage.setItem('vito-compact', String(n)); };
-  const toggleDarkMode = () => { const n = !isDarkMode; setIsDarkMode(n); localStorage.setItem('vito-dark-mode', String(n)); };
-  const cycleTextSize = () => { setZoomLevel(prev => (prev + 1) % 5); };
-  const changeFilter = (f: any) => { setFilter(f); localStorage.setItem('vito-filter', f); };
-  const changeTheme = (theme: typeof THEMES[0]) => { setCurrentTheme(theme); localStorage.setItem('vito-guest-theme', theme.name); setShowThemeSelector(false); };
-  const handleInstallClick = async () => { if (!deferredPrompt) return; deferredPrompt.prompt(); const { outcome } = await deferredPrompt.userChoice; if (outcome === 'accepted') setIsInstallable(false); setDeferredPrompt(null); };
-  const completeOnboarding = () => { localStorage.setItem('vito-onboarding-seen', 'true'); setShowOnboarding(false); };
-  const onTouchStart = (e: any) => setTouchStart(e.targetTouches[0].clientX);
-  const onTouchMove = (e: any) => setTouchEnd(e.targetTouches[0].clientX);
-  const onTouchEnd = () => { if (!touchStart || !touchEnd) return; const distance = touchStart - touchEnd; if (distance > 50 && onboardingStep < 3) setOnboardingStep(prev => prev + 1); if (distance < -50 && onboardingStep > 0) setOnboardingStep(prev => prev - 1); setTouchStart(0); setTouchEnd(0); };
+  const toggleNotificaciones = () => { 
+      if (notifEnabled) { 
+          setNotifEnabled(false); 
+          localStorage.setItem('vito-notif-enabled', 'false'); 
+          mostrarMensaje(t.notifOff, 'info'); 
+      } else { 
+          Notification.requestPermission().then(perm => { 
+              if (perm === 'granted') { 
+                  setNotifEnabled(true); 
+                  localStorage.setItem('vito-notif-enabled', 'true'); 
+                  mostrarMensaje(t.notifOn, 'info'); 
+                  try { new Notification("Il Forno di Vito", { body: "Ok!", icon: "/icon.png" }); } catch (e) {} 
+              } else { 
+                  alert("Activa las notificaciones en la configuración de tu navegador."); 
+              } 
+          }); 
+      } 
+  };
   
   const translateText = async (text: string, targetLang: string) => {
     try {
@@ -453,6 +457,69 @@ export default function VitoPizzaApp() {
         console.error("Error traduciendo", error);
         return text;
     }
+  };
+
+  // --- DEFINICIÓN CORRECTA DE FUNCIONES DE UI CON PERSISTENCIA ---
+  const toggleOrden = () => { 
+      const n = orden === 'estado' ? 'nombre' : (orden === 'nombre' ? 'ranking' : 'estado'); 
+      setOrden(n); 
+      localStorage.setItem('vito-orden', n); 
+  };
+
+  const toggleCompact = () => { 
+      const n = !isCompact; 
+      setIsCompact(n); 
+      localStorage.setItem('vito-compact', String(n)); 
+  };
+
+  const toggleDarkMode = () => { 
+      const n = !isDarkMode; 
+      setIsDarkMode(n); 
+      localStorage.setItem('vito-dark-mode', String(n)); 
+  };
+
+  const cycleTextSize = () => { 
+      setZoomLevel(prev => {
+          const next = (prev + 1) % 5;
+          localStorage.setItem('vito-zoom-level', String(next));
+          return next;
+      }); 
+  };
+
+  const changeFilter = (f: any) => { 
+      setFilter(f); 
+      localStorage.setItem('vito-filter', f); 
+  };
+
+  const changeTheme = (theme: typeof THEMES[0]) => { 
+      setCurrentTheme(theme); 
+      localStorage.setItem('vito-guest-theme', theme.name); 
+      setShowThemeSelector(false); 
+  };
+
+  const handleInstallClick = async () => { 
+      if (!deferredPrompt) return; 
+      deferredPrompt.prompt(); 
+      const { outcome } = await deferredPrompt.userChoice; 
+      if (outcome === 'accepted') setIsInstallable(false); 
+      setDeferredPrompt(null); 
+  };
+
+  const completeOnboarding = () => { 
+      localStorage.setItem('vito-onboarding-seen', 'true'); 
+      setShowOnboarding(false); 
+  };
+
+  // --- EVENT HANDLERS DE SWIPE ---
+  const onTouchStart = (e: any) => setTouchStart(e.targetTouches[0].clientX);
+  const onTouchMove = (e: any) => setTouchEnd(e.targetTouches[0].clientX);
+  const onTouchEnd = () => { 
+      if (!touchStart || !touchEnd) return; 
+      const distance = touchStart - touchEnd; 
+      if (distance > 50 && onboardingStep < 3) setOnboardingStep(prev => prev + 1); 
+      if (distance < -50 && onboardingStep > 0) setOnboardingStep(prev => prev - 1); 
+      setTouchStart(0); 
+      setTouchEnd(0); 
   };
 
   useEffect(() => {
