@@ -1,40 +1,17 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { 
   Pizza, Settings, Plus, Trash2, ChefHat, Eye, EyeOff, CheckCircle, 
-  Clock, Flame, LogOut, List, User, Bell, ArrowRight, ArrowDownAZ, 
-  ArrowUpNarrowWide, Maximize2, Minimize2, Users, Ban, RotateCcw, 
-  KeyRound, LayoutDashboard, XCircle, Sun, Moon, BarChart3, Star, Palette, Save, UserCheck 
+  Clock, Flame, LogOut, List, User, Ban, 
+  LayoutDashboard, XCircle, BarChart3, Star, Save
 } from 'lucide-react';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
-
-// --- COMPONENTE INTERNO PARA EL CRONÓMETRO ---
-const Timer = ({ startTime }: { startTime: string }) => {
-  const [elapsed, setElapsed] = useState('');
-
-  useEffect(() => {
-    const updateTimer = () => {
-      const start = new Date(startTime).getTime();
-      const now = new Date().getTime();
-      const diff = Math.max(0, now - start);
-      const h = Math.floor(diff / 3600000);
-      const m = Math.floor((diff % 3600000) / 60000);
-      const s = Math.floor((diff % 60000) / 1000);
-      setElapsed(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`);
-    };
-    updateTimer();
-    const interval = setInterval(updateTimer, 1000);
-    return () => clearInterval(interval);
-  }, [startTime]);
-
-  return <span className="font-mono text-[10px] bg-neutral-100 dark:bg-white/5 px-1.5 py-0.5 rounded border border-black/5 dark:border-white/5 ml-2 text-neutral-500 dark:text-neutral-400">{elapsed}</span>;
-};
 
 const THEMES = [
   { name: 'Carbone', color: 'bg-neutral-600', gradient: 'from-neutral-700 to-neutral-900', text: 'text-neutral-400' },
@@ -60,23 +37,18 @@ export default function AdminPage() {
   const [newPizzaStock, setNewPizzaStock] = useState(5);
   const [newGuestName, setNewGuestName] = useState('');
   const [tempMotivos, setTempMotivos] = useState<Record<string, string>>({});
-  const [isDarkMode, setIsDarkMode] = useState(true);
-  const [currentTheme, setCurrentTheme] = useState(THEMES[1]);
+  
+  // Configuración visual base (Modo oscuro por defecto en admin para consistencia)
+  const isDarkMode = true; 
+  const currentTheme = THEMES[1]; // Turquesa default
 
-  const base = isDarkMode ? {
+  const base = {
       bg: "bg-neutral-950 text-white",
       card: "bg-neutral-900 border-neutral-800",
       input: "bg-black border-neutral-700 text-white placeholder-neutral-600",
       subtext: "text-neutral-500",
-      buttonSec: "bg-neutral-800 text-neutral-400 border-white/10",
+      buttonSec: "bg-neutral-800 text-neutral-400 border-white/10 hover:text-white",
       bar: "bg-neutral-900/50 backdrop-blur-md border-white/10 text-white border"
-  } : {
-      bg: "bg-gray-100 text-gray-900",
-      card: "bg-white border-gray-200 shadow-sm",
-      input: "bg-white border-gray-300 text-gray-900 placeholder-gray-400",
-      subtext: "text-gray-500",
-      buttonSec: "bg-white text-gray-600 border-gray-300",
-      bar: "bg-white/50 backdrop-blur-md border-gray-300 shadow-lg text-gray-900 border"
   };
 
   useEffect(() => {
@@ -89,6 +61,7 @@ export default function AdminPage() {
 
   const cargarDatos = async () => {
     const now = new Date(); if (now.getHours() < 6) now.setDate(now.getDate() - 1); now.setHours(6, 0, 0, 0); const iso = now.toISOString();
+    
     const { data: dP } = await supabase.from('menu_pizzas').select('*').order('created_at'); if (dP) setPizzas(dP);
     const { data: dPed } = await supabase.from('pedidos').select('*').gte('created_at', iso).order('created_at', { ascending: true });
     if (dPed) setPedidos(dPed);
@@ -103,6 +76,7 @@ export default function AdminPage() {
     if (data && data.password_admin === password) { setAutenticado(true); setConfig(data); } else { alert('Incorrecto'); }
   };
 
+  // Acciones
   const togglerCocinando = async (id: string, estado: boolean) => { await supabase.from('menu_pizzas').update({ cocinando: estado }).eq('id', id); };
   const eliminarPedido = async (id: string) => { await supabase.from('pedidos').delete().eq('id', id); };
   const entregarPedido = async (id: string) => { await supabase.from('pedidos').update({ estado: 'entregado' }).eq('id', id); };
@@ -127,6 +101,14 @@ export default function AdminPage() {
     setNewGuestName('');
   };
 
+  const eliminarUsuarioCompleto = async (nombre: string) => {
+      if(confirm(`¿Borrar todos los pedidos de ${nombre}?`)) {
+          await supabase.from('pedidos').delete().eq('invitado_nombre', nombre);
+          cargarDatos();
+      }
+  };
+
+  // Lógica de Vistas
   const rankingData = useMemo(() => {
     return pizzas.map(p => {
       const pRats = valoraciones.filter(v => v.pizza_id === p.id);
@@ -147,8 +129,7 @@ export default function AdminPage() {
         return { 
           nombre: pz.nombre, 
           entregado: ent, 
-          pendiente: pen.reduce((acc, c) => acc + c.cantidad_porciones, 0),
-          oldestPending: pen.length > 0 ? pen[0].created_at : null 
+          pendiente: pen.reduce((acc, c) => acc + c.cantidad_porciones, 0)
         };
       }).filter(Boolean);
       return { nombre: susPedidos[0].invitado_nombre, detalle };
@@ -219,19 +200,17 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* VISTA PEDIDOS (CON TIMER) */}
+        {/* VISTA PEDIDOS */}
         {view === 'pedidos' && (
           <div className="space-y-4">
             {pedidosAgrupados.map((u, i) => (
-              <div key={i} className={`${base.card} p-4 rounded-2xl border`}>
+              <div key={i} className={`${base.card} p-4 rounded-2xl border relative`}>
+                <button onClick={() => eliminarUsuarioCompleto(u.nombre)} className="absolute top-4 right-4 text-neutral-600 hover:text-red-500"><Trash2 size={16}/></button>
                 <h3 className="font-bold text-lg mb-3 flex items-center gap-2 border-b pb-2"><User size={18}/> {u.nombre}</h3>
                 <div className="space-y-2">
                   {u.detalle.map((d: any, k: number) => (
                     <div key={k} className="flex justify-between items-center text-sm p-2 bg-black/5 dark:bg-white/5 rounded-lg">
-                      <div className="flex items-center">
-                        <span className="font-medium">{d.nombre}</span>
-                        {d.oldestPending && <Timer startTime={d.oldestPending} />}
-                      </div>
+                      <span className="font-medium">{d.nombre}</span>
                       <div className="flex gap-3 font-bold text-xs">
                         {d.pendiente > 0 && <span className="text-orange-500 flex items-center gap-1"><Clock size={12}/> {d.pendiente}</span>}
                         {d.entregado > 0 && <span className="text-green-500 flex items-center gap-1"><CheckCircle size={12}/> {d.entregado}</span>}
