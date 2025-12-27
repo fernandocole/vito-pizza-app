@@ -5,7 +5,7 @@ import {
   Plus, Minus, User, Palette, Lock, PartyPopper, Bell, BellOff, 
   ArrowDownAZ, ArrowUpNarrowWide, Maximize2, Minimize2, AlertCircle, 
   KeyRound, ArrowRight, Sun, Moon, Star, X, Filter, TrendingUp, 
-  CheckCircle, Clock, Package, ChefHat, Flame, Type, Download, ChevronRight, Check, Info, LayoutTemplate
+  CheckCircle, Clock, Package, ChefHat, Flame, Type, Download, ChevronRight, Check, Languages, LayoutTemplate
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -26,6 +26,7 @@ const THEMES = [
 // --- DICCIONARIO DE UI ---
 const dictionary = {
   es: {
+    // App Base
     welcomeTitle: "Gracias por venir hoy,",
     welcomeSub: "será un placer cocinar para vos. 🫠",
     whoAreYou: "Tu nombre?",
@@ -81,7 +82,25 @@ const dictionary = {
     emptyRate: "¡Estás al día! No debes ninguna opinión, crack 🫡",
     emptyOrdered: "¿Estás a dieta? Aún no pediste nada... 🤨",
     emptyNew: "¡Ya probaste todo! Eres un profesional de la pizza 🍕",
-    emptyDefault: "No hay pizzas por aquí... ¿Fue magia? 🎩"
+    emptyDefault: "No hay pizzas por aquí... ¿Fue magia? 🎩",
+    
+    // Onboarding
+    onb_wel_title: "¡Bienvenido! 👋",
+    onb_wel_desc: "Tu compañero digital para disfrutar de la mejor pizza casera. Organiza, pide y califica en tiempo real.",
+    onb_inst_title: "Instala la App",
+    onb_inst_desc: "Para una mejor experiencia, instala la app tocando el botón de descarga en la barra superior.",
+    onb_how_title: "Conoce la App",
+    onb_enjoy_title: "¡A comer!",
+    onb_enjoy_desc: "Elige tu gusto favorito, pide tus porciones y espera a que el horno haga su magia.",
+    onb_btn_next: "Siguiente",
+    onb_btn_start: "Comenzar",
+    // Detailed Explanations
+    feat_prog_title: "Progreso de la Pizza",
+    feat_prog_desc: "Esta barra se llena a medida que todos piden. Cuando se completa, ¡la pizza va al horno!",
+    feat_oven_title: "Estado del Horno",
+    feat_oven_desc: "Cuando veas fuego y rojo, tu pizza se está cocinando.",
+    feat_ctrl_title: "Tus Controles",
+    feat_ctrl_desc: "Arriba a la derecha: Cambia Idioma (ES), Tamaño Texto (T), Tema (Paleta) y Modo Oscuro (Luna).",
   },
   en: {
     welcomeTitle: "Thanks for coming today,",
@@ -139,7 +158,24 @@ const dictionary = {
     emptyRate: "All caught up! You owe nothing, boss 🫡",
     emptyOrdered: "On a diet? You haven't ordered anything... 🤨",
     emptyNew: "You tried everything! A true pro 🍕",
-    emptyDefault: "No pizzas here... Magic? 🎩"
+    emptyDefault: "No pizzas here... Magic? 🎩",
+    
+    // Onboarding
+    onb_wel_title: "Welcome! 👋",
+    onb_wel_desc: "Your digital companion for the best homemade pizza. Organize, order, and rate in real-time.",
+    onb_inst_title: "Install the App",
+    onb_inst_desc: "For the best experience, install the app by tapping the download button in the top bar.",
+    onb_how_title: "How it Works",
+    onb_enjoy_title: "Let's Eat!",
+    onb_enjoy_desc: "Pick your favorite flavor, order your slices, and wait for the oven magic.",
+    onb_btn_next: "Next",
+    onb_btn_start: "Start",
+    feat_prog_title: "Pizza Progress",
+    feat_prog_desc: "This bar fills up as people order. When full, the pizza goes into the oven!",
+    feat_oven_title: "Oven Status",
+    feat_oven_desc: "When you see fire and red, your pizza is baking.",
+    feat_ctrl_title: "Your Controls",
+    feat_ctrl_desc: "Top Right: Change Language (EN), Text Size (T), Theme (Palette), and Dark Mode (Moon).",
   },
   it: {
     welcomeTitle: "Grazie per essere venuto,",
@@ -197,7 +233,24 @@ const dictionary = {
     emptyRate: "Tutto votato! Bravo 🫡",
     emptyOrdered: "A dieta? Niente ordini... 🤨",
     emptyNew: "Hai provato tutto! 🍕",
-    emptyDefault: "Nessuna pizza... Magia? 🎩"
+    emptyDefault: "Nessuna pizza... Magia? 🎩",
+
+    // Onboarding
+    onb_wel_title: "Benvenuto! 👋",
+    onb_wel_desc: "Il tuo compagno digitale per la migliore pizza fatta in casa. Organizza, ordina e vota in tempo reale.",
+    onb_inst_title: "Installa l'App",
+    onb_inst_desc: "Per un'esperienza migliore, installa l'app toccando il pulsante di download nella barra in alto.",
+    onb_how_title: "Come Funziona",
+    onb_enjoy_title: "Buon Appetito!",
+    onb_enjoy_desc: "Scegli il tuo gusto preferito, ordina le fette e aspetta la magia del forno.",
+    onb_btn_next: "Avanti",
+    onb_btn_start: "Inizia",
+    feat_prog_title: "Progresso Pizza",
+    feat_prog_desc: "Questa barra si riempie man mano che si ordina. Quando è piena, va in forno!",
+    feat_oven_title: "Stato Forno",
+    feat_oven_desc: "Quando vedi fuoco e rosso, la tua pizza sta cuocendo.",
+    feat_ctrl_title: "I Tuoi Controlli",
+    feat_ctrl_desc: "In alto a destra: Lingua (IT), Testo (T), Tema (Tavolozza) e Modalità Scura (Luna).",
   }
 };
 
@@ -240,6 +293,10 @@ export default function VitoPizzaApp() {
   const [isInstallable, setIsInstallable] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(0);
+  
+  // SWIPE LOGIC
+  const [touchStart, setTouchStart] = useState(0);
+  const [touchEnd, setTouchEnd] = useState(0);
 
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [pizzaToRate, setPizzaToRate] = useState<any>(null);
@@ -337,6 +394,26 @@ export default function VitoPizzaApp() {
         window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     };
   }, []);
+
+  // SWIPE HANDLERS
+  const onTouchStart = (e: any) => setTouchStart(e.targetTouches[0].clientX);
+  const onTouchMove = (e: any) => setTouchEnd(e.targetTouches[0].clientX);
+  const onTouchEnd = () => {
+      if (!touchStart || !touchEnd) return;
+      const distance = touchStart - touchEnd;
+      const isLeftSwipe = distance > 50;
+      const isRightSwipe = distance < -50;
+      
+      if (isLeftSwipe && onboardingStep < 3) {
+          setOnboardingStep(prev => prev + 1);
+      }
+      if (isRightSwipe && onboardingStep > 0) {
+          setOnboardingStep(prev => prev - 1);
+      }
+      // Reset
+      setTouchStart(0);
+      setTouchEnd(0);
+  };
 
   const handleInstallClick = async () => {
       if (!deferredPrompt) return;
@@ -556,87 +633,111 @@ export default function VitoPizzaApp() {
   return (
     <div className={`min-h-screen font-sans pb-28 transition-colors duration-500 overflow-x-hidden ${base.bg}`}>
       
-      {/* ONBOARDING OVERLAY EN MODO CLARO */}
+      {/* ONBOARDING OVERLAY EN MODO CLARO Y ESTILIZADO */}
       {showOnboarding && (
-          <div className="fixed inset-0 z-[100] bg-white/95 backdrop-blur-xl flex flex-col items-center justify-center p-8 text-center text-neutral-900 animate-in fade-in duration-500">
-              <div className="max-w-md w-full relative">
+          <div 
+            onTouchStart={onTouchStart} 
+            onTouchMove={onTouchMove} 
+            onTouchEnd={onTouchEnd} 
+            className="fixed inset-0 z-[100] bg-white/95 backdrop-blur-xl flex flex-col items-center justify-center p-8 text-center text-neutral-900 animate-in fade-in duration-500 select-none"
+          >
+              <div className="absolute top-6 right-6">
+                  <button onClick={rotarIdioma} className="bg-neutral-100 p-2 rounded-full font-bold text-xs shadow-sm border flex items-center gap-2">
+                      <Languages size={14}/> {lang.toUpperCase()}
+                  </button>
+              </div>
+
+              <div className="max-w-md w-full relative h-[70vh] flex flex-col justify-center">
                   
-                  {/* SLIDE 1: WELCOME */}
+                  {/* SLIDE 0: WELCOME */}
                   {onboardingStep === 0 && (
                       <div className="flex flex-col items-center gap-6 animate-in slide-in-from-right-10 duration-500">
-                          <img src="/logo.png" alt="Logo" className="h-32 w-auto object-contain drop-shadow-lg" />
-                          <h1 className="text-3xl font-bold text-black">¡Bienvenido! 👋</h1>
-                          <p className="text-neutral-500 text-lg leading-relaxed">
-                              Tu compañero digital para disfrutar de la mejor pizza casera. Organiza, pide y califica en tiempo real.
-                          </p>
+                          <img src="/logo.png" alt="Logo" className="h-40 w-auto object-contain drop-shadow-xl" />
+                          <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-teal-500 to-emerald-700">{t.onb_wel_title}</h1>
+                          <p className="text-neutral-500 text-lg leading-relaxed px-4">{t.onb_wel_desc}</p>
                       </div>
                   )}
 
-                  {/* SLIDE 2: INSTALL APP */}
+                  {/* SLIDE 1: INSTALL APP */}
                   {onboardingStep === 1 && (
                       <div className="flex flex-col items-center gap-6 animate-in slide-in-from-right-10 duration-500">
-                          <div className="w-24 h-24 rounded-full bg-neutral-100 flex items-center justify-center mb-2">
-                              <Download size={48} className="text-teal-600 animate-bounce" />
+                          <div className="w-32 h-32 rounded-full bg-teal-50 flex items-center justify-center mb-2 shadow-inner">
+                              <Download size={64} className="text-teal-500 animate-bounce" strokeWidth={1.5} />
                           </div>
-                          <h1 className="text-3xl font-bold text-black">Instala la App</h1>
-                          <p className="text-neutral-500 text-lg leading-relaxed">
-                              Para una mejor experiencia, instala la app en tu celular tocando el botón de descarga <Download size={14} className="inline text-teal-600"/> en la barra superior.
-                          </p>
+                          <h1 className="text-3xl font-bold text-neutral-800">{t.onb_inst_title}</h1>
+                          <p className="text-neutral-500 text-lg leading-relaxed px-4">{t.onb_inst_desc}</p>
                       </div>
                   )}
 
-                  {/* SLIDE 3: HOW IT WORKS (PARTS) */}
+                  {/* SLIDE 2: HOW IT WORKS (DETAILED VISUALS) */}
                   {onboardingStep === 2 && (
-                      <div className="flex flex-col items-center gap-4 animate-in slide-in-from-right-10 duration-500 text-left w-full">
-                          <h1 className="text-2xl font-bold text-black text-center w-full mb-2">Conoce la App</h1>
+                      <div className="flex flex-col items-center gap-3 animate-in slide-in-from-right-10 duration-500 text-left w-full">
+                          <h1 className="text-2xl font-bold text-neutral-800 text-center w-full mb-2">{t.onb_how_title}</h1>
                           
-                          <div className="bg-neutral-50 p-3 rounded-xl flex items-center gap-3 w-full border border-neutral-100">
-                              <div className="bg-teal-100 p-2 rounded-lg text-teal-700"><LayoutTemplate size={20}/></div>
-                              <div><p className="font-bold text-sm">Barra de Progreso</p><p className="text-xs text-neutral-500">Mira cuánto falta para completar una pizza.</p></div>
+                          {/* Visual Block: Progress Bar */}
+                          <div className="bg-white p-3 rounded-2xl flex items-center gap-3 w-full border border-neutral-100 shadow-sm">
+                              <div className="bg-teal-50 p-2 rounded-xl text-teal-600"><LayoutTemplate size={24}/></div>
+                              <div className="flex-1">
+                                  <p className="font-bold text-sm text-neutral-800 mb-1">{t.feat_prog_title}</p>
+                                  <div className="h-1.5 w-full bg-neutral-100 rounded-full overflow-hidden"><div className="h-full w-1/2 bg-teal-500 rounded-full"></div></div>
+                                  <p className="text-[10px] text-neutral-400 mt-1">{t.feat_prog_desc}</p>
+                              </div>
                           </div>
 
-                          <div className="bg-neutral-50 p-3 rounded-xl flex items-center gap-3 w-full border border-neutral-100">
-                              <div className="bg-orange-100 p-2 rounded-lg text-orange-700"><Flame size={20}/></div>
-                              <div><p className="font-bold text-sm">Estado del Horno</p><p className="text-xs text-neutral-500">Sabrás cuando tu pizza se esté cocinando.</p></div>
+                          {/* Visual Block: Oven Status */}
+                          <div className="bg-white p-3 rounded-2xl flex items-center gap-3 w-full border border-neutral-100 shadow-sm">
+                              <div className="bg-orange-50 p-2 rounded-xl text-orange-600"><Flame size={24}/></div>
+                              <div className="flex-1">
+                                  <p className="font-bold text-sm text-neutral-800 mb-1">{t.feat_oven_title}</p>
+                                  <span className="text-[9px] bg-red-600 text-white px-2 py-0.5 rounded-full font-bold">EN HORNO</span>
+                                  <p className="text-[10px] text-neutral-400 mt-1">{t.feat_oven_desc}</p>
+                              </div>
                           </div>
 
-                          <div className="bg-neutral-50 p-3 rounded-xl flex items-center gap-3 w-full border border-neutral-100">
-                              <div className="bg-blue-100 p-2 rounded-lg text-blue-700"><TrendingUp size={20}/></div>
-                              <div><p className="font-bold text-sm">Resumen Inferior</p><p className="text-xs text-neutral-500">Controla el total de porciones que pediste.</p></div>
+                          {/* Visual Block: Controls */}
+                          <div className="bg-white p-3 rounded-2xl flex items-center gap-3 w-full border border-neutral-100 shadow-sm">
+                              <div className="bg-purple-50 p-2 rounded-xl text-purple-600"><Palette size={24}/></div>
+                              <div className="flex-1">
+                                  <p className="font-bold text-sm text-neutral-800 mb-1">{t.feat_ctrl_title}</p>
+                                  <div className="flex gap-2 mb-1">
+                                      <div className="w-4 h-4 rounded-full bg-neutral-200"></div>
+                                      <div className="w-4 h-4 rounded-full bg-neutral-200"></div>
+                                      <div className="w-4 h-4 rounded-full bg-neutral-200"></div>
+                                  </div>
+                                  <p className="text-[10px] text-neutral-400">{t.feat_ctrl_desc}</p>
+                              </div>
                           </div>
                       </div>
                   )}
 
-                  {/* SLIDE 4: ENJOY */}
+                  {/* SLIDE 3: ENJOY */}
                   {onboardingStep === 3 && (
                       <div className="flex flex-col items-center gap-6 animate-in slide-in-from-right-10 duration-500">
-                          <div className="w-24 h-24 rounded-full bg-neutral-100 flex items-center justify-center mb-2">
-                              <PartyPopper size={48} className="text-teal-600" />
+                          <div className="w-32 h-32 rounded-full bg-yellow-50 flex items-center justify-center mb-2 shadow-inner">
+                              <PartyPopper size={64} className="text-yellow-500" strokeWidth={1.5} />
                           </div>
-                          <h1 className="text-3xl font-bold text-black">¡A comer!</h1>
-                          <p className="text-neutral-500 text-lg leading-relaxed">
-                              Elige tu gusto favorito, pide tus porciones y espera a que el horno haga su magia.
-                          </p>
+                          <h1 className="text-3xl font-bold text-neutral-800">{t.onb_enjoy_title}</h1>
+                          <p className="text-neutral-500 text-lg leading-relaxed px-4">{t.onb_enjoy_desc}</p>
                       </div>
                   )}
+              </div>
 
-                  {/* NAVIGATION */}
-                  <div className="mt-10 flex items-center justify-between w-full">
-                      <div className="flex gap-2">
-                          {[0, 1, 2, 3].map(i => (
-                              <div key={i} className={`w-2 h-2 rounded-full transition-all ${i === onboardingStep ? 'bg-teal-600 w-6' : 'bg-neutral-300'}`}></div>
-                          ))}
-                      </div>
-                      <button 
-                          onClick={() => {
-                              if (onboardingStep < 3) setOnboardingStep(prev => prev + 1);
-                              else completeOnboarding();
-                          }}
-                          className="bg-teal-600 text-white px-6 py-3 rounded-full font-bold flex items-center gap-2 hover:bg-teal-700 transition-colors shadow-lg shadow-teal-200"
-                      >
-                          {onboardingStep === 3 ? 'Comenzar' : 'Siguiente'} {onboardingStep < 3 ? <ChevronRight size={18} /> : <Check size={18}/>}
-                      </button>
+              {/* NAVIGATION */}
+              <div className="fixed bottom-10 left-0 right-0 flex flex-col items-center gap-6 px-8">
+                  <div className="flex gap-2">
+                      {[0, 1, 2, 3].map(i => (
+                          <div key={i} className={`h-1.5 rounded-full transition-all duration-300 ${i === onboardingStep ? 'bg-teal-600 w-8' : 'bg-neutral-200 w-2'}`}></div>
+                      ))}
                   </div>
+                  <button 
+                      onClick={() => {
+                          if (onboardingStep < 3) setOnboardingStep(prev => prev + 1);
+                          else completeOnboarding();
+                      }}
+                      className="bg-neutral-900 text-white w-full py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-black transition-all shadow-xl active:scale-95"
+                  >
+                      {onboardingStep === 3 ? t.onb_btn_start : t.onb_btn_next} {onboardingStep < 3 ? <ChevronRight size={18} /> : <Check size={18}/>}
+                  </button>
               </div>
           </div>
       )}
@@ -718,12 +819,4 @@ export default function VitoPizzaApp() {
 
       <div className={`fixed bottom-4 left-4 right-4 z-50 rounded-full p-3 shadow-2xl ${base.bar}`}>
           <div className="max-w-lg mx-auto flex justify-around items-center text-xs font-bold">
-              <div className="flex flex-col items-center"><span className="opacity-60 text-[9px] uppercase tracking-wider">{t.sumTotal}</span><span className="text-base">{mySummary.total}</span></div><div className="h-6 w-[1px] bg-current opacity-20"></div>
-              <div className="flex flex-col items-center"><span className="opacity-60 text-[9px] uppercase tracking-wider flex items-center gap-1"><Clock size={10}/> {t.sumWait}</span><span className="text-base">{mySummary.wait}</span></div><div className="h-6 w-[1px] bg-current opacity-20"></div>
-              <div className="flex flex-col items-center"><span className="opacity-60 text-[9px] uppercase tracking-wider flex items-center gap-1"><Flame size={10}/> {t.sumOven}</span><span className="text-base">{mySummary.oven}</span></div><div className="h-6 w-[1px] bg-current opacity-20"></div>
-              <div className="flex flex-col items-center"><span className="opacity-60 text-[9px] uppercase tracking-wider flex items-center gap-1"><ChefHat size={10}/> {t.sumReady}</span><span className="text-base">{mySummary.ready}</span></div>
-          </div>
-      </div>
-    </div>
-  );
-}
+              <div className="flex flex-col items-center"><span className="opacity-60 text-[9px] uppercase tracking-wider">{t.sumTotal}</span><span className="text-base">{mySummary.total}</span></div><div className="h-6 w-[1px
