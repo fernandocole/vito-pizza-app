@@ -6,7 +6,7 @@ import {
   Pizza, Settings, Plus, Trash2, ChefHat, Eye, EyeOff, CheckCircle, 
   Clock, Flame, LogOut, List, User, Bell, ArrowRight, ArrowDownAZ, 
   ArrowUpNarrowWide, Maximize2, Minimize2, Users, Ban, RotateCcw, 
-  KeyRound, LayoutDashboard, XCircle, Sun, Moon, BarChart3, Star, MessageSquare, Palette, Save 
+  KeyRound, LayoutDashboard, XCircle, Sun, Moon, BarChart3, Star, MessageSquare, Palette, Save, UserCheck 
 } from 'lucide-react';
 
 const supabase = createClient(
@@ -154,10 +154,9 @@ export default function AdminPage() {
           return { id: pz.id, nombre: pz.nombre, entregada: entr, enHorno: pz.cocinando ? pend : 0, enEspera: pz.cocinando ? 0 : pend };
       }).filter(Boolean);
       
-      // NUEVO: Calcular totales para badges
       const totalEnHorno = detalle.reduce((acc, d) => acc + (d?.enHorno || 0), 0);
       const totalEnEspera = detalle.reduce((acc, d) => acc + (d?.enEspera || 0), 0);
-      const totalPendienteGeneral = totalEnHorno + totalEnEspera; // Para el sort
+      const totalPendienteGeneral = totalEnHorno + totalEnEspera;
 
       return { nombre: nombreReal, detalle, totalPendienteGeneral, totalEnHorno, totalEnEspera };
   }).sort((a, b) => b.totalPendienteGeneral - a.totalPendienteGeneral);
@@ -173,12 +172,47 @@ export default function AdminPage() {
 
   const allUsersList = useMemo(() => {
       const map = new Map();
+      
+      // 1. Usuarios de DB (Registrados)
       invitadosDB.forEach(u => map.set(u.nombre.toLowerCase(), { ...u, source: 'db' }));
-      pedidos.forEach(p => { if (!map.has(p.invitado_nombre.toLowerCase())) map.set(p.invitado_nombre.toLowerCase(), { id: null, nombre: p.invitado_nombre, bloqueado: false, source: 'ped' }); });
+      
+      // 2. Usuarios de Pedidos (Invitados)
+      pedidos.forEach(p => { 
+          const key = p.invitado_nombre.toLowerCase();
+          
+          if (!map.has(key)) {
+              // Si no está en DB, es invitado
+              map.set(key, { id: null, nombre: p.invitado_nombre, bloqueado: false, source: 'ped', totalOrders: p.cantidad_porciones }); 
+          } else {
+              // Si ya está, actualizamos el contador (solo visualmente, el origen se mantiene)
+              const existing = map.get(key);
+              map.set(key, { ...existing, totalOrders: (existing.totalOrders || 0) + p.cantidad_porciones });
+          }
+      });
+
+      // Recalcular contador para los que vienen SOLO de DB y no tienen pedidos recientes en el array
+      invitadosDB.forEach(u => {
+          const key = u.nombre.toLowerCase();
+          const ped = pedidos.filter(p => p.invitado_nombre.toLowerCase() === key).reduce((acc, c) => acc + c.cantidad_porciones, 0);
+          const existing = map.get(key);
+          map.set(key, { ...existing, totalOrders: ped });
+      });
+
       return Array.from(map.values()).sort((a, b) => a.nombre.localeCompare(b.nombre));
   }, [invitadosDB, pedidos]);
 
-  const eliminarUsuario = async (nombre: string, userDB: any) => { if(confirm(`¿ELIMINAR a ${nombre}?`)) { if(userDB?.id) await supabase.from('lista_invitados').delete().eq('id', userDB.id); const ids = pedidos.filter(p => p.invitado_nombre.toLowerCase() === nombre.toLowerCase()).map(p => p.id); if(ids.length) await supabase.from('pedidos').delete().in('id', ids); cargarDatos(); } };
+  const eliminarUsuario = async (nombre: string, userDB: any) => { 
+      if(!confirm(`¿ELIMINAR a ${nombre}?`)) return;
+
+      await supabase.from('pedidos').delete().eq('invitado_nombre', nombre); 
+      
+      if(userDB?.id) {
+          await supabase.from('lista_invitados').delete().eq('id', userDB.id);
+      }
+      
+      cargarDatos(); 
+  };
+
   const eliminarPedidosGusto = async (nom: string, pid: string) => { if(confirm(`¿Borrar pendientes?`)) { const ids = pedidos.filter(p => p.invitado_nombre.toLowerCase() === nom.toLowerCase() && p.pizza_id === pid && p.estado === 'pendiente').map(p => p.id); if(ids.length) await supabase.from('pedidos').delete().in('id', ids); cargarDatos(); } };
   const toggleCocinando = async (p: any) => { if(!p.cocinando && p.totalPendientes < p.target) { alert("Falta para 1 pizza"); return; } await supabase.from('menu_pizzas').update({ cocinando: !p.cocinando }).eq('id', p.id); setPizzas(prev => prev.map(i => i.id === p.id ? { ...i, cocinando: !p.cocinando } : i)); };
   const entregar = async (p: any) => { if(!confirm(`¿Salió ${p.nombre}?`)) return; let n = p.target; const ids=[]; for(const pd of p.pedidosPendientes){ if(n<=0) break; ids.push(pd.id); n-=pd.cantidad_porciones; } if(ids.length) { await supabase.from('pedidos').update({ estado: 'entregado' }).in('id', ids); await supabase.from('menu_pizzas').update({ cocinando: false }).eq('id', p.id); cargarDatos(); } };
@@ -204,13 +238,26 @@ export default function AdminPage() {
       cargarDatos();
   };
 
-  const resetU = async (nom: string) => { if(confirm(`¿Reset pedidos de ${nom}?`)) { const ids = pedidos.filter(p => p.invitado_nombre.toLowerCase() === nom.toLowerCase()).map(p => p.id); if(ids.length) await supabase.from('pedidos').delete().in('id', ids); cargarDatos(); } };
+  const resetU = async (nom: string) => { 
+      if(!confirm(`¿Reset pedidos de ${nom}?`)) return;
+      
+      const userExists = invitadosDB.some(u => u.nombre.toLowerCase() === nom.toLowerCase());
+      if (!userExists) {
+          await supabase.from('lista_invitados').insert([{ nombre: nom }]);
+      }
+
+      const ids = pedidos.filter(p => p.invitado_nombre.toLowerCase() === nom.toLowerCase()).map(p => p.id); 
+      if(ids.length) await supabase.from('pedidos').delete().in('id', ids); 
+      
+      cargarDatos(); 
+  };
+
   const delVal = async (id: string) => { if(confirm("¿Borrar reseña?")) { await supabase.from('valoraciones').delete().eq('id', id); cargarDatos(); } };
   const delValPizza = async (pid: string) => { if(confirm("¿Borrar reseñas de esta pizza?")) { await supabase.from('valoraciones').delete().eq('pizza_id', pid); cargarDatos(); } };
   const delAllVal = async () => { if(prompt("Escribe BORRAR") === 'BORRAR') { const { data } = await supabase.from('valoraciones').select('id'); const ids = data?.map(v => v.id) || []; if(ids.length) await supabase.from('valoraciones').delete().in('id', ids); cargarDatos(); } };
 
   if (!autenticado) return (
-    <div className={`min-h-screen flex items-center justify-center p-4 ${base.bg}`}>
+    <div className={`min-h-screen flex items-center justify-center p-4 pb-40 ${base.bg}`}>
       <div className={`w-full max-w-md p-8 rounded-3xl border shadow-xl ${base.card}`}>
         <div className="flex justify-center mb-6"><img src="/logo.png" alt="Logo" className="h-48 w-auto object-contain drop-shadow-xl" /></div>
         <form onSubmit={ingresar} className="flex flex-col gap-4">
@@ -271,7 +318,6 @@ export default function AdminPage() {
                                 <div className={`flex justify-between border-b pb-2 mb-3 pr-10 ${base.divider}`}>
                                     <h3 className="font-bold flex items-center gap-2 capitalize text-lg">
                                         <User size={18}/> {u.nombre}
-                                        {/* BADGES DE ESTADO CORREGIDOS */}
                                         {u.totalEnHorno > 0 && <span className="bg-red-600 text-white text-[10px] px-2 py-0.5 rounded-full font-bold animate-pulse">EN HORNO</span>}
                                         {u.totalEnEspera > 0 && <span className="bg-orange-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold animate-pulse">ESPERANDO</span>}
                                     </h3>
@@ -338,13 +384,28 @@ export default function AdminPage() {
                         {allUsersList.map(u => (
                             <div key={u.nombre} className={`p-4 rounded-2xl border flex flex-col gap-2 ${u.bloqueado ? base.blocked : base.card}`}>
                                 <div className="flex justify-between items-center">
-                                    <div className="flex items-center gap-2"><span className={`font-bold ${u.bloqueado ? 'text-red-500 line-through' : ''}`}>{u.nombre}</span>{u.origen === 'pedido' && <span className="text-[10px] bg-blue-500/20 text-blue-500 px-2 py-0.5 rounded-full border border-blue-500/30">Guest</span>}</div>
-                                    <div className="flex gap-2">
-                                        <button onClick={() => resetU(u.nombre)} className="p-2 bg-yellow-500/10 text-yellow-500 rounded-xl"><RotateCcw size={16}/></button>
+                                    <div className="flex items-center gap-2">
+                                        {/* ICONO DE TIPO DE USUARIO */}
+                                        {u.source === 'db' ? (
+                                            <UserCheck size={16} className="text-blue-500" />
+                                        ) : (
+                                            <User size={16} className="text-orange-400" />
+                                        )}
+                                        <span className={`font-bold ${u.bloqueado ? 'text-red-500 line-through' : ''}`}>{u.nombre}</span>
+                                        {u.source === 'ped' && <span className="text-[9px] bg-orange-500/10 text-orange-500 px-1.5 py-0.5 rounded border border-orange-500/20">Guest</span>}
+                                    </div>
+                                    <div className="flex gap-2 items-center">
+                                        {/* CONTADOR DE PEDIDOS TOTALES (COLOR CORREGIDO) */}
+                                        <span className="text-xs font-mono font-bold bg-neutral-200 dark:bg-neutral-700 text-neutral-800 dark:text-white px-2 py-1 rounded-lg border border-neutral-300 dark:border-neutral-600">
+                                            {u.totalOrders || 0}
+                                        </span>
+                                        
+                                        <button onClick={() => resetU(u.nombre)} className="p-2 bg-yellow-500/10 text-yellow-500 rounded-xl hover:bg-yellow-500/20"><RotateCcw size={16}/></button>
                                         <button onClick={() => toggleB(u)} className={`p-2 rounded-xl ${u.bloqueado ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>{u.bloqueado ? <CheckCircle size={16}/> : <Ban size={16}/>}</button>
-                                        <button onClick={() => eliminarUsuario(u.nombre, u.origen === 'db' ? u : null)} className="p-2 text-gray-500 hover:text-red-500"><Trash2 size={16}/></button>
+                                        <button onClick={() => eliminarUsuario(u.nombre, u.source === 'db' ? u : null)} className="p-2 text-gray-500 hover:text-red-500"><Trash2 size={16}/></button>
                                     </div>
                                 </div>
+                                {/* INPUT MOTIVO + BOTON GUARDAR */}
                                 {u.bloqueado && (
                                     <div className="flex gap-2 mt-2">
                                         <input 
