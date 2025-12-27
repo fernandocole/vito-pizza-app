@@ -675,7 +675,7 @@ export default function VitoPizzaApp() {
                           <h1 className="text-3xl font-bold text-neutral-800 text-center w-full mb-2">{t.onb_how_title}</h1>
                           
                           {/* Visual Block: Progress Bar */}
-                          <div className="bg-white p-3 rounded-2xl flex items-center gap-3 w-full border border-neutral-100 shadow-sm">
+                          <div className="bg-white p-3 rounded-2xl flex items-center gap-4 w-full border border-neutral-100 shadow-sm">
                               <div className="bg-teal-50 p-3 rounded-xl text-teal-600"><LayoutTemplate size={24}/></div>
                               <div className="flex-1">
                                   <p className="font-bold text-base text-neutral-800 mb-1">{t.feat_prog_title}</p>
@@ -685,17 +685,17 @@ export default function VitoPizzaApp() {
                           </div>
 
                           {/* Visual Block: Oven Status */}
-                          <div className="bg-white p-3 rounded-2xl flex items-center gap-3 w-full border border-neutral-100 shadow-sm">
+                          <div className="bg-white p-3 rounded-2xl flex items-center gap-4 w-full border border-neutral-100 shadow-sm">
                               <div className="bg-orange-50 p-3 rounded-xl text-orange-600"><Flame size={24}/></div>
                               <div className="flex-1">
                                   <p className="font-bold text-base text-neutral-800 mb-1">{t.feat_oven_title}</p>
-                                  <span className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded-full font-bold">EN HORNO</span>
+                                  <span className="text-[9px] bg-red-600 text-white px-2 py-0.5 rounded-full font-bold">EN HORNO</span>
                                   <p className="text-sm text-neutral-500 mt-1">{t.feat_oven_desc}</p>
                               </div>
                           </div>
 
                           {/* Visual Block: Controls */}
-                          <div className="bg-white p-3 rounded-2xl flex items-center gap-3 w-full border border-neutral-100 shadow-sm">
+                          <div className="bg-white p-3 rounded-2xl flex items-center gap-4 w-full border border-neutral-100 shadow-sm">
                               <div className="bg-purple-50 p-3 rounded-xl text-purple-600"><Palette size={24}/></div>
                               <div className="flex-1">
                                   <p className="font-bold text-base text-neutral-800 mb-1">{t.feat_ctrl_title}</p>
