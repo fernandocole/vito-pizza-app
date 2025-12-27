@@ -87,7 +87,7 @@ const dictionary = {
     // Onboarding
     onb_wel_title: "¡Bienvenido! 👋",
     onb_wel_desc: "Tu compañero digital para disfrutar de la mejor pizza casera. Organiza, pide y califica en tiempo real.",
-    onb_inst_title: "Instala la App",
+    onb_inst_title: "Installa la App",
     onb_inst_desc: "Para una mejor experiencia, instala la app tocando el botón de descarga en la barra superior.",
     onb_how_title: "Conoce la App",
     onb_enjoy_title: "¡A comer!",
@@ -671,40 +671,40 @@ export default function VitoPizzaApp() {
 
                   {/* SLIDE 2: HOW IT WORKS (DETAILED VISUALS) */}
                   {onboardingStep === 2 && (
-                      <div className="flex flex-col items-center gap-3 animate-in slide-in-from-right-10 duration-500 text-left w-full">
-                          <h1 className="text-2xl font-bold text-neutral-800 text-center w-full mb-2">{t.onb_how_title}</h1>
+                      <div className="flex flex-col items-center gap-4 animate-in slide-in-from-right-10 duration-500 text-left w-full">
+                          <h1 className="text-3xl font-bold text-neutral-800 text-center w-full mb-2">{t.onb_how_title}</h1>
                           
                           {/* Visual Block: Progress Bar */}
                           <div className="bg-white p-3 rounded-2xl flex items-center gap-3 w-full border border-neutral-100 shadow-sm">
-                              <div className="bg-teal-50 p-2 rounded-xl text-teal-600"><LayoutTemplate size={24}/></div>
+                              <div className="bg-teal-50 p-3 rounded-xl text-teal-600"><LayoutTemplate size={24}/></div>
                               <div className="flex-1">
-                                  <p className="font-bold text-sm text-neutral-800 mb-1">{t.feat_prog_title}</p>
+                                  <p className="font-bold text-base text-neutral-800 mb-1">{t.feat_prog_title}</p>
                                   <div className="h-1.5 w-full bg-neutral-100 rounded-full overflow-hidden"><div className="h-full w-1/2 bg-teal-500 rounded-full"></div></div>
-                                  <p className="text-[10px] text-neutral-400 mt-1">{t.feat_prog_desc}</p>
+                                  <p className="text-sm text-neutral-500 mt-1">{t.feat_prog_desc}</p>
                               </div>
                           </div>
 
                           {/* Visual Block: Oven Status */}
                           <div className="bg-white p-3 rounded-2xl flex items-center gap-3 w-full border border-neutral-100 shadow-sm">
-                              <div className="bg-orange-50 p-2 rounded-xl text-orange-600"><Flame size={24}/></div>
+                              <div className="bg-orange-50 p-3 rounded-xl text-orange-600"><Flame size={24}/></div>
                               <div className="flex-1">
-                                  <p className="font-bold text-sm text-neutral-800 mb-1">{t.feat_oven_title}</p>
-                                  <span className="text-[9px] bg-red-600 text-white px-2 py-0.5 rounded-full font-bold">EN HORNO</span>
-                                  <p className="text-[10px] text-neutral-400 mt-1">{t.feat_oven_desc}</p>
+                                  <p className="font-bold text-base text-neutral-800 mb-1">{t.feat_oven_title}</p>
+                                  <span className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded-full font-bold">EN HORNO</span>
+                                  <p className="text-sm text-neutral-500 mt-1">{t.feat_oven_desc}</p>
                               </div>
                           </div>
 
                           {/* Visual Block: Controls */}
                           <div className="bg-white p-3 rounded-2xl flex items-center gap-3 w-full border border-neutral-100 shadow-sm">
-                              <div className="bg-purple-50 p-2 rounded-xl text-purple-600"><Palette size={24}/></div>
+                              <div className="bg-purple-50 p-3 rounded-xl text-purple-600"><Palette size={24}/></div>
                               <div className="flex-1">
-                                  <p className="font-bold text-sm text-neutral-800 mb-1">{t.feat_ctrl_title}</p>
+                                  <p className="font-bold text-base text-neutral-800 mb-1">{t.feat_ctrl_title}</p>
                                   <div className="flex gap-2 mb-1">
                                       <div className="w-4 h-4 rounded-full bg-neutral-200"></div>
                                       <div className="w-4 h-4 rounded-full bg-neutral-200"></div>
                                       <div className="w-4 h-4 rounded-full bg-neutral-200"></div>
                                   </div>
-                                  <p className="text-[10px] text-neutral-400">{t.feat_ctrl_desc}</p>
+                                  <p className="text-sm text-neutral-500">{t.feat_ctrl_desc}</p>
                               </div>
                           </div>
                       </div>
