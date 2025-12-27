@@ -26,7 +26,6 @@ const THEMES = [
 // --- DICCIONARIO DE UI ---
 const dictionary = {
   es: {
-    // App Base
     welcomeTitle: "Gracias por venir hoy,",
     welcomeSub: "será un placer cocinar para vos. 🫠",
     whoAreYou: "Tu nombre?",
@@ -303,7 +302,7 @@ export default function VitoPizzaApp() {
   const [misValoraciones, setMisValoraciones] = useState<string[]>([]);
   const [autoTranslations, setAutoTranslations] = useState<Record<string, Record<string, { name: string, desc: string }>>>({});
 
-  // ESTILOS BASE (Corregido con buttonSec)
+  // ESTILOS BASE
   const base = isDarkMode ? {
       bg: "bg-neutral-950",
       text: "text-white",
@@ -334,20 +333,22 @@ export default function VitoPizzaApp() {
       bar: "bg-white/50 backdrop-blur-md border-gray-300 shadow-lg text-gray-900 border"
   };
 
-  // HELPER PARA ESTILOS DE BOTONES INDIVIDUALES
+  // HELPER PARA ESTILOS DE BOTONES INDIVIDUALES (Colores corregidos)
   const getBtnClass = (isActive: boolean) => {
       const common = "p-2 rounded-full transition-all duration-300 flex items-center justify-center ";
       
       // MODO OSCURO
       if (isDarkMode) {
           if (isActive) return common + "bg-white/20 text-white shadow-sm"; 
-          return common + "bg-transparent text-white/60 hover:text-white hover:bg-white/10";
+          // Gris clarito (inactivo)
+          return common + "bg-transparent text-neutral-400 hover:text-white hover:bg-white/10";
       }
       
       // MODO CLARO
       else {
           if (isActive) return common + "bg-black/10 text-black shadow-inner"; 
-          return common + "bg-transparent text-neutral-500 hover:text-black hover:bg-black/5";
+          // Gris oscuro (inactivo)
+          return common + "bg-transparent text-neutral-700 hover:text-black hover:bg-black/5";
       }
   };
 
@@ -818,7 +819,7 @@ export default function VitoPizzaApp() {
 
               {/* EXPANDIR / CONTRAER (Activo si !isCompact) */}
               <button onClick={toggleCompact} className={getBtnClass(!isCompact)}>
-                  <Maximize2 size={18}/>
+                  {!isCompact ? <Maximize2 size={18}/> : <Minimize2 size={18}/>}
               </button>
 
               {/* MODO OSCURO */}
