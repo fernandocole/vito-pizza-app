@@ -5,7 +5,7 @@ import {
   Plus, Minus, User, Palette, Lock, PartyPopper, Bell, BellOff, 
   ArrowDownAZ, ArrowUpNarrowWide, Maximize2, Minimize2, AlertCircle, 
   KeyRound, ArrowRight, Sun, Moon, Star, X, Filter, TrendingUp, 
-  CheckCircle, Clock, Package, ChefHat, Flame, Type
+  CheckCircle, Clock, Package, ChefHat, Flame, Type, Download // Agregado Download
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -14,7 +14,6 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// --- COLORES / TEMAS ---
 const THEMES = [
   { name: 'Carbone', color: 'bg-neutral-600', gradient: 'from-neutral-700 to-neutral-900', border: 'border-neutral-600/40', text: 'text-neutral-400' },
   { name: 'Turquesa', color: 'bg-cyan-600', gradient: 'from-cyan-600 to-teal-900', border: 'border-cyan-600/40', text: 'text-cyan-400' },
@@ -23,7 +22,6 @@ const THEMES = [
   { name: 'Violeta', color: 'bg-violet-600', gradient: 'from-violet-600 to-purple-900', border: 'border-violet-600/40', text: 'text-violet-400' },
 ];
 
-// --- DICCIONARIO DE UI (ESTÁTICO) ---
 const dictionary = {
   es: {
     welcomeTitle: "Gracias por venir hoy,",
@@ -230,14 +228,15 @@ export default function VitoPizzaApp() {
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [bannerIndex, setBannerIndex] = useState(0);
 
+  // PWA INSTALL STATE
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isInstallable, setIsInstallable] = useState(false);
+
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [pizzaToRate, setPizzaToRate] = useState<any>(null);
   const [ratingValue, setRatingValue] = useState(0);
   const [commentValue, setCommentValue] = useState('');
   const [misValoraciones, setMisValoraciones] = useState<string[]>([]);
-
-  // ESTADO PARA TRADUCCIONES AUTOMÁTICAS
-  // Guardamos: { "PizzaId": { en: {name, desc}, it: {name, desc} } }
   const [autoTranslations, setAutoTranslations] = useState<Record<string, Record<string, { name: string, desc: string }>>>({});
 
   // ESTILOS BASE
@@ -304,8 +303,30 @@ export default function VitoPizzaApp() {
     const savedPass = localStorage.getItem('vito-guest-pass-val');
     if(savedPass) setGuestPassInput(savedPass);
     const interval = setInterval(() => { setBannerIndex((prev) => prev + 1); }, 3000);
-    return () => clearInterval(interval);
+
+    // PWA INSTALL LISTENER
+    const handleBeforeInstallPrompt = (e: any) => {
+        e.preventDefault();
+        setDeferredPrompt(e);
+        setIsInstallable(true);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    return () => {
+        clearInterval(interval);
+        window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
   }, []);
+
+  const handleInstallClick = async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+          setIsInstallable(false);
+      }
+      setDeferredPrompt(null);
+  };
 
   const toggleDarkMode = () => { const n = !isDarkMode; setIsDarkMode(n); localStorage.setItem('vito-dark-mode', String(n)); };
   const toggleOrden = () => { const n = orden === 'estado' ? 'nombre' : (orden === 'nombre' ? 'ranking' : 'estado'); setOrden(n); localStorage.setItem('vito-orden', n); };
@@ -318,12 +339,10 @@ export default function VitoPizzaApp() {
   const rotarIdioma = () => { if (lang === 'es') setLang('en'); else if (lang === 'en') setLang('it'); else setLang('es'); };
   const toggleNotificaciones = () => { if (notifEnabled) { setNotifEnabled(false); localStorage.setItem('vito-notif-enabled', 'false'); mostrarMensaje(t.notifOff, 'info'); } else { Notification.requestPermission().then(perm => { if (perm === 'granted') { setNotifEnabled(true); localStorage.setItem('vito-notif-enabled', 'true'); mostrarMensaje(t.notifOn, 'info'); try { new Notification("Il Forno di Vito", { body: "Ok!", icon: "/icon.png" }); } catch (e) {} } else { alert("Activa las notificaciones en la configuración de tu navegador."); } }); } };
   
-  // FUNCION DE TRADUCCION AUTOMATICA GOOGLE API
   const translateText = async (text: string, targetLang: string) => {
     try {
         const response = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURI(text)}`);
         const data = await response.json();
-        // Google devuelve un array de arrays, el primer elemento tiene el texto traducido
         return data[0][0][0] || text;
     } catch (error) {
         console.error("Error traduciendo", error);
@@ -331,7 +350,6 @@ export default function VitoPizzaApp() {
     }
   };
 
-  // EFECTO PARA TRADUCIR CONTENIDO DINAMICO
   useEffect(() => {
       if (lang === 'es' || pizzas.length === 0) return;
 
@@ -340,7 +358,6 @@ export default function VitoPizzaApp() {
           let hasChanges = false;
 
           for (const p of pizzas) {
-              // Si no existe la entrada para esta pizza o para este idioma
               if (!newTrans[p.id]) newTrans[p.id] = {};
               if (!newTrans[p.id][lang]) {
                   const tName = await translateText(p.nombre, lang);
@@ -405,7 +422,6 @@ export default function VitoPizzaApp() {
           const sortR = rats.length > 0 ? (rats.reduce((a, b) => a + b.rating, 0) / rats.length) : globalAvg;
           const countRating = rats.length;
 
-          // APLICAR TRADUCCION AUTOMATICA SI EXISTE
           let displayName = pizza.nombre;
           let displayDesc = pizza.descripcion;
           if (lang !== 'es' && autoTranslations[pizza.id] && autoTranslations[pizza.id][lang]) {
@@ -435,7 +451,7 @@ export default function VitoPizzaApp() {
       return lista.sort((a, b) => {
           if (orden === 'ranking') return b.sortRating - a.sortRating;
           if (orden === 'estado') { if (a.cocinando && !b.cocinando) return -1; if (!a.cocinando && b.cocinando) return 1; if (a.stockRestante > 0 && b.stockRestante <= 0) return -1; if (a.stockRestante <= 0 && b.stockRestante > 0) return 1; }
-          return a.displayName.localeCompare(b.displayName); // Ordenar por nombre (traducido si aplica)
+          return a.displayName.localeCompare(b.displayName); // Ordenar por nombre traducido
       });
   }, [pizzas, pedidos, orden, config, allRatings, filter, miHistorial, misValoraciones, lang, autoTranslations]);
 
@@ -515,6 +531,12 @@ export default function VitoPizzaApp() {
               <button onClick={rotarIdioma} className="w-9 h-9 rounded-full hover:bg-white/20 text-xs font-bold flex items-center justify-center border border-white/20">{lang.toUpperCase()}</button>
           </div>
           <div className={`p-2 rounded-full border shadow-lg flex gap-2 pointer-events-auto ${base.bar}`}>
+              {/* BOTON DE INSTALAR APP (Solo si es instalable) */}
+              {isInstallable && (
+                  <button onClick={handleInstallClick} className="p-2 rounded-full hover:bg-white/20 flex items-center justify-center animate-bounce">
+                      <Download size={18} />
+                  </button>
+              )}
               <button onClick={cycleTextSize} className="p-2 rounded-full hover:bg-white/20 flex items-center justify-center"><Type size={18} /></button>
               <button onClick={toggleOrden} className="p-2 rounded-full hover:bg-white/20 flex items-center justify-center">{orden === 'estado' ? <ArrowUpNarrowWide size={18} /> : (orden === 'nombre' ? <ArrowDownAZ size={18} /> : <TrendingUp size={18}/>)}</button>
               <button onClick={toggleCompact} className={`p-2 rounded-full hover:bg-white/20 transition ${!isCompact ? 'bg-white text-black' : ''}`}><Maximize2 size={18}/></button>
