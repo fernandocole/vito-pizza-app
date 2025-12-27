@@ -339,7 +339,7 @@ export default function VitoPizzaApp() {
   // HELPER PARA ESTILOS DE BOTONES INDIVIDUALES (Sin fondo)
   const getBtnClass = (isActive: boolean) => {
       // BASE: Fondo Transparente Siempre
-      const common = "p-2 rounded-full transition-all duration-300 flex items-center justify-center bg-transparent ";
+      const common = "p-1 rounded-full transition-all duration-300 flex items-center justify-center bg-transparent ";
       const scale = isActive ? "scale-110" : "hover:scale-105";
 
       // MODO OSCURO
@@ -366,6 +366,17 @@ export default function VitoPizzaApp() {
   const prevComidosPerPizza = useRef<Record<string, number>>({});
   const prevCocinandoData = useRef<Record<string, boolean>>({});
   const firstLoadRef = useRef(true);
+
+  const getEmptyStateMessage = () => {
+    switch(filter) {
+        case 'stock': return t.emptyStock;
+        case 'top': return t.emptyTop;
+        case 'to_rate': return t.emptyRate;
+        case 'ordered': return t.emptyOrdered;
+        case 'new': return t.emptyNew;
+        default: return t.emptyDefault;
+    }
+  };
 
   useEffect(() => {
     // ONBOARDING CHECK
@@ -506,6 +517,7 @@ export default function VitoPizzaApp() {
           let hasChanges = false;
 
           for (const p of pizzas) {
+              // Si no existe la entrada para esta pizza o para este idioma
               if (!newTrans[p.id]) newTrans[p.id] = {};
               if (!newTrans[p.id][lang]) {
                   const tName = await translateText(p.nombre, lang);
@@ -648,7 +660,6 @@ export default function VitoPizzaApp() {
     if (acc === 'sumar') { if (p.stockRestante <= 0) { alert("Sin stock :("); return; } const { error } = await supabase.from('pedidos').insert([{ invitado_nombre: nombreInvitado, pizza_id: p.id, cantidad_porciones: 1, estado: 'pendiente' }]); if (!error) mostrarMensaje(`${t.successOrder} ${p.displayName}!`, 'exito'); } else { if (p.cocinando && p.totalPendientes <= p.target) {} const { data } = await supabase.from('pedidos').select('id').eq('pizza_id', p.id).ilike('invitado_nombre', nombreInvitado.trim()).eq('estado', 'pendiente').order('created_at', { ascending: false }).limit(1).single(); if (data) { await supabase.from('pedidos').delete().eq('id', data.id); mostrarMensaje(`${t.successCancel} ${p.displayName}`, 'info'); } }
   }
   const mostrarMensaje = (txt: string, tipo: 'info' | 'alerta' | 'exito') => { setMensaje({ texto: txt, tipo }); if (tipo !== 'alerta') { setTimeout(() => setMensaje(null), 2500); } }
-  const getEmptyStateMessage = () => { switch(filter) { case 'stock': return t.emptyStock; case 'top': return t.emptyTop; case 'to_rate': return t.emptyRate; case 'ordered': return t.emptyOrdered; case 'new': return t.emptyNew; default: return t.emptyDefault; } };
 
   if (loadingConfig) { return (<div className={`min-h-screen flex items-center justify-center p-4 ${base.bg}`}><div className={`animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 ${isDarkMode ? 'border-white' : 'border-black'}`}></div></div>); }
 
@@ -784,60 +795,60 @@ export default function VitoPizzaApp() {
 
       {/* HEADER FLOTANTE BOTONES */}
       <div className="fixed top-4 left-4 right-4 z-50 flex items-center justify-between pointer-events-none">
-          <div className={`p-2 rounded-full border shadow-lg flex gap-2 pointer-events-auto ${base.bar}`}>
+          <div className={`p-1 rounded-full border shadow-lg flex gap-1 pointer-events-auto ${base.bar}`}>
               {/* NOTIFICACIONES */}
               <button onClick={toggleNotificaciones} className={getBtnClass(notifEnabled)}>
-                  {notifEnabled ? <Bell size={18} /> : <BellOff size={18} />}
+                  {notifEnabled ? <Bell size={14} /> : <BellOff size={14} />}
               </button>
               
               {/* IDIOMA (Simple button) */}
-              <button onClick={rotarIdioma} className={getBtnClass(false) + " font-bold text-xs border border-current/20"}>
+              <button onClick={rotarIdioma} className={getBtnClass(false) + " font-bold text-[10px] border border-current/20"}>
                   {lang.toUpperCase()}
               </button>
 
               {/* ONLINE USERS */}
-              <div className="flex items-center justify-center gap-1 p-2 rounded-full text-xs font-bold transition-all animate-pulse">
-                  <Users size={14} className={isDarkMode ? "text-green-400" : "text-green-700"} />
+              <div className="flex items-center justify-center gap-1 p-1 rounded-full text-[10px] font-bold transition-all animate-pulse">
+                  <Users size={12} className={isDarkMode ? "text-green-400" : "text-green-700"} />
                   <span className={isDarkMode ? 'text-white' : 'text-black'}>{onlineUsers}</span>
               </div>
           </div>
 
-          <div className={`p-2 rounded-full border shadow-lg flex gap-2 pointer-events-auto ${base.bar}`}>
+          <div className={`p-1 rounded-full border shadow-lg flex gap-1 pointer-events-auto ${base.bar}`}>
               {/* INSTALAR APP */}
               {isInstallable && (
                   <button onClick={handleInstallClick} className={getBtnClass(false) + " animate-bounce"}>
-                      <Download size={18} />
+                      <Download size={14} />
                   </button>
               )}
               
               {/* ZOOM TEXTO */}
               <button onClick={cycleTextSize} className={getBtnClass(false)}>
-                  <Type size={18} />
+                  <Type size={14} />
               </button>
               
               {/* ORDENAR */}
               <button onClick={toggleOrden} className={getBtnClass(false)}>
-                  {orden === 'estado' ? <ArrowUpNarrowWide size={18} /> : (orden === 'nombre' ? <ArrowDownAZ size={18} /> : <TrendingUp size={18}/>)}
+                  {orden === 'estado' ? <ArrowUpNarrowWide size={14} /> : (orden === 'nombre' ? <ArrowDownAZ size={14} /> : <TrendingUp size={14}/>)}
               </button>
 
               {/* EXPANDIR / CONTRAER (Activo si !isCompact) */}
               <button onClick={toggleCompact} className={getBtnClass(!isCompact)}>
-                  {!isCompact ? <Maximize2 size={18}/> : <Minimize2 size={18}/>}
+                  {!isCompact ? <Minimize2 size={14}/> : <Maximize2 size={14}/>}
               </button>
 
               {/* MODO OSCURO */}
               <button onClick={toggleDarkMode} className={getBtnClass(false)}>
-                  {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+                  {isDarkMode ? <Sun size={14} /> : <Moon size={14} />}
               </button>
               
               {/* TEMA */}
               <button onClick={() => setShowThemeSelector(!showThemeSelector)} className={getBtnClass(false)}>
-                  <Palette size={18} />
+                  <Palette size={14} />
               </button>
               
               {/* ADMIN */}
               <Link href="/admin" className={getBtnClass(false)}>
-                  <Lock size={18} />
+                  <Lock size={14} />
               </Link>
               
               {showThemeSelector && (<div className="absolute top-14 right-0 bg-black/90 backdrop-blur p-2 rounded-xl flex gap-2 animate-in fade-in border border-white/20 shadow-xl">{THEMES.map(theme => (<button key={theme.name} onClick={() => changeTheme(theme)} className={`w-6 h-6 rounded-full ${theme.color} border-2 border-white ring-2 ring-transparent hover:scale-110 transition-transform`}></button>))}</div>)}
