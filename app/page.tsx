@@ -337,6 +337,25 @@ export default function VitoPizzaApp() {
       bar: "bg-white/50 backdrop-blur-md border-gray-300 shadow-lg text-gray-900 border"
   };
 
+  // HELPER PARA ESTILOS DE BOTONES INDIVIDUALES (Soluciona el problema de colores mezclados)
+  const getButtonStyle = (isActive: boolean) => {
+      let classes = "p-2 rounded-full transition-all duration-300 flex items-center justify-center ";
+      if (isDarkMode) {
+          if (isActive) {
+              classes += "bg-white/20 text-white shadow-sm"; // Activo en modo oscuro
+          } else {
+              classes += "bg-transparent text-white/60 hover:text-white hover:bg-white/10"; // Inactivo en modo oscuro
+          }
+      } else {
+          if (isActive) {
+              classes += "bg-black/5 text-black shadow-inner"; // Activo en modo claro (Gris muy suave)
+          } else {
+              classes += "bg-transparent text-neutral-500 hover:text-black hover:bg-black/5"; // Inactivo en modo claro
+          }
+      }
+      return classes;
+  };
+
   const [config, setConfig] = useState({ porciones_por_pizza: 4, total_invitados: 10, modo_estricto: false });
   const [invitadosActivos, setInvitadosActivos] = useState(0);
   const [miHistorial, setMiHistorial] = useState<Record<string, { pendientes: number, comidos: number }>>({});
@@ -650,7 +669,7 @@ export default function VitoPizzaApp() {
   return (
     <div className={`min-h-screen font-sans pb-28 transition-colors duration-500 overflow-x-hidden ${base.bg}`}>
       
-      {/* ONBOARDING OVERLAY */}
+      {/* ONBOARDING OVERLAY EN MODO CLARO Y ESTILIZADO */}
       {showOnboarding && (
           <div 
             onTouchStart={onTouchStart} 
@@ -691,6 +710,7 @@ export default function VitoPizzaApp() {
                       <div className="flex flex-col items-center gap-4 animate-in slide-in-from-right-10 duration-500 text-left w-full">
                           <h1 className="text-3xl font-bold text-neutral-800 text-center w-full mb-2">{t.onb_how_title}</h1>
                           
+                          {/* Visual Block: Progress Bar */}
                           <div className="bg-white p-3 rounded-2xl flex items-center gap-4 w-full border border-neutral-100 shadow-sm">
                               <div className="bg-teal-50 p-3 rounded-xl text-teal-600"><LayoutTemplate size={24}/></div>
                               <div className="flex-1">
@@ -700,6 +720,7 @@ export default function VitoPizzaApp() {
                               </div>
                           </div>
 
+                          {/* Visual Block: Oven Status */}
                           <div className="bg-white p-3 rounded-2xl flex items-center gap-4 w-full border border-neutral-100 shadow-sm">
                               <div className="bg-orange-50 p-3 rounded-xl text-orange-600"><Flame size={24}/></div>
                               <div className="flex-1">
@@ -709,6 +730,7 @@ export default function VitoPizzaApp() {
                               </div>
                           </div>
 
+                          {/* Visual Block: Controls */}
                           <div className="bg-white p-3 rounded-2xl flex items-center gap-4 w-full border border-neutral-100 shadow-sm">
                               <div className="bg-purple-50 p-3 rounded-xl text-purple-600"><Palette size={24}/></div>
                               <div className="flex-1">
