@@ -5,8 +5,8 @@ import {
   Plus, Minus, User, Palette, Lock, PartyPopper, Bell, BellOff, 
   ArrowDownAZ, ArrowUpNarrowWide, Maximize2, Minimize2, AlertCircle, 
   KeyRound, ArrowRight, Sun, Moon, Star, X, Filter, TrendingUp, 
-  CheckCircle, Clock, Package, ChefHat, Flame, Type, Download // Agregado Download
-} from 'lucide-react';
+  CheckCircle, Clock, Package, ChefHat, Flame, Type, Download, ChevronRight, Check
+} from 'lucide-react'; // Agregados ChevronRight y Check
 import Link from 'next/link';
 
 const supabase = createClient(
@@ -228,9 +228,11 @@ export default function VitoPizzaApp() {
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [bannerIndex, setBannerIndex] = useState(0);
 
-  // PWA INSTALL STATE
+  // PWA & ONBOARDING
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isInstallable, setIsInstallable] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState(0);
 
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [pizzaToRate, setPizzaToRate] = useState<any>(null);
@@ -286,6 +288,10 @@ export default function VitoPizzaApp() {
   const [showThemeSelector, setShowThemeSelector] = useState(false);
 
   useEffect(() => {
+    // ONBOARDING CHECK
+    const hasSeenOnboarding = localStorage.getItem('vito-onboarding-seen');
+    if (!hasSeenOnboarding) setShowOnboarding(true);
+
     const savedName = localStorage.getItem('vito-guest-name');
     if (savedName) setNombreInvitado(savedName);
     const savedTheme = localStorage.getItem('vito-guest-theme');
@@ -322,10 +328,13 @@ export default function VitoPizzaApp() {
       if (!deferredPrompt) return;
       deferredPrompt.prompt();
       const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') {
-          setIsInstallable(false);
-      }
+      if (outcome === 'accepted') setIsInstallable(false);
       setDeferredPrompt(null);
+  };
+
+  const completeOnboarding = () => {
+      localStorage.setItem('vito-onboarding-seen', 'true');
+      setShowOnboarding(false);
   };
 
   const toggleDarkMode = () => { const n = !isDarkMode; setIsDarkMode(n); localStorage.setItem('vito-dark-mode', String(n)); };
@@ -451,7 +460,7 @@ export default function VitoPizzaApp() {
       return lista.sort((a, b) => {
           if (orden === 'ranking') return b.sortRating - a.sortRating;
           if (orden === 'estado') { if (a.cocinando && !b.cocinando) return -1; if (!a.cocinando && b.cocinando) return 1; if (a.stockRestante > 0 && b.stockRestante <= 0) return -1; if (a.stockRestante <= 0 && b.stockRestante > 0) return 1; }
-          return a.displayName.localeCompare(b.displayName); // Ordenar por nombre traducido
+          return a.displayName.localeCompare(b.displayName); 
       });
   }, [pizzas, pedidos, orden, config, allRatings, filter, miHistorial, misValoraciones, lang, autoTranslations]);
 
@@ -525,7 +534,70 @@ export default function VitoPizzaApp() {
   return (
     <div className={`min-h-screen font-sans pb-28 transition-colors duration-500 overflow-x-hidden ${base.bg}`}>
       
-      <div className={`fixed top-4 left-4 right-4 z-50 flex items-center justify-between pointer-events-none`}>
+      {/* ONBOARDING OVERLAY */}
+      {showOnboarding && (
+          <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-xl flex flex-col items-center justify-center p-8 text-center text-white animate-in fade-in duration-500">
+              <div className="max-w-md w-full relative">
+                  {/* SLIDE 1: WELCOME */}
+                  {onboardingStep === 0 && (
+                      <div className="flex flex-col items-center gap-6 animate-in slide-in-from-right-10 duration-500">
+                          <img src="/logo.png" alt="Logo" className="h-32 w-auto object-contain drop-shadow-2xl" />
+                          <h1 className="text-3xl font-bold">¡Bienvenido! 👋</h1>
+                          <p className="text-neutral-300 text-lg leading-relaxed">
+                              Tu compañero digital para disfrutar de la mejor pizza casera. Organiza, pide y califica en tiempo real.
+                          </p>
+                      </div>
+                  )}
+
+                  {/* SLIDE 2: INSTALL APP */}
+                  {onboardingStep === 1 && (
+                      <div className="flex flex-col items-center gap-6 animate-in slide-in-from-right-10 duration-500">
+                          <div className="w-24 h-24 rounded-full bg-white/10 flex items-center justify-center mb-2">
+                              <Download size={48} className="text-white animate-bounce" />
+                          </div>
+                          <h1 className="text-3xl font-bold">Instala la App</h1>
+                          <p className="text-neutral-300 text-lg leading-relaxed">
+                              Para una mejor experiencia, puedes instalarla en tu celular tocando el botón de descarga <Download size={14} className="inline"/> en la barra superior.
+                          </p>
+                      </div>
+                  )}
+
+                  {/* SLIDE 3: HOW IT WORKS */}
+                  {onboardingStep === 2 && (
+                      <div className="flex flex-col items-center gap-6 animate-in slide-in-from-right-10 duration-500">
+                          <div className="w-24 h-24 rounded-full bg-white/10 flex items-center justify-center mb-2">
+                              <Flame size={48} className="text-orange-500" />
+                          </div>
+                          <h1 className="text-3xl font-bold">¡A comer!</h1>
+                          <p className="text-neutral-300 text-lg leading-relaxed">
+                              Elige tu gusto favorito, pide tus porciones y espera a que el horno haga su magia. ¡Te avisaremos cuando esté lista!
+                          </p>
+                      </div>
+                  )}
+
+                  {/* NAVIGATION */}
+                  <div className="mt-12 flex items-center justify-between w-full">
+                      <div className="flex gap-2">
+                          {[0, 1, 2].map(i => (
+                              <div key={i} className={`w-2 h-2 rounded-full transition-all ${i === onboardingStep ? 'bg-white w-6' : 'bg-white/30'}`}></div>
+                          ))}
+                      </div>
+                      <button 
+                          onClick={() => {
+                              if (onboardingStep < 2) setOnboardingStep(prev => prev + 1);
+                              else completeOnboarding();
+                          }}
+                          className="bg-white text-black px-6 py-3 rounded-full font-bold flex items-center gap-2 hover:scale-105 transition-transform"
+                      >
+                          {onboardingStep === 2 ? 'Comenzar' : 'Siguiente'} {onboardingStep < 2 ? <ChevronRight size={18} /> : <Check size={18}/>}
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* HEADER FLOTANTE BOTONES */}
+      <div className="fixed top-4 left-4 right-4 z-50 flex items-center justify-between pointer-events-none">
           <div className={`p-2 rounded-full border shadow-lg flex gap-2 pointer-events-auto ${base.bar}`}>
               <button onClick={toggleNotificaciones} className={`p-2 rounded-full hover:bg-white/20 transition ${notifEnabled ? 'bg-white text-black' : ''}`}>{notifEnabled ? <Bell size={18} /> : <BellOff size={18} />}</button>
               <button onClick={rotarIdioma} className="w-9 h-9 rounded-full hover:bg-white/20 text-xs font-bold flex items-center justify-center border border-white/20">{lang.toUpperCase()}</button>
