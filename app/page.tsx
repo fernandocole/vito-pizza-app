@@ -5,8 +5,8 @@ import {
   Plus, Minus, User, Palette, Lock, PartyPopper, Bell, BellOff, 
   ArrowDownAZ, ArrowUpNarrowWide, Maximize2, Minimize2, AlertCircle, 
   KeyRound, ArrowRight, Sun, Moon, Star, X, Filter, TrendingUp, 
-  CheckCircle, Clock, Package, ChefHat, Flame, Type, Download, ChevronRight, Check, Languages, LayoutTemplate
-} from 'lucide-react';
+  CheckCircle, Clock, Package, ChefHat, Flame, Type, Download, ChevronRight, Check, Languages, LayoutTemplate, Users
+} from 'lucide-react'; // Agregado Users
 import Link from 'next/link';
 
 const supabase = createClient(
@@ -288,11 +288,12 @@ export default function VitoPizzaApp() {
 
   const [bannerIndex, setBannerIndex] = useState(0);
 
-  // PWA & ONBOARDING
+  // PWA & ONBOARDING & ONLINE USERS
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isInstallable, setIsInstallable] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(0);
+  const [onlineUsers, setOnlineUsers] = useState(1);
   
   // SWIPE LOGIC
   const [touchStart, setTouchStart] = useState(0);
@@ -356,14 +357,14 @@ export default function VitoPizzaApp() {
     const savedName = localStorage.getItem('vito-guest-name');
     if (savedName) setNombreInvitado(savedName);
     
-    // THEME & MODE INIT (Defaults applied if null)
+    // THEME & MODE INIT
     const savedTheme = localStorage.getItem('vito-guest-theme');
     if (savedTheme) setCurrentTheme(THEMES.find(t => t.name === savedTheme) || THEMES[1]);
-    else setCurrentTheme(THEMES[1]); // Default Turquesa
+    else setCurrentTheme(THEMES[1]);
 
     const savedMode = localStorage.getItem('vito-dark-mode');
     if (savedMode !== null) setIsDarkMode(savedMode === 'true');
-    else setIsDarkMode(false); // Default Light Mode
+    else setIsDarkMode(false);
 
     // LANGUAGE INIT
     const savedLang = localStorage.getItem('vito-lang');
@@ -389,9 +390,26 @@ export default function VitoPizzaApp() {
     };
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
+    // ONLINE PRESENCE TRACKING
+    const presenceChannel = supabase.channel('online-users');
+    presenceChannel
+      .on('presence', { event: 'sync' }, () => {
+        const state = presenceChannel.presenceState();
+        // Contamos cuántas claves únicas (usuarios) hay en el estado
+        setOnlineUsers(Object.keys(state).length);
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await presenceChannel.track({
+            online_at: new Date().toISOString(),
+          });
+        }
+      });
+
     return () => {
         clearInterval(interval);
         window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+        supabase.removeChannel(presenceChannel);
     };
   }, []);
 
@@ -747,6 +765,10 @@ export default function VitoPizzaApp() {
           <div className={`p-2 rounded-full border shadow-lg flex gap-2 pointer-events-auto ${base.bar}`}>
               <button onClick={toggleNotificaciones} className={`p-2 rounded-full hover:bg-white/20 transition ${notifEnabled ? 'bg-white text-black' : ''}`}>{notifEnabled ? <Bell size={18} /> : <BellOff size={18} />}</button>
               <button onClick={rotarIdioma} className="w-9 h-9 rounded-full hover:bg-white/20 text-xs font-bold flex items-center justify-center border border-white/20">{lang.toUpperCase()}</button>
+              <div className="flex items-center justify-center gap-1 p-2 rounded-full hover:bg-white/20 text-xs font-bold transition-all animate-pulse">
+                  <Users size={14} className="text-green-500" />
+                  <span className={isDarkMode ? 'text-white' : 'text-black'}>{onlineUsers}</span>
+              </div>
           </div>
           <div className={`p-2 rounded-full border shadow-lg flex gap-2 pointer-events-auto ${base.bar}`}>
               {isInstallable && (
