@@ -5,7 +5,7 @@ import {
   Plus, Minus, User, Palette, Lock, PartyPopper, Bell, BellOff, 
   ArrowDownAZ, ArrowUpNarrowWide, Maximize2, Minimize2, AlertCircle, 
   KeyRound, ArrowRight, Sun, Moon, Star, X, Filter, TrendingUp, 
-  CheckCircle, Clock, Package, ChefHat, Flame, Type, Download, ChevronRight, Check, Languages, LayoutTemplate, Users, ThumbsUp, ImageIcon
+  CheckCircle, Clock, Package, ChefHat, Flame, Type, Download, ChevronRight, Check, Languages, LayoutTemplate, Users, ThumbsUp, ImageIcon, ChevronUp, Receipt
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -308,6 +308,9 @@ export default function VitoPizzaApp() {
   // ESTADO PARA ORDEN CONGELADO (Para no saltar al dar click)
   const [orderedIds, setOrderedIds] = useState<string[]>([]);
   
+  // ESTADO PARA SHEET INFERIOR
+  const [summarySheet, setSummarySheet] = useState<'total' | 'wait' | 'oven' | 'ready' | null>(null);
+
   // LATE RATING PROMPT
   const [showLateRatingModal, setShowLateRatingModal] = useState(false);
   const [lateRatingPizza, setLateRatingPizza] = useState<any>(null);
@@ -385,7 +388,17 @@ export default function VitoPizzaApp() {
       }
   };
 
-  const [config, setConfig] = useState({ porciones_por_pizza: 4, total_invitados: 10, modo_estricto: false });
+  const [config, setConfig] = useState<{
+      porciones_por_pizza: number;
+      total_invitados: number;
+      modo_estricto: boolean;
+      categoria_activa: string;
+  }>({ 
+      porciones_por_pizza: 4, 
+      total_invitados: 10, 
+      modo_estricto: false,
+      categoria_activa: '["General"]' 
+  });
   const [invitadosActivos, setInvitadosActivos] = useState(0);
   const [miHistorial, setMiHistorial] = useState<Record<string, { pendientes: number, comidos: number }>>({});
   
@@ -484,12 +497,18 @@ export default function VitoPizzaApp() {
     presenceChannel
       .on('presence', { event: 'sync' }, () => {
         const state = presenceChannel.presenceState();
-        setOnlineUsers(Object.keys(state).length);
+        // Filtramos solo los que son guests
+        const count = Object.values(state).reduce((acc: number, presences: any) => {
+            const isGuest = presences.some((p: any) => p.role === 'guest');
+            return acc + (isGuest ? 1 : 0);
+        }, 0);
+        setOnlineUsers(count);
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
           await presenceChannel.track({
             online_at: new Date().toISOString(),
+            role: 'guest'
           });
         }
       });
@@ -579,7 +598,9 @@ export default function VitoPizzaApp() {
   const fetchDatos = useCallback(async () => {
     const now = new Date(); const corte = new Date(now); if (now.getHours() < 6) corte.setDate(corte.getDate() - 1); corte.setHours(6, 0, 0, 0); const iso = corte.toISOString();
     const { data: dC } = await supabase.from('configuracion_dia').select('*').single();
-    setConfig(dC || { porciones_por_pizza: 4, total_invitados: 10, modo_estricto: false });
+    let cfg = dC || { porciones_por_pizza: 4, total_invitados: 10, modo_estricto: false, categoria_activa: '["General"]' };
+    if(!cfg.categoria_activa) cfg.categoria_activa = '["General"]';
+    setConfig(cfg);
     const sPass = dC?.password_invitados || ''; setDbPass(sPass); const lPass = localStorage.getItem('vito-guest-pass-val') || guestPassInput; verifyAccess(lPass, sPass); setLoadingConfig(false);
     const { data: dPed } = await supabase.from('pedidos').select('*').gte('created_at', iso);
     const { data: dPiz } = await supabase.from('menu_pizzas').select('*').eq('activa', true).order('created_at');
@@ -619,35 +640,62 @@ export default function VitoPizzaApp() {
 
   useEffect(() => { fetchDatos(); const c = supabase.channel('app-realtime').on('postgres_changes', { event: '*', schema: 'public' }, () => fetchDatos()).subscribe(); return () => { supabase.removeChannel(c); }; }, [fetchDatos]);
 
+  const activeCategories: string[] = useMemo(() => {
+      try {
+          const parsed = JSON.parse(config.categoria_activa);
+          if (parsed === 'Todas' || (Array.isArray(parsed) && parsed.length === 0)) return []; 
+          return Array.isArray(parsed) ? parsed : ['General'];
+      } catch { return ['General']; }
+  }, [config.categoria_activa]);
+
   const enrichedPizzas = useMemo(() => {
       const globalAvg = allRatings.length > 0 ? (allRatings.reduce((a, r) => a + r.rating, 0) / allRatings.length) : 0;
+      
       return pizzas.map(pizza => {
           const totalStock = (pizza.stock || 0) * (pizza.porciones_individuales || config.porciones_por_pizza);
           const used = pedidos.filter(p => p.pizza_id === pizza.id).reduce((a, c) => a + c.cantidad_porciones, 0);
           const stockRestante = Math.max(0, totalStock - used);
           const pen = pedidos.filter(p => p.pizza_id === pizza.id && p.estado !== 'entregado').reduce((a, c) => a + c.cantidad_porciones, 0);
           const target = pizza.porciones_individuales || config.porciones_por_pizza;
+          
           const rats = allRatings.filter(r => r.pizza_id === pizza.id);
           const avg = rats.length > 0 ? (rats.reduce((a, b) => a + b.rating, 0) / rats.length).toFixed(1) : null;
           const sortR = rats.length > 0 ? (rats.reduce((a, b) => a + b.rating, 0) / rats.length) : globalAvg;
           const countRating = rats.length;
+
           let displayName = pizza.nombre;
           let displayDesc = pizza.descripcion;
           if (lang !== 'es' && autoTranslations[pizza.id] && autoTranslations[pizza.id][lang]) {
               displayName = autoTranslations[pizza.id][lang].name;
               displayDesc = autoTranslations[pizza.id][lang].desc;
           }
+
           return { 
-              ...pizza, displayName, displayDesc, stockRestante, target, 
-              ocupadasActual: pen % target, faltanParaCompletar: target - (pen % target), 
-              avgRating: avg, countRating: countRating, sortRating: sortR, totalPendientes: pen 
+              ...pizza, 
+              displayName, 
+              displayDesc,
+              stockRestante, 
+              target, 
+              ocupadasActual: pen % target, 
+              faltanParaCompletar: target - (pen % target), 
+              avgRating: avg, 
+              countRating: countRating, 
+              sortRating: sortR, 
+              totalPendientes: pen 
           };
       });
   }, [pizzas, pedidos, config, allRatings, lang, autoTranslations]);
 
   useEffect(() => {
     if (enrichedPizzas.length === 0) return;
+
     let lista = [...enrichedPizzas];
+    
+    // Filtrar por categoría activa
+    if (activeCategories.length > 0 && !activeCategories.includes('Todas')) {
+        lista = lista.filter(p => activeCategories.includes(p.categoria || 'General'));
+    }
+
     if (filter !== 'all') {
         lista = lista.filter(p => {
             if (filter === 'top') return p.avgRating && parseFloat(p.avgRating) >= 4.5;
@@ -658,34 +706,54 @@ export default function VitoPizzaApp() {
             return true;
         });
     }
+
     lista.sort((a, b) => {
         const aReady = !a.cocinando && a.totalPendientes >= a.target;
         const bReady = !b.cocinando && b.totalPendientes >= b.target;
         if (aReady && !bReady) return -1;
         if (!aReady && bReady) return 1;
+
         if (a.cocinando && !b.cocinando) return -1;
         if (!a.cocinando && b.cocinando) return 1;
+
         const aStock = a.stockRestante > 0;
         const bStock = b.stockRestante > 0;
         if (aStock && !bStock) return -1;
         if (!aStock && bStock) return 1;
+
         if (orden === 'ranking') return b.sortRating - a.sortRating;
         if (orden === 'nombre') return a.displayName.localeCompare(b.displayName);
+
         const aActive = a.ocupadasActual;
         const bActive = b.ocupadasActual;
         if (aActive !== bActive) return bActive - aActive; 
+
         return a.displayName.localeCompare(b.displayName); 
     });
+
     setOrderedIds(lista.map(p => p.id));
-  }, [orden, filter, pizzas.length, JSON.stringify(pizzas.map(p => ({ id: p.id, cocinando: p.cocinando, stock: p.stock })))]);
+  }, [
+      orden, 
+      filter, 
+      pizzas.length, 
+      JSON.stringify(pizzas.map(p => ({ id: p.id, cocinando: p.cocinando, stock: p.stock }))),
+      JSON.stringify(activeCategories)
+  ]);
 
   useEffect(() => {
       if(!nombreInvitado) return;
+      
       const delivered = pedidos.filter(p => p.invitado_nombre === nombreInvitado && p.estado === 'entregado');
-      if (firstLoadRef.current) { delivered.forEach(p => processedOrderIds.current.add(p.id)); return; }
+      
+      if (firstLoadRef.current) {
+          delivered.forEach(p => processedOrderIds.current.add(p.id));
+          return;
+      }
+
       delivered.forEach(p => {
           if (!processedOrderIds.current.has(p.id)) {
               processedOrderIds.current.add(p.id);
+              // 10 minutos = 600000 ms
               setTimeout(() => {
                   const pz = pizzas.find(z => z.id === p.pizza_id);
                   if(pz) {
@@ -698,9 +766,39 @@ export default function VitoPizzaApp() {
       });
   }, [pedidos, nombreInvitado, pizzas]);
 
+  const summaryData = useMemo(() => {
+      if(!summarySheet) return [];
+      
+      return enrichedPizzas.filter(p => {
+          const h = miHistorial[p.id];
+          if(!h) return false;
+          if(summarySheet === 'wait') return h.pendientes > 0 && !p.cocinando;
+          if(summarySheet === 'oven') return h.pendientes > 0 && p.cocinando;
+          if(summarySheet === 'ready') return h.comidos > 0; 
+          if(summarySheet === 'total') return h.pendientes > 0 || h.comidos > 0;
+          return false;
+      }).map(p => {
+          const h = miHistorial[p.id];
+          let count = 0;
+          if(summarySheet === 'wait') count = h.pendientes;
+          else if(summarySheet === 'oven') count = h.pendientes;
+          else if(summarySheet === 'ready') count = h.comidos;
+          else count = h.pendientes + h.comidos;
+
+          return { ...p, count };
+      });
+  }, [summarySheet, enrichedPizzas, miHistorial]); 
+
   const mySummary = useMemo(() => {
       let t = 0, w = 0, o = 0, r = 0;
-      pizzas.forEach(p => { const h = miHistorial[p.id]; if(h) { const pen = h.pendientes; if (pen > 0) { if (p.cocinando) o += pen; else w += pen; } r += h.comidos; t += (h.comidos + pen); } });
+      pizzas.forEach(p => {
+          const h = miHistorial[p.id];
+          if(h) {
+              const pen = h.pendientes;
+              if (pen > 0) { if (p.cocinando) o += pen; else w += pen; }
+              r += h.comidos; t += (h.comidos + pen);
+          }
+      });
       return { total: t, wait: w, oven: o, ready: r };
   }, [miHistorial, pizzas]);
 
@@ -712,8 +810,12 @@ export default function VitoPizzaApp() {
           const avg = vals.length > 0 ? vals.reduce((a, b) => a + b.rating, 0) / vals.length : 0;
           const totS = (p.stock || 0) * (p.porciones_individuales || config.porciones_por_pizza);
           const us = pedidos.filter(ped => ped.pizza_id === p.id).reduce((a, c) => a + c.cantidad_porciones, 0);
+          
           let dName = p.nombre;
-          if (lang !== 'es' && autoTranslations[p.id] && autoTranslations[p.id][lang]) dName = autoTranslations[p.id][lang].name;
+          if (lang !== 'es' && autoTranslations[p.id] && autoTranslations[p.id][lang]) {
+              dName = autoTranslations[p.id][lang].name;
+          }
+
           return { ...p, displayName: dName, stock: Math.max(0, totS - us), avg, count: vals.length };
       });
       pData.forEach(p => { if (p.stock === 0) msgs.push(`${p.displayName}: ${t.soldOut} 😭`); else if (p.stock <= 5) msgs.push(`${t.only} ${p.stock} ${t.of} ${p.displayName}! 🏃`); });
@@ -755,39 +857,94 @@ export default function VitoPizzaApp() {
 
   return (
     <div className={`min-h-screen font-sans pb-28 transition-colors duration-500 overflow-x-hidden ${base.bg}`}>
-      {/* Onboarding Overlay */}
+      
+      {/* ONBOARDING OVERLAY */}
       {showOnboarding && (
-          <div onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} className="fixed inset-0 z-[100] bg-white/95 backdrop-blur-xl flex flex-col items-center justify-center p-8 text-center text-neutral-900 animate-in fade-in duration-500 select-none">
-              <div className="absolute top-6 right-6"><button onClick={rotarIdioma} className="bg-neutral-100 p-2 rounded-full font-bold text-xs shadow-sm border flex items-center gap-2"><Languages size={14}/> {lang.toUpperCase()}</button></div>
+          <div 
+            onTouchStart={onTouchStart} 
+            onTouchMove={onTouchMove} 
+            onTouchEnd={onTouchEnd} 
+            className="fixed inset-0 z-[100] bg-white/95 backdrop-blur-xl flex flex-col items-center justify-center p-8 text-center text-neutral-900 animate-in fade-in duration-500 select-none"
+          >
+              <div className="absolute top-6 right-6">
+                  <button onClick={rotarIdioma} className="bg-neutral-100 p-2 rounded-full font-bold text-xs shadow-sm border flex items-center gap-2">
+                      <Languages size={14}/> {lang.toUpperCase()}
+                  </button>
+              </div>
+
               <div className="max-w-md w-full relative h-[70vh] flex flex-col justify-center">
                   {onboardingStep === 0 && (<div className="flex flex-col items-center gap-6 animate-in slide-in-from-right-10 duration-500"><img src="/logo.png" alt="Logo" className="h-40 w-auto object-contain drop-shadow-xl" /><h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-teal-500 to-emerald-700">{t.onb_wel_title}</h1><p className="text-neutral-500 text-lg leading-relaxed px-4">{t.onb_wel_desc}</p></div>)}
                   {onboardingStep === 1 && (<div className="flex flex-col items-center gap-6 animate-in slide-in-from-right-10 duration-500"><div className="w-32 h-32 rounded-full bg-teal-50 flex items-center justify-center mb-2 shadow-inner"><Download size={64} className="text-teal-500 animate-bounce" strokeWidth={1.5} /></div><h1 className="text-3xl font-bold text-neutral-800">{t.onb_inst_title}</h1><p className="text-neutral-500 text-lg leading-relaxed px-4">{t.onb_inst_desc}</p></div>)}
                   {onboardingStep === 2 && (<div className="flex flex-col items-center gap-4 animate-in slide-in-from-right-10 duration-500 text-left w-full"><h1 className="text-3xl font-bold text-neutral-800 text-center w-full mb-2">{t.onb_how_title}</h1><div className="bg-white p-3 rounded-2xl flex items-center gap-4 w-full border border-neutral-100 shadow-sm"><div className="bg-teal-50 p-3 rounded-xl text-teal-600"><LayoutTemplate size={24}/></div><div className="flex-1"><p className="font-bold text-base text-neutral-800 mb-1">{t.feat_prog_title}</p><div className="h-1.5 w-full bg-neutral-100 rounded-full overflow-hidden"><div className="h-full w-1/2 bg-teal-500 rounded-full"></div></div><p className="text-sm text-neutral-500 mt-1">{t.feat_prog_desc}</p></div></div><div className="bg-white p-3 rounded-2xl flex items-center gap-4 w-full border border-neutral-100 shadow-sm"><div className="bg-orange-50 p-3 rounded-xl text-orange-600"><Flame size={24}/></div><div className="flex-1"><p className="font-bold text-base text-neutral-800 mb-1">{t.feat_oven_title}</p><span className="text-[9px] bg-red-600 text-white px-2 py-0.5 rounded-full font-bold">EN HORNO</span><p className="text-sm text-neutral-500 mt-1">{t.feat_oven_desc}</p></div></div><div className="bg-white p-3 rounded-2xl flex items-center gap-4 w-full border border-neutral-100 shadow-sm"><div className="bg-purple-50 p-3 rounded-xl text-purple-600"><Palette size={24}/></div><div className="flex-1"><p className="font-bold text-base text-neutral-800 mb-1">{t.feat_ctrl_title}</p><div className="flex gap-2 mb-1"><div className="w-4 h-4 rounded-full bg-neutral-200"></div><div className="w-4 h-4 rounded-full bg-neutral-200"></div><div className="w-4 h-4 rounded-full bg-neutral-200"></div></div><p className="text-sm text-neutral-500">{t.feat_ctrl_desc}</p></div></div></div>)}
                   {onboardingStep === 3 && (<div className="flex flex-col items-center gap-6 animate-in slide-in-from-right-10 duration-500"><div className="w-32 h-32 rounded-full bg-yellow-50 flex items-center justify-center mb-2 shadow-inner"><PartyPopper size={64} className="text-yellow-500" strokeWidth={1.5} /></div><h1 className="text-3xl font-bold text-neutral-800">{t.onb_enjoy_title}</h1><p className="text-neutral-500 text-lg leading-relaxed px-4">{t.onb_enjoy_desc}</p></div>)}
               </div>
-              <div className="fixed bottom-10 left-0 right-0 flex flex-col items-center gap-6 px-8"><div className="flex gap-2">{[0, 1, 2, 3].map(i => (<div key={i} className={`h-1.5 rounded-full transition-all duration-300 ${i === onboardingStep ? 'bg-teal-600 w-8' : 'bg-neutral-200 w-2'}`}></div>))}</div><button onClick={() => { if (onboardingStep < 3) setOnboardingStep(prev => prev + 1); else completeOnboarding(); }} className="bg-neutral-900 text-white w-full py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-black transition-all shadow-xl active:scale-95">{onboardingStep === 3 ? t.onb_btn_start : t.onb_btn_next} {onboardingStep < 3 ? <ChevronRight size={18} /> : <Check size={18}/>}</button></div>
+
+              {/* NAVIGATION */}
+              <div className="fixed bottom-10 left-0 right-0 flex flex-col items-center gap-6 px-8">
+                  <div className="flex gap-2">
+                      {[0, 1, 2, 3].map(i => (
+                          <div key={i} className={`h-1.5 rounded-full transition-all duration-300 ${i === onboardingStep ? 'bg-teal-600 w-8' : 'bg-neutral-200 w-2'}`}></div>
+                      ))}
+                  </div>
+                  <button 
+                      onClick={() => {
+                          if (onboardingStep < 3) setOnboardingStep(prev => prev + 1);
+                          else completeOnboarding();
+                      }}
+                      className="bg-neutral-900 text-white w-full py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-black transition-all shadow-xl active:scale-95"
+                  >
+                      {onboardingStep === 3 ? t.onb_btn_start : t.onb_btn_next} {onboardingStep < 3 ? <ChevronRight size={18} /> : <Check size={18}/>}
+                  </button>
+              </div>
           </div>
       )}
 
       {/* Header */}
       <div className="fixed top-4 left-4 right-4 z-50 flex justify-between items-start pointer-events-none">
           <div className={`p-1 rounded-full border shadow-lg flex gap-1 pointer-events-auto ${base.bar}`}>
-              <button onClick={toggleNotificaciones} className={getBtnClass(notifEnabled)}>{notifEnabled ? <Bell size={20} /> : <BellOff size={20} />}</button>
-              <button onClick={rotarIdioma} className={getBtnClass(false) + " font-bold text-xs border border-current/20"}>{lang.toUpperCase()}</button>
-              <div className="flex items-center justify-center gap-1 p-2 rounded-full text-xs font-bold transition-all animate-pulse"><Users size={16} className={isDarkMode ? "text-green-400" : "text-green-700"} /><span className={isDarkMode ? 'text-white' : 'text-black'}>{onlineUsers} / {config.total_invitados}</span></div>
+              <button onClick={toggleNotificaciones} className={getBtnClass(notifEnabled)}>
+                  {notifEnabled ? <Bell size={20} /> : <BellOff size={20} />}
+              </button>
+              <button onClick={rotarIdioma} className={getBtnClass(false) + " font-bold text-xs border border-current/20"}>
+                  {lang.toUpperCase()}
+              </button>
+              <div className="flex items-center justify-center gap-1 p-2 rounded-full text-xs font-bold transition-all animate-pulse">
+                  <Users size={16} className={isDarkMode ? "text-green-400" : "text-green-700"} />
+                  <span className={isDarkMode ? 'text-white' : 'text-black'}>
+                      {onlineUsers} / {config.total_invitados}
+                  </span>
+              </div>
           </div>
+
           <div className="flex flex-col items-end gap-2 pointer-events-none">
             <div className={`p-1 rounded-full border shadow-lg flex gap-1 pointer-events-auto ${base.bar} relative z-50`}>
-                <button onClick={cycleTextSize} className={getBtnClass(false)}><Type size={20} /></button>
-                <button onClick={toggleOrden} className={getBtnClass(false)}>{orden === 'estado' ? <ArrowUpNarrowWide size={20} /> : (orden === 'nombre' ? <ArrowDownAZ size={20} /> : <TrendingUp size={20}/>)}</button>
-                <button onClick={toggleCompact} className={getBtnClass(!isCompact)}>{!isCompact ? <Minimize2 size={20}/> : <Maximize2 size={20}/>}</button>
-                <button onClick={toggleDarkMode} className={getBtnClass(false)}>{isDarkMode ? <Sun size={20} /> : <Moon size={20} />}</button>
-                <button onClick={() => setShowThemeSelector(!showThemeSelector)} className={getBtnClass(false)}><Palette size={20} /></button>
+                <button onClick={cycleTextSize} className={getBtnClass(false)}>
+                    <Type size={20} />
+                </button>
+                <button onClick={toggleOrden} className={getBtnClass(false)}>
+                    {orden === 'estado' ? <ArrowUpNarrowWide size={20} /> : (orden === 'nombre' ? <ArrowDownAZ size={20} /> : <TrendingUp size={20}/>)}
+                </button>
+                <button onClick={toggleCompact} className={getBtnClass(!isCompact)}>
+                    {!isCompact ? <Minimize2 size={20}/> : <Maximize2 size={20}/>}
+                </button>
+                <button onClick={toggleDarkMode} className={getBtnClass(false)}>
+                    {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+                </button>
+                <button onClick={() => setShowThemeSelector(!showThemeSelector)} className={getBtnClass(false)}>
+                    <Palette size={20} />
+                </button>
                 {showThemeSelector && (<div className="absolute top-14 right-0 bg-black/90 backdrop-blur p-2 rounded-xl flex gap-2 animate-in fade-in border border-white/20 shadow-xl">{THEMES.map(theme => (<button key={theme.name} onClick={() => changeTheme(theme)} className={`w-6 h-6 rounded-full ${theme.color} border-2 border-white ring-2 ring-transparent hover:scale-110 transition-transform`}></button>))}</div>)}
             </div>
+
             <div className="flex items-center gap-2 pointer-events-auto relative z-40">
-                {isInstallable && (<button onClick={handleInstallClick} className={`${base.bar} p-2 rounded-full border shadow-lg`}><Download size={20} /></button>)}
-                <Link href="/admin" className={`${base.bar} p-2 rounded-full border shadow-lg`}><Lock size={20} /></Link>
+                {isInstallable && (
+                  <button onClick={handleInstallClick} className={`${base.bar} p-2 rounded-full border shadow-lg animate-bounce`}>
+                      <Download size={20} />
+                  </button>
+                )}
+                <Link href="/admin" className={`${base.bar} p-2 rounded-full border shadow-lg`}>
+                    <Lock size={20} />
+                </Link>
             </div>
           </div>
       </div>
@@ -822,7 +979,6 @@ export default function VitoPizzaApp() {
              </div>
         </div>
 
-        {/* Global Message */}
         {mensaje && (<div className={`fixed top-20 left-4 right-4 p-3 rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] z-40 flex flex-col items-center justify-center animate-bounce-in text-center ${mensaje.tipo === 'alerta' ? 'border-4 border-neutral-900 font-bold' : 'border-2 border-neutral-200 font-bold'} bg-white text-black`}><div className="flex items-center gap-2 mb-1 text-sm">{mensaje.tipo === 'alerta' && mensaje.texto.includes('horno') && <PartyPopper size={18} className="text-orange-600" />}{mensaje.texto}</div>{mensaje.tipo === 'alerta' && (<button onClick={() => setMensaje(null)} className="mt-1 bg-neutral-900 text-white px-6 py-1.5 rounded-full text-xs font-bold shadow-lg active:scale-95 hover:bg-black transition-transform">{t.okBtn}</button>)}</div>)}
 
         {/* Lightbox Image */}
@@ -844,6 +1000,54 @@ export default function VitoPizzaApp() {
                     <div className="flex gap-2"><button onClick={() => { setShowLateRatingModal(false); }} className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${base.subtext}`}>Ahora no</button><button onClick={() => { setShowLateRatingModal(false); openRating(lateRatingPizza); }} className={`px-3 py-1.5 rounded-lg text-xs font-bold bg-yellow-500 text-black shadow-lg`}>Sí!</button></div>
                 </div>
             </div>
+        )}
+
+        {/* SUMMARY SHEET (BOTTOM SHEET - FLOATING ABOVE BAR) */}
+        {summarySheet && (
+             <div className="fixed inset-0 z-40" onClick={() => setSummarySheet(null)}>
+                 <div className={`fixed bottom-28 left-4 right-4 z-50 rounded-3xl p-5 shadow-2xl border animate-in slide-in-from-bottom-4 duration-300 flex flex-col max-h-[60vh] ${base.bar}`} onClick={e => e.stopPropagation()}>
+                     <div className="flex justify-between items-center mb-4">
+                         <h3 className={`text-lg font-bold flex items-center gap-2 ${base.text}`}>
+                            {summarySheet === 'total' && <span>Ya pediste</span>}
+                            {summarySheet === 'wait' && <span className="text-black dark:text-white flex items-center gap-2"><Clock size={20}/> En Espera</span>}
+                            {summarySheet === 'oven' && <span className="text-black dark:text-white flex items-center gap-2"><Flame size={20}/> En Horno</span>}
+                            {summarySheet === 'ready' && <span className="text-black dark:text-white flex items-center gap-2"><ChefHat size={20}/> Listas</span>}
+                         </h3>
+                         <button onClick={() => setSummarySheet(null)} className={`p-1.5 rounded-full hover:bg-black/10 transition-colors ${isDarkMode ? 'text-white' : 'text-black'}`}><X size={20}/></button>
+                     </div>
+                     
+                     <div className="overflow-y-auto no-scrollbar space-y-2 pr-1">
+                         {summaryData.length === 0 ? (
+                             <p className="text-center py-4 text-xs opacity-60">Nada por aquí...</p>
+                         ) : (
+                             summaryData.map(p => (
+                                 <div key={p.id} className={`flex items-center justify-between p-2 rounded-xl ${isDarkMode ? 'bg-white/10' : 'bg-gray-100/80'} border border-transparent`}>
+                                     <div className="flex items-center gap-3">
+                                         {/* Avatar de pizza */}
+                                         <div className="w-10 h-10 rounded-full overflow-hidden bg-neutral-200 border border-white/20 flex-shrink-0">
+                                             {p.imagen_url ? <img src={p.imagen_url} className="w-full h-full object-cover"/> : <div className="flex items-center justify-center h-full text-neutral-400"><ImageIcon size={16}/></div>}
+                                         </div>
+                                         <div className="leading-tight">
+                                             <p className={`font-bold text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{p.displayName}</p>
+                                         </div>
+                                     </div>
+                                     
+                                     <div className="flex items-center gap-3">
+                                         <span className={`text-xl font-black ${summarySheet === 'ready' ? 'text-green-500' : (isDarkMode ? 'text-white' : 'text-black')}`}>x{p.count}</span>
+                                         
+                                         {/* Botón CANCELAR (Solo si no está cocinando y es vista de espera o total) */}
+                                         {!p.cocinando && (summarySheet === 'wait' || summarySheet === 'total') && (
+                                            <button onClick={() => modificarPedido(p, 'restar')} className="p-1 bg-red-500/10 text-red-500 rounded hover:bg-red-500/20 active:scale-95 transition-all">
+                                                <Minus size={16}/>
+                                            </button>
+                                         )}
+                                     </div>
+                                 </div>
+                             ))
+                         )}
+                     </div>
+                 </div>
+             </div>
         )}
 
         {/* Pizza List */}
@@ -890,10 +1094,37 @@ export default function VitoPizzaApp() {
 
       <div className={`fixed bottom-4 left-4 right-4 z-50 rounded-full p-3 shadow-2xl ${base.bar}`}>
           <div className="max-w-lg mx-auto flex justify-around items-center text-xs font-bold">
-              <div className="flex flex-col items-center"><span className="opacity-60 text-[9px] uppercase tracking-wider">{t.sumTotal}</span><span className="text-base">{mySummary.total}</span></div><div className="h-6 w-[1px] bg-current opacity-20"></div>
-              <div className="flex flex-col items-center"><span className="opacity-60 text-[9px] uppercase tracking-wider flex items-center gap-1"><Clock size={10}/> {t.sumWait}</span><span className="text-base">{mySummary.wait}</span></div><div className="h-6 w-[1px] bg-current opacity-20"></div>
-              <div className="flex flex-col items-center"><span className="opacity-60 text-[9px] uppercase tracking-wider flex items-center gap-1"><Flame size={10}/> {t.sumOven}</span><span className="text-base">{mySummary.oven}</span></div><div className="h-6 w-[1px] bg-current opacity-20"></div>
-              <div className="flex flex-col items-center"><span className="opacity-60 text-[9px] uppercase tracking-wider flex items-center gap-1"><ChefHat size={10}/> {t.sumReady}</span><span className="text-base">{mySummary.ready}</span></div>
+              
+              <button onClick={() => setSummarySheet(summarySheet === 'total' ? null : 'total')} className={`flex flex-col items-center flex-1 transition-colors ${summarySheet === 'total' ? currentTheme.text : ''}`}>
+                <ChevronUp size={12} className={`mb-1 transition-transform duration-300 ${summarySheet === 'total' ? 'rotate-180' : ''}`} />
+                <span className="opacity-60 text-[9px] uppercase tracking-wider">{t.sumTotal}</span>
+                <span className="text-base">{mySummary.total}</span>
+              </button>
+              
+              <div className="h-6 w-[1px] bg-current opacity-20"></div>
+
+              <button onClick={() => setSummarySheet(summarySheet === 'wait' ? null : 'wait')} className={`flex flex-col items-center flex-1 transition-colors ${summarySheet === 'wait' ? currentTheme.text : ''}`}>
+                <ChevronUp size={12} className={`mb-1 transition-transform duration-300 ${summarySheet === 'wait' ? 'rotate-180' : ''}`} />
+                <span className="opacity-60 text-[9px] uppercase tracking-wider flex items-center gap-1"><Clock size={10}/> {t.sumWait}</span>
+                <span className="text-base">{mySummary.wait}</span>
+              </button>
+              
+              <div className="h-6 w-[1px] bg-current opacity-20"></div>
+
+              <button onClick={() => setSummarySheet(summarySheet === 'oven' ? null : 'oven')} className={`flex flex-col items-center flex-1 transition-colors ${summarySheet === 'oven' ? currentTheme.text : ''}`}>
+                <ChevronUp size={12} className={`mb-1 transition-transform duration-300 ${summarySheet === 'oven' ? 'rotate-180' : ''}`} />
+                <span className="opacity-60 text-[9px] uppercase tracking-wider flex items-center gap-1"><Flame size={10}/> {t.sumOven}</span>
+                <span className="text-base">{mySummary.oven}</span>
+              </button>
+              
+              <div className="h-6 w-[1px] bg-current opacity-20"></div>
+
+              <button onClick={() => setSummarySheet(summarySheet === 'ready' ? null : 'ready')} className={`flex flex-col items-center flex-1 transition-colors ${summarySheet === 'ready' ? currentTheme.text : ''}`}>
+                <ChevronUp size={12} className={`mb-1 transition-transform duration-300 ${summarySheet === 'ready' ? 'rotate-180' : ''}`} />
+                <span className="opacity-60 text-[9px] uppercase tracking-wider flex items-center gap-1"><ChefHat size={10}/> {t.sumReady}</span>
+                <span className="text-base">{mySummary.ready}</span>
+              </button>
+
           </div>
       </div>
     </div>

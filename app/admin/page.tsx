@@ -6,7 +6,7 @@ import {
   Pizza, Settings, Plus, Trash2, ChefHat, Eye, EyeOff, CheckCircle, 
   Clock, Flame, LogOut, List, User, Bell, ArrowRight, ArrowDownAZ, 
   ArrowUpNarrowWide, Maximize2, Minimize2, Users, Ban, RotateCcw, 
-  KeyRound, LayoutDashboard, XCircle, Sun, Moon, BarChart3, Star, MessageSquare, Palette, Save, UserCheck, ImageIcon, UploadCloud, Timer as TimerIcon
+  KeyRound, LayoutDashboard, XCircle, Sun, Moon, BarChart3, Star, MessageSquare, Palette, Save, UserCheck, ImageIcon, UploadCloud, Timer as TimerIcon, Tag, ChevronUp, ChevronDown, CheckSquare, Square, X
 } from 'lucide-react';
 
 const supabase = createClient(
@@ -14,10 +14,67 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// --- COMPONENTE TEMPORIZADOR DE COCCION (Cuenta regresiva) ---
+// --- UTILIDADES ---
+const formatSeconds = (seconds: number) => {
+  if (!seconds && seconds !== 0) return "00:00";
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+};
+
+const toTime = (secs: number) => {
+    if (!secs && secs !== 0) return "01:30"; 
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+};
+
+const toSecs = (timeStr: string) => {
+    const [m, s] = timeStr.split(':').map(Number);
+    return (m || 0) * 60 + (s || 0);
+};
+
+// --- COMPONENTE CONTROL DE TIEMPO (Flechas - Números Achicados) ---
+const TimeControl = ({ value, onChange }: { value: number, onChange: (val: number) => void }) => {
+    const m = Math.floor(value / 60);
+    const s = value % 60;
+
+    const adjust = (type: 'm' | 's', amount: number) => {
+        let newM = m;
+        let newS = s;
+        if (type === 'm') newM = Math.max(0, newM + amount);
+        if (type === 's') {
+            newS = newS + amount;
+            if (newS >= 60) { newS -= 60; newM++; }
+            if (newS < 0) { 
+                if (newM > 0) { newS += 60; newM--; } else { newS = 0; }
+            }
+        }
+        onChange(newM * 60 + newS);
+    };
+
+    return (
+        <div className="flex flex-col items-center border rounded-lg overflow-hidden w-full bg-white/5 border-white/20">
+            <div className="flex w-full">
+                <div className="flex-1 flex flex-col items-center border-r border-white/10">
+                    <button onClick={() => adjust('m', 1)} className="w-full flex justify-center hover:bg-white/10 active:bg-white/20 p-0.5"><ChevronUp size={10}/></button>
+                    {/* CAMBIO: Texto más chico (text-xs) */}
+                    <span className="text-xs font-mono font-bold leading-none py-0.5">{m.toString().padStart(2,'0')}</span>
+                    <button onClick={() => adjust('m', -1)} className="w-full flex justify-center hover:bg-white/10 active:bg-white/20 p-0.5"><ChevronDown size={10}/></button>
+                </div>
+                <div className="flex-1 flex flex-col items-center">
+                    <button onClick={() => adjust('s', 10)} className="w-full flex justify-center hover:bg-white/10 active:bg-white/20 p-0.5"><ChevronUp size={10}/></button>
+                    <span className="text-xs font-mono font-bold leading-none py-0.5">{s.toString().padStart(2,'0')}</span>
+                    <button onClick={() => adjust('s', -10)} className="w-full flex justify-center hover:bg-white/10 active:bg-white/20 p-0.5"><ChevronDown size={10}/></button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- COMPONENTE TEMPORIZADOR VISUAL ---
 const CookingTimer = ({ start, duration, onFinish }: { start: string, duration: number, onFinish?: () => void }) => {
     const [timeLeft, setTimeLeft] = useState(duration);
-    
     useEffect(() => {
         if (!start) return;
         const interval = setInterval(() => {
@@ -25,25 +82,20 @@ const CookingTimer = ({ start, duration, onFinish }: { start: string, duration: 
             const now = new Date().getTime();
             const elapsedSeconds = Math.floor((now - startTime) / 1000);
             const remaining = Math.max(0, duration - elapsedSeconds);
-            
             setTimeLeft(remaining);
-            
             if (remaining === 0 && onFinish) onFinish();
         }, 1000);
         return () => clearInterval(interval);
     }, [start, duration]);
-
     const isFinished = timeLeft === 0;
-
     return (
         <div className={`flex items-center gap-1 font-mono font-bold px-3 py-1 rounded-full text-xs transition-all duration-300 ${isFinished ? 'bg-red-600 text-white animate-bounce border-2 border-yellow-400 shadow-[0_0_15px_rgba(239,68,68,0.8)] scale-110' : 'bg-orange-100 text-orange-600 border border-orange-200'}`}>
             <Clock size={12} />
-            <span>{isFinished ? 'LISTA!' : `${Math.floor(timeLeft / 60)}:${(timeLeft % 60).toString().padStart(2, '0')}`}</span>
+            <span>{isFinished ? 'LISTA!' : formatSeconds(timeLeft)}</span>
         </div>
     );
 };
 
-// --- COMPONENTE TIMER (Cronómetro de antigüedad) ---
 const Timer = ({ startTime }: { startTime: string }) => {
   const [elapsed, setElapsed] = useState('');
   useEffect(() => {
@@ -83,9 +135,13 @@ export default function AdminPage() {
   
   const [pedidos, setPedidos] = useState<any[]>([]); 
   const [pizzas, setPizzas] = useState<any[]>([]);
+  
+  // ESTADO LOCAL PARA EDICIONES PENDIENTES
+  const [edits, setEdits] = useState<Record<string, any>>({});
+
   const [invitadosDB, setInvitadosDB] = useState<any[]>([]); 
   const [valoraciones, setValoraciones] = useState<any[]>([]);
-  const [config, setConfig] = useState<any>({ porciones_por_pizza: 4, total_invitados: 10, password_invitados: '' });
+  const [config, setConfig] = useState<any>({ porciones_por_pizza: 4, total_invitados: 10, password_invitados: '', categoria_activa: '["General"]' });
   const [invitadosCount, setInvitadosCount] = useState(0);
   const [onlineUsers, setOnlineUsers] = useState(0);
   const prevPedidosCount = useRef(0);
@@ -96,6 +152,7 @@ export default function AdminPage() {
   const [newPizzaStock, setNewPizzaStock] = useState(5);
   const [newPizzaImg, setNewPizzaImg] = useState('');
   const [newPizzaTime, setNewPizzaTime] = useState(90);
+  const [newPizzaCat, setNewPizzaCat] = useState(''); // Default vacio
   const [uploading, setUploading] = useState(false);
   
   const [newGuestName, setNewGuestName] = useState('');
@@ -148,33 +205,26 @@ export default function AdminPage() {
     const savedCompact = localStorage.getItem('vito-compact');
     if (savedCompact) setIsCompact(savedCompact === 'true');
     
-    // --- LÓGICA DE PRESENCIA (USUARIOS ONLINE) IGUAL A INVITADOS ---
+    // Canal de usuarios online
     const presenceChannel = supabase.channel('online-users');
-    presenceChannel
-      .on('presence', { event: 'sync' }, () => {
+    presenceChannel.on('presence', { event: 'sync' }, () => {
         const state = presenceChannel.presenceState();
-        setOnlineUsers(Object.keys(state).length);
-      })
-      .subscribe(async (status) => {
+        const count = Object.values(state).reduce((acc: number, presences: any) => {
+            const isGuest = presences.some((p: any) => p.role === 'guest');
+            return acc + (isGuest ? 1 : 0);
+        }, 0);
+        setOnlineUsers(count);
+    }).subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
-          await presenceChannel.track({
-            online_at: new Date().toISOString(),
-            role: 'admin' // Para diferenciar si quisieras, pero el conteo es global
-          });
+            await presenceChannel.track({ online_at: new Date().toISOString(), role: 'admin' });
         }
-      });
+    });
 
-    // Canal de datos (Pedidos, Pizzas, etc)
-    let dbChannel: any = null;
     if (autenticado) {
       cargarDatos();
-      dbChannel = supabase.channel('admin-realtime').on('postgres_changes', { event: '*', schema: 'public' }, () => cargarDatos()).subscribe();
+      const channel = supabase.channel('admin-realtime').on('postgres_changes', { event: '*', schema: 'public' }, () => cargarDatos()).subscribe();
+      return () => { supabase.removeChannel(channel); supabase.removeChannel(presenceChannel); };
     }
-
-    return () => {
-        supabase.removeChannel(presenceChannel);
-        if(dbChannel) supabase.removeChannel(dbChannel);
-    };
   }, [autenticado]);
 
   const toggleDarkMode = () => { setIsDarkMode(!isDarkMode); localStorage.setItem('vito-dark-mode', String(!isDarkMode)); };
@@ -191,7 +241,11 @@ export default function AdminPage() {
 
   const cargarDatos = async () => {
     const now = new Date(); if (now.getHours() < 6) now.setDate(now.getDate() - 1); now.setHours(6, 0, 0, 0); const iso = now.toISOString();
-    const { data: dP } = await supabase.from('menu_pizzas').select('*').order('created_at'); if (dP) setPizzas(dP);
+    // CAMBIO: Orden estricto por fecha de creación para que no salten
+    const { data: dP } = await supabase.from('menu_pizzas').select('*').order('created_at', { ascending: true }); 
+    if (dP) {
+        setPizzas(dP);
+    }
     const { data: dPed } = await supabase.from('pedidos').select('*').gte('created_at', iso).order('created_at', { ascending: true });
     if (dPed) { setPedidos(dPed); setInvitadosCount(new Set(dPed.map(p => p.invitado_nombre.toLowerCase())).size); if (prevPedidosCount.current > 0 && dPed.length > prevPedidosCount.current) new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3').play().catch(()=>{}); prevPedidosCount.current = dPed.length; }
     const { data: dI } = await supabase.from('lista_invitados').select('*').order('nombre'); if (dI) setInvitadosDB(dI);
@@ -221,6 +275,35 @@ export default function AdminPage() {
       });
   };
 
+  // --- MANEJO DE EDICION LOCAL ---
+  const handleLocalEdit = (id: string, field: string, value: any) => {
+      setEdits(prev => ({
+          ...prev,
+          [id]: { ...prev[id], [field]: value }
+      }));
+  };
+
+  const savePizzaChanges = async (id: string) => {
+      const changes = edits[id];
+      if (!changes) return;
+      await supabase.from('menu_pizzas').update(changes).eq('id', id);
+      // Limpiar cambios locales para este ID
+      setEdits(prev => {
+          const newEdits = { ...prev };
+          delete newEdits[id];
+          return newEdits;
+      });
+      cargarDatos();
+  };
+
+  const cancelChanges = (id: string) => {
+      setEdits(prev => {
+          const newEdits = { ...prev };
+          delete newEdits[id];
+          return newEdits;
+      });
+  };
+
   const handleImageUpload = async (event: any, pizzaId: string | null = null) => {
       const file = event.target.files?.[0];
       if (!file) return;
@@ -232,7 +315,12 @@ export default function AdminPage() {
           const { error: uploadError } = await supabase.storage.from('pizzas').upload(fileName, compressedFile);
           if (uploadError) throw uploadError;
           const { data } = supabase.storage.from('pizzas').getPublicUrl(fileName);
-          if(pizzaId) await updateP(pizzaId, 'imagen_url', data.publicUrl); else setNewPizzaImg(data.publicUrl);
+          
+          if(pizzaId) {
+              handleLocalEdit(pizzaId, 'imagen_url', data.publicUrl);
+          } else {
+              setNewPizzaImg(data.publicUrl);
+          }
       } catch (error: any) { alert('Error: ' + error.message); } finally { setUploading(false); }
   };
 
@@ -254,6 +342,30 @@ export default function AdminPage() {
           return b.totalPendientes - a.totalPendientes;
       });
   }, [pizzas, pedidos, config, orden]);
+
+  // CATEGORIAS UNICAS Y CONTROL
+  const uniqueCategories = useMemo(() => {
+      const cats = new Set<string>();
+      cats.add('General');
+      pizzas.forEach(p => { if(p.categoria) cats.add(p.categoria); });
+      return Array.from(cats);
+  }, [pizzas]);
+
+  const activeCategories: string[] = useMemo(() => {
+      try {
+          const parsed = JSON.parse(config.categoria_activa);
+          if (parsed === 'Todas' || (Array.isArray(parsed) && parsed.length === 0)) return []; 
+          return Array.isArray(parsed) ? parsed : ['General'];
+      } catch { return ['General']; }
+  }, [config.categoria_activa]);
+
+  const toggleCategory = async (cat: string) => {
+      const current = new Set(activeCategories);
+      if (current.has(cat)) current.delete(cat); else current.add(cat);
+      const newArr = Array.from(current);
+      setConfig({...config, categoria_activa: JSON.stringify(newArr)});
+      await supabase.from('configuracion_dia').update({ categoria_activa: JSON.stringify(newArr) }).eq('id', config.id);
+  };
 
   const stats = useMemo(() => {
       const totalPendientes = metricas.reduce((acc, m) => acc + m.totalPendientes, 0);
@@ -311,10 +423,35 @@ export default function AdminPage() {
   };
 
   const eliminarPedidosGusto = async (nom: string, pid: string) => { if(confirm(`¿Borrar pendientes?`)) { const ids = pedidos.filter(p => p.invitado_nombre.toLowerCase() === nom.toLowerCase() && p.pizza_id === pid && p.estado === 'pendiente').map(p => p.id); if(ids.length) await supabase.from('pedidos').delete().in('id', ids); cargarDatos(); } };
-  const toggleCocinando = async (p: any) => { if(!p.cocinando && p.totalPendientes < p.target) { alert("Falta para 1 pizza"); return; } const newState = !p.cocinando; const startTime = newState ? new Date().toISOString() : null; await supabase.from('menu_pizzas').update({ cocinando: newState, cocinando_inicio: startTime }).eq('id', p.id); setPizzas(prev => prev.map(i => i.id === p.id ? { ...i, cocinando: newState, cocinando_inicio: startTime } : i)); };
+  
+  const toggleCocinando = async (p: any) => { 
+      if(!p.cocinando && p.totalPendientes < p.target) { alert("Falta para 1 pizza"); return; } 
+      const newState = !p.cocinando;
+      const startTime = newState ? new Date().toISOString() : null;
+      await supabase.from('menu_pizzas').update({ cocinando: newState, cocinando_inicio: startTime }).eq('id', p.id);
+      setPizzas(prev => prev.map(i => i.id === p.id ? { ...i, cocinando: newState, cocinando_inicio: startTime } : i)); 
+  };
+
   const entregar = async (p: any) => { if(!confirm(`¿Salió ${p.nombre}?`)) return; let n = p.target; const ids=[]; for(const pd of p.pedidosPendientes){ if(n<=0) break; ids.push(pd.id); n-=pd.cantidad_porciones; } if(ids.length) { await supabase.from('pedidos').update({ estado: 'entregado' }).in('id', ids); await supabase.from('menu_pizzas').update({ cocinando: false, cocinando_inicio: null }).eq('id', p.id); cargarDatos(); } };
-  const updateP = async (id: string, f: string, v: any) => { setPizzas(p => p.map(i => i.id === id ? { ...i, [f]: v } : i)); await supabase.from('menu_pizzas').update({[f]: v}).eq('id', id); };
-  const addP = async () => { if(!newPizzaName) return; await supabase.from('menu_pizzas').insert([{ nombre: newPizzaName, descripcion: newPizzaDesc, stock: newPizzaStock, imagen_url: newPizzaImg, tiempo_coccion: newPizzaTime, activa: true }]); setNewPizzaName(''); setNewPizzaDesc(''); setNewPizzaStock(5); setNewPizzaImg(''); setNewPizzaTime(90); cargarDatos(); };
+  
+  const updateP = async (id: string, field: string, val: any) => {
+      // Activa es inmediato
+      if (field === 'activa') {
+           await supabase.from('menu_pizzas').update({ activa: val }).eq('id', id);
+           setPizzas(prev => prev.map(p => p.id === id ? { ...p, activa: val } : p));
+      } else {
+           handleLocalEdit(id, field, val);
+      }
+  };
+  
+  const addP = async () => { 
+      if(!newPizzaName) return; 
+      await supabase.from('menu_pizzas').insert([{ nombre: newPizzaName, descripcion: newPizzaDesc, stock: newPizzaStock, imagen_url: newPizzaImg, tiempo_coccion: newPizzaTime, categoria: newPizzaCat, activa: true }]); 
+      setNewPizzaName(''); setNewPizzaDesc(''); setNewPizzaImg(''); 
+      // Mantenemos Stock, Tiempo y Categoria de la anterior. Categoria vacia por defecto al inicio, pero si agregan una, se mantiene.
+      cargarDatos(); 
+  };
+  
   const delP = async (id: string) => { if(confirm('¿Borrar?')) await supabase.from('menu_pizzas').delete().eq('id', id); cargarDatos(); };
   const changePass = async () => { if(!newPass) return; await supabase.from('configuracion_dia').update({password_admin: newPass}).eq('id', config.id); alert('OK'); setNewPass(''); };
   const addU = async () => { if(!newGuestName) return; const { error } = await supabase.from('lista_invitados').insert([{ nombre: newGuestName }]); if(error) alert('Error'); else { setNewGuestName(''); cargarDatos(); } };
@@ -331,7 +468,6 @@ export default function AdminPage() {
   const resetU = async (nom: string) => { 
       if(!confirm(`¿Reset pedidos de ${nom}?`)) return;
       const userExists = invitadosDB.some(u => u.nombre.toLowerCase() === nom.toLowerCase());
-      // CORRECCIÓN: Usar origen: 'guest'
       if (!userExists) {
           await supabase.from('lista_invitados').insert([{ nombre: nom, origen: 'guest' }]);
       }
@@ -340,20 +476,11 @@ export default function AdminPage() {
       cargarDatos(); 
   };
 
-  // CORRECCIÓN: Botón Reset Global (UUID Fix)
   const resetAllOrders = async () => {
       const promptText = prompt('Escribe "BORRAR TODO" para confirmar');
       if (promptText?.toUpperCase() !== "BORRAR TODO") return;
-      
-      // FIX: usar neq para uuid "cero" dummy o simplemente not null en ID
-      const { error } = await supabase.from('pedidos').delete().neq('id', '00000000-0000-0000-0000-000000000000'); 
-      
-      if(error) {
-          alert("Error al borrar: " + error.message);
-      } else {
-          alert("Todos los pedidos han sido eliminados.");
-          cargarDatos();
-      }
+      const { error } = await supabase.from('pedidos').delete().not('id', 'is', null); 
+      if(error) alert("Error: " + error.message); else { alert("Pedidos eliminados."); cargarDatos(); }
   };
 
   const delVal = async (id: string) => { if(confirm("¿Borrar reseña?")) { await supabase.from('valoraciones').delete().eq('id', id); cargarDatos(); } };
@@ -400,7 +527,7 @@ export default function AdminPage() {
             {view === 'cocina' && (<div className="grid gap-3">{metricas.map(p => (<div key={p.id} className={`${base.card} rounded-3xl border relative overflow-hidden transition-all ${p.cocinando ? 'border-red-600/50 shadow-lg' : ''} ${isCompact ? 'p-3' : 'p-5'}`}>{!isCompact && p.cocinando && (<div className="absolute -right-10 -bottom-10 text-red-600/20"><Flame size={150} /></div>)}<div className="flex justify-between items-start mb-2 relative z-10"><div><h3 className={`font-bold flex items-center gap-2 ${isCompact ? 'text-base' : 'text-xl'}`}>{p.nombre}{p.cocinando && <span className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">EN HORNO</span>}</h3><p className={`text-xs ${base.subtext} flex items-center gap-1 mt-1`}><Clock size={12}/> Pendientes: {p.totalPendientes}</p><p className={`text-[10px] mt-1 font-mono ${p.stockRestante === 0 ? 'text-red-500 font-bold' : base.subtext}`}>Stock: {p.stockRestante} porc.</p></div><div className="flex flex-col items-center gap-1">{p.cocinando && p.cocinando_inicio && <CookingTimer start={p.cocinando_inicio} duration={p.tiempo_coccion || 60} />}<button onClick={() => toggleCocinando(p)} className={`rounded-xl transition-all flex items-center justify-center ${p.cocinando ? 'bg-red-600 text-white shadow-lg scale-105' : base.buttonSec} ${isCompact ? 'p-2' : 'p-3'}`}><Flame size={isCompact ? 16 : 20} className={p.cocinando ? 'animate-bounce' : ''} /></button></div></div><div className={`relative ${isDarkMode ? 'bg-black' : 'bg-gray-300'} rounded-full overflow-hidden z-10 mb-3 ${isCompact ? 'h-2' : 'h-4'}`}><div className="absolute inset-0 flex justify-between px-[1px] z-20">{[...Array(p.target)].map((_, i) => <div key={i} className={`w-[1px] h-full ${isDarkMode ? 'bg-white/10' : 'bg-white/50'}`}></div>)}</div><div className={`absolute h-full ${p.cocinando ? 'bg-red-600' : currentTheme.color} transition-all duration-700`} style={{ width: `${p.percent}%` }}></div></div>{p.completas > 0 ? (<button onClick={() => entregar(p)} className={`w-full ${currentTheme.color} text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg active:scale-95 ${isCompact ? 'py-2 text-sm' : 'py-3'}`}><CheckCircle size={isCompact ? 16 : 20} /> ¡PIZZA LISTA! ({p.completas})</button>) : (<div className={`w-full text-center text-xs ${base.subtext} font-mono border rounded-xl ${isDarkMode ? 'border-neutral-800' : 'border-gray-200'} ${isCompact ? 'py-1' : 'py-2'}`}>Faltan {p.faltan} porc.</div>)}</div>))}</div>)}
             {view === 'pedidos' && (
                 <div className="space-y-4">
-                    <div className={`p-4 rounded-3xl border mb-6 shadow-sm flex items-center justify-center ${base.card}`}><h2 className={`text-sm font-bold uppercase tracking-widest ${base.textHead}`}>Pedidos Activos</h2></div>
+                    <div className={`p-6 rounded-3xl ${base.card} mb-6 shadow-sm flex items-center justify-center`}><h2 className={`text-sm font-bold uppercase tracking-widest ${base.textHead}`}>Pedidos Activos</h2></div>
                     {pedidosAgrupados.length === 0 ? <p className={`text-center ${base.subtext}`}>Sin pedidos.</p> : pedidosAgrupados.map((u, i) => { 
                         const userDB = invitadosDB.find(x => x.nombre.toLowerCase() === u.nombre.toLowerCase()); 
                         return (<div key={i} className={`${base.card} p-4 rounded-2xl border relative`}><button onClick={() => eliminarUsuario(u.nombre, userDB)} className={`absolute top-4 right-4 p-2 rounded-lg ${base.buttonIcon} hover:text-red-500`}><Trash2 size={16} /></button><div className={`flex justify-between border-b pb-2 mb-3 pr-10 ${base.divider}`}><h3 className="font-bold flex items-center gap-2 capitalize text-lg"><User size={18}/> {u.nombre}{u.totalEnHorno > 0 && <span className="bg-red-600 text-white text-[10px] px-2 py-0.5 rounded-full font-bold animate-pulse">EN HORNO</span>}{u.totalEnEspera > 0 && <span className="bg-orange-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold animate-pulse">ESPERANDO</span>}</h3></div><div className="space-y-2">{u.detalle.map((d: any, k: number) => (<div key={k} className={`flex justify-between items-center text-sm p-2 rounded-lg border ${isDarkMode ? 'bg-black/20 border-white/5' : 'bg-gray-50 border-gray-200'}`}><div className="flex items-center"><span>{d.nombre}</span>{d.oldestPending && <Timer startTime={d.oldestPending} />}</div><div className="flex items-center gap-2 text-xs font-bold">{d.enHorno > 0 && (<span className="text-red-500 flex items-center gap-1"><Flame size={12}/> {d.enHorno}</span>)}{d.enEspera > 0 && (<span className="text-yellow-500 flex items-center gap-1"><Clock size={12}/> {d.enEspera}</span>)}{d.entregada > 0 && (<span className="text-green-500 flex items-center gap-1"><CheckCircle size={12}/> {d.entregada}</span>)}<button onClick={(e) => { e.stopPropagation(); eliminarPedidosGusto(u.nombre, d.id); }} className="p-1 ml-2 bg-red-900/20 text-red-500 rounded hover:bg-red-900/40 border border-red-900/30"><XCircle size={14} /></button></div></div>))}</div></div>); 
@@ -409,13 +536,67 @@ export default function AdminPage() {
             )}
             {view === 'menu' && (
                 <div className="space-y-6">
-                    <div className={`p-6 rounded-3xl border ${base.card}`}><h3 className={`font-bold mb-4 flex items-center gap-2 ${base.subtext}`}><Plus size={18}/> Nueva Pizza</h3><input className={`w-full p-4 rounded-2xl border mb-2 outline-none ${base.input}`} placeholder="Nombre..." value={newPizzaName} onChange={e => setNewPizzaName(e.target.value)} /><textarea className={`w-full p-4 rounded-2xl border mb-4 text-sm outline-none ${base.input}`} placeholder="Ingredientes..." value={newPizzaDesc} onChange={e => setNewPizzaDesc(e.target.value)} /><div className="flex gap-2 mb-4"><div className="flex items-center gap-2 w-1/4"><span className={`text-sm ${base.subtext}`}>Stock:</span><input type="number" className={`p-2 rounded-xl border w-full text-center ${base.input}`} value={newPizzaStock} onChange={e => setNewPizzaStock(parseInt(e.target.value))} /></div><div className="flex items-center gap-2 w-1/4"><span className={`text-sm ${base.subtext}`}>Segs:</span><input type="number" className={`p-2 rounded-xl border w-full text-center ${base.input}`} value={newPizzaTime} onChange={e => setNewPizzaTime(parseInt(e.target.value))} /></div><div className="flex items-center gap-2 w-1/2"><label className={`flex items-center justify-center gap-2 w-full p-2 rounded-xl border cursor-pointer ${base.buttonSec} ${uploading ? 'opacity-50' : ''}`}><UploadCloud size={18}/><span className="text-xs truncate">{uploading ? '...' : 'Foto'}</span><input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e)} disabled={uploading}/></label></div></div>{newPizzaImg && <div className="mb-4"><img src={newPizzaImg} alt="Preview" className="h-20 w-auto rounded-lg border border-white/20"/></div>}<button onClick={addP} disabled={uploading} className={`w-full ${currentTheme.color} text-white font-bold py-4 rounded-2xl`}>AGREGAR</button></div>
-                    <div className="space-y-4">{pizzas.map(p => (<div key={p.id} className={`p-4 rounded-3xl border flex flex-col gap-3 ${base.card}`}><div className="flex justify-between items-start gap-3"><input value={p.nombre} onChange={e => updateP(p.id, 'nombre', e.target.value)} className="bg-transparent font-bold text-xl outline-none w-full border-b border-transparent focus:border-gray-500" /><div className="flex gap-2"><button onClick={() => updateP(p.id, 'activa', !p.activa)} className={`p-2 rounded-xl ${p.activa ? base.buttonSec : 'bg-black text-neutral-600'}`}>{p.activa ? <Eye size={18}/> : <EyeOff size={18}/>}</button><button onClick={() => delP(p.id)} className="p-2 text-red-500 hover:bg-red-100 rounded-xl"><Trash2 size={18}/></button></div></div><div className="flex gap-2"><label className="cursor-pointer relative w-16 h-16 rounded-lg overflow-hidden bg-neutral-900 group">{p.imagen_url ? <img src={p.imagen_url} className="w-full h-full object-cover"/> : <div className="flex items-center justify-center h-full text-neutral-600"><ImageIcon size={20}/></div>}<div className="absolute inset-0 bg-black/50 hidden group-hover:flex items-center justify-center text-white"><UploadCloud size={16}/></div><input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, p.id)}/></label><textarea value={p.descripcion || ''} onChange={e => updateP(p.id, 'descripcion', e.target.value)} className={`flex-1 p-2 rounded-xl text-sm outline-none resize-none h-16 ${base.input} opacity-80`} /></div><div className="flex gap-2"><div className={`flex-1 flex items-center justify-between text-sm p-3 rounded-xl border ${base.input}`}><span>Corte:</span><select value={p.porciones_individuales || ''} onChange={e => updateP(p.id, 'porciones_individuales', e.target.value ? parseInt(e.target.value) : null)} className={`p-1 px-3 rounded-lg border outline-none ${base.input}`}><option value="">Global ({config.porciones_por_pizza})</option><option value="4">4</option><option value="6">6</option><option value="8">8</option><option value="10">10</option></select></div><div className={`flex items-center gap-2 p-3 rounded-xl border text-sm ${base.input}`}><span>Stock:</span><input type="number" value={p.stock || 0} onChange={e => updateP(p.id, 'stock', parseInt(e.target.value))} className={`p-1 w-12 text-center rounded-lg border ${base.input}`} /></div><div className={`flex items-center gap-2 p-3 rounded-xl border text-sm ${base.input}`}><span>Timer:</span><input type="number" value={p.tiempo_coccion || 60} onChange={e => updateP(p.id, 'tiempo_coccion', parseInt(e.target.value))} className={`p-1 w-12 text-center rounded-lg border ${base.input}`} /></div></div></div>))}</div>
+                    {/* GLOBAL CATEGORY FILTER */}
+                    <div className={`${base.card} p-4 rounded-3xl border flex flex-col gap-2`}>
+                        <label className={`text-xs font-bold ${base.subtext}`}>Mostrar en Invitados:</label>
+                        <div className="flex flex-wrap gap-2">
+                             <button onClick={async () => {
+                                 const isAll = activeCategories.includes('Todas');
+                                 const newVal = isAll ? ['General'] : ['Todas'];
+                                 setConfig({...config, categoria_activa: JSON.stringify(newVal)});
+                                 await supabase.from('configuracion_dia').update({ categoria_activa: JSON.stringify(newVal) }).eq('id', config.id);
+                             }} className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${activeCategories.includes('Todas') ? 'bg-neutral-600 text-white border-neutral-500' : 'bg-transparent border-gray-500 text-gray-500'}`}>
+                                 {activeCategories.includes('Todas') ? <CheckSquare size={14}/> : <Square size={14}/>} Todas
+                             </button>
+                             {uniqueCategories.map(cat => {
+                                 const isActive = activeCategories.includes(cat);
+                                 return (
+                                     <button key={cat} onClick={() => toggleCategory(cat)} className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${isActive ? 'bg-neutral-600 text-white border-neutral-500' : 'bg-transparent border-gray-500 text-gray-500'}`}>
+                                         {isActive ? <CheckSquare size={14}/> : <Square size={14}/>} {cat}
+                                     </button>
+                                 )
+                             })}
+                        </div>
+                    </div>
+
+                    <div className={`p-6 rounded-3xl border ${base.card}`}><h3 className={`font-bold mb-4 flex items-center gap-2 ${base.subtext}`}><Plus size={18}/> Nueva variante</h3><input className={`w-full p-4 rounded-2xl border mb-2 outline-none ${base.input}`} placeholder="Nombre..." value={newPizzaName} onChange={e => setNewPizzaName(e.target.value)} /><textarea className={`w-full p-4 rounded-2xl border mb-4 text-sm outline-none ${base.input}`} placeholder="Ingredientes..." value={newPizzaDesc} onChange={e => setNewPizzaDesc(e.target.value)} />
+                    <div className="grid grid-cols-4 gap-2 mb-4">
+                        <div className="flex flex-col items-center"><span className={`text-xs font-bold ${base.subtext} mb-1`}>Categoria</span><input list="categories" className={`p-2 rounded-xl border w-full text-center text-xs ${base.input}`} value={newPizzaCat} onChange={e => setNewPizzaCat(e.target.value)} /><datalist id="categories">{uniqueCategories.map(c => <option key={c} value={c}/>)}</datalist></div>
+                        <div className="flex flex-col items-center"><span className={`text-xs font-bold ${base.subtext} mb-1`}>Stock</span><input type="number" className={`p-2 rounded-xl border w-full text-center text-xs ${base.input}`} value={newPizzaStock} onChange={e => setNewPizzaStock(parseInt(e.target.value))} /></div>
+                        <div className="flex flex-col items-center w-full"><span className={`text-xs font-bold ${base.subtext} mb-1`}>Timer</span><TimeControl value={newPizzaTime} onChange={setNewPizzaTime}/></div>
+                        <div className="flex flex-col items-center"><span className={`text-xs font-bold ${base.subtext} mb-1`}>Foto</span><label className={`flex items-center justify-center w-full h-[42px] rounded-xl border cursor-pointer ${base.buttonSec} ${uploading ? 'opacity-50' : ''}`}><UploadCloud size={16}/><input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e)} disabled={uploading}/></label></div>
+                    </div>
+                    {newPizzaImg && <div className="mb-4"><img src={newPizzaImg} alt="Preview" className="h-20 w-auto rounded-lg border border-white/20"/></div>}<button onClick={addP} disabled={uploading} className={`w-full ${currentTheme.color} text-white font-bold py-4 rounded-2xl`}>AGREGAR</button></div>
+                    <div className="space-y-4">{pizzas.map(p => {
+                        const isEdited = !!edits[p.id];
+                        const display = { ...p, ...edits[p.id] }; 
+                        return (
+                        <div key={p.id} className={`p-4 rounded-3xl border flex flex-col gap-3 ${base.card} ${isEdited ? 'border-yellow-500/50' : ''}`}>
+                            <div className="flex justify-between items-start gap-3"><input value={display.nombre} onChange={e => updateP(p.id, 'nombre', e.target.value)} className="bg-transparent font-bold text-xl outline-none w-full border-b border-transparent focus:border-gray-500" />
+                                <div className="flex gap-2">
+                                    {isEdited && (
+                                        <>
+                                            <button onClick={() => savePizzaChanges(p.id)} className="p-2 bg-yellow-500 text-black rounded-xl animate-pulse shadow-lg"><Save size={18}/></button>
+                                            <button onClick={() => cancelChanges(p.id)} className="p-2 bg-red-500 text-white rounded-xl shadow-lg"><XCircle size={18}/></button>
+                                        </>
+                                    )}
+                                    <button onClick={() => updateP(p.id, 'activa', !p.activa)} className={`p-2 rounded-xl ${p.activa ? base.buttonSec : 'bg-black text-neutral-600'}`}>{p.activa ? <Eye size={18}/> : <EyeOff size={18}/>}</button><button onClick={() => delP(p.id)} className="p-2 text-red-500 hover:bg-red-100 rounded-xl"><Trash2 size={18}/></button>
+                                </div>
+                            </div>
+                            <div className="flex gap-2"><label className="cursor-pointer relative w-16 h-16 rounded-lg overflow-hidden bg-neutral-900 group flex-shrink-0">{display.imagen_url ? <img src={display.imagen_url} className="w-full h-full object-cover"/> : <div className="flex items-center justify-center h-full text-neutral-600"><ImageIcon size={20}/></div>}<div className="absolute inset-0 bg-black/50 hidden group-hover:flex items-center justify-center text-white"><UploadCloud size={16}/></div><input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, p.id)}/></label><textarea value={display.descripcion || ''} onChange={e => updateP(p.id, 'descripcion', e.target.value)} className={`flex-1 p-2 rounded-xl text-sm outline-none resize-none h-16 ${base.input} opacity-80`} /></div>
+                            <div className="grid grid-cols-4 gap-2">
+                                <div className={`flex flex-col items-center justify-center p-2 rounded-xl border ${base.input}`}><span className="text-[8px] uppercase font-bold opacity-50 mb-1">Cat</span><input list="categories" value={display.categoria || ''} onChange={e => updateP(p.id, 'categoria', e.target.value)} className={`w-full text-center bg-transparent outline-none text-xs font-bold`} /></div>
+                                <div className={`flex flex-col items-center justify-center p-2 rounded-xl border ${base.input}`}><span className="text-[8px] uppercase font-bold opacity-50 mb-1">Corte</span><select value={display.porciones_individuales || ''} onChange={e => updateP(p.id, 'porciones_individuales', e.target.value ? parseInt(e.target.value) : null)} className={`w-full text-center bg-transparent outline-none text-xs font-bold`}><option value="">Global</option><option value="4">4</option><option value="6">6</option><option value="8">8</option><option value="10">10</option></select></div>
+                                <div className={`flex flex-col items-center justify-center p-2 rounded-xl border ${base.input}`}><span className="text-[8px] uppercase font-bold opacity-50 mb-1">Stock</span><input type="number" value={display.stock || 0} onChange={e => updateP(p.id, 'stock', parseInt(e.target.value))} className={`w-full text-center bg-transparent outline-none text-xs font-bold`} /></div>
+                                <div className={`flex flex-col items-center justify-center p-2 rounded-xl border ${base.input}`}><span className="text-[8px] uppercase font-bold opacity-50 mb-1">Timer</span><TimeControl value={display.tiempo_coccion || 60} onChange={val => updateP(p.id, 'tiempo_coccion', val)} /></div>
+                            </div>
+                        </div>
+                    );})}</div>
                 </div>
             )}
             {view === 'ranking' && (
                 <div className="space-y-6">
-                    <div className={`p-6 rounded-3xl border mb-6 shadow-sm flex justify-between items-center ${base.card}`}><h3 className={`font-bold uppercase tracking-widest text-sm ${base.textHead}`}>Ranking & Feedback</h3><button onClick={delAllVal} className="text-[10px] bg-red-900/30 text-red-500 px-3 py-1 rounded-full border border-red-900/50 hover:bg-red-900/50 transition-colors">RESET ALL</button></div>
+                    <div className={`p-6 rounded-3xl ${base.card} mb-6 shadow-sm flex justify-between items-center`}><h3 className={`font-bold uppercase tracking-widest text-sm ${base.textHead}`}>Ranking & Feedback</h3><button onClick={delAllVal} className="text-[10px] bg-red-900/30 text-red-500 px-3 py-1 rounded-full border border-red-900/50 hover:bg-red-900/50 transition-colors">RESET ALL</button></div>
                     <div className="grid gap-3">{ranking.map(p => (<div key={p.id} className={`p-3 rounded-2xl border flex justify-between items-center ${base.card}`}><div className="flex items-center gap-3"><div className="text-center w-12"><div className="text-xl font-bold text-yellow-500 flex justify-center items-center gap-0.5">{p.avg} <Star size={12} fill="currentColor"/></div><div className={`text-[9px] ${base.subtext}`}>{p.count} votes</div></div><div><div className="font-bold text-sm">{p.nombre}</div><div className={`text-[10px] ${base.subtext}`}>{p.totalOrders} porciones</div></div></div><button onClick={() => delValPizza(p.id)} className="p-2 text-neutral-500 hover:text-red-500 transition-colors" title="Reset pizza"><RotateCcw size={16} /></button></div>))}</div>
                     <div className="space-y-4 mt-6"><h3 className={`font-bold text-sm uppercase tracking-widest ${base.subtext}`}>Últimos Comentarios</h3>{valoraciones.length === 0 ? <p className={`text-center text-xs ${base.subtext}`}>Sin valoraciones.</p> : valoraciones.map((v, i) => (<div key={i} className={`p-4 rounded-2xl border ${base.card} relative group`}><button onClick={() => delVal(v.id)} className="absolute top-4 right-4 text-neutral-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={14}/></button><div className="flex justify-between mb-2 pr-6"><span className="font-bold text-sm flex items-center gap-2"><User size={14}/> {v.invitado_nombre}</span><span className="text-xs text-yellow-500 font-bold flex items-center gap-1">{v.rating} <Star size={10} fill="currentColor"/></span></div><div className="text-xs mb-2 bg-black/20 p-1 px-2 rounded w-max border border-white/5 text-neutral-400">{pizzas.find(p => p.id === v.pizza_id)?.nombre || 'Pizza'}</div>{v.comentario && <p className="text-sm italic opacity-80">"{v.comentario}"</p>}</div>))}</div>
                 </div>
