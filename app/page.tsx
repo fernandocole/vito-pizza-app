@@ -1007,39 +1007,40 @@ export default function VitoPizzaApp() {
              <div className="fixed inset-0 z-40" onClick={() => setSummarySheet(null)}>
                  <div className={`fixed bottom-28 left-4 right-4 z-50 rounded-3xl p-5 shadow-2xl border animate-in slide-in-from-bottom-4 duration-300 flex flex-col max-h-[60vh] ${base.bar}`} onClick={e => e.stopPropagation()}>
                      <div className="flex justify-between items-center mb-4">
-                         <h3 className={`text-lg font-bold flex items-center gap-2 ${base.text}`}>
+                         {/* TITULOS FORZADOS A BLANCO/NEGRO */}
+                         <h3 className={`text-lg font-bold flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-black'}`}>
                             {summarySheet === 'total' && <span>Ya pediste</span>}
-                            {summarySheet === 'wait' && <span className="text-black dark:text-white flex items-center gap-2"><Clock size={20}/> En Espera</span>}
-                            {summarySheet === 'oven' && <span className="text-black dark:text-white flex items-center gap-2"><Flame size={20}/> En Horno</span>}
-                            {summarySheet === 'ready' && <span className="text-black dark:text-white flex items-center gap-2"><ChefHat size={20}/> Listas</span>}
+                            {summarySheet === 'wait' && <span className={`flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-black'}`}><Clock size={20}/> En Espera</span>}
+                            {summarySheet === 'oven' && <span className={`flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-black'}`}><Flame size={20}/> En Horno</span>}
+                            {summarySheet === 'ready' && <span className={`flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-black'}`}><ChefHat size={20}/> Listas</span>}
                          </h3>
                          <button onClick={() => setSummarySheet(null)} className={`p-1.5 rounded-full hover:bg-black/10 transition-colors ${isDarkMode ? 'text-white' : 'text-black'}`}><X size={20}/></button>
                      </div>
                      
                      <div className="overflow-y-auto no-scrollbar space-y-2 pr-1">
                          {summaryData.length === 0 ? (
-                             <p className="text-center py-4 text-xs opacity-60">Nada por aquí...</p>
+                             <p className={`text-center py-4 text-xs opacity-60 ${isDarkMode ? 'text-white' : 'text-black'}`}>Nada por aquí...</p>
                          ) : (
                              summaryData.map(p => (
                                  <div key={p.id} className={`flex items-center justify-between p-2 rounded-xl ${isDarkMode ? 'bg-white/10' : 'bg-gray-100/80'} border border-transparent`}>
                                      <div className="flex items-center gap-3">
-                                         {/* Avatar de pizza */}
                                          <div className="w-10 h-10 rounded-full overflow-hidden bg-neutral-200 border border-white/20 flex-shrink-0">
                                              {p.imagen_url ? <img src={p.imagen_url} className="w-full h-full object-cover"/> : <div className="flex items-center justify-center h-full text-neutral-400"><ImageIcon size={16}/></div>}
                                          </div>
                                          <div className="leading-tight">
-                                             <p className={`font-bold text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{p.displayName}</p>
+                                             {/* NOMBRE PIZZA FORZADO A BLANCO/NEGRO */}
+                                             <p className={`font-bold text-sm ${isDarkMode ? 'text-white' : 'text-black'}`}>{p.displayName}</p>
                                          </div>
                                      </div>
                                      
                                      <div className="flex items-center gap-3">
-                                         <span className={`text-xl font-black ${summarySheet === 'ready' ? 'text-green-500' : (isDarkMode ? 'text-white' : 'text-black')}`}>x{p.count}</span>
+                                         {/* CANTIDAD FORZADA A BLANCO/NEGRO */}
+                                         <span className={`text-xl font-black ${isDarkMode ? 'text-white' : 'text-black'}`}>x{p.count}</span>
                                          
-                                         {/* Botón CANCELAR (Solo si no está cocinando y es vista de espera o total) */}
                                          {!p.cocinando && (summarySheet === 'wait' || summarySheet === 'total') && (
-                                            <button onClick={() => modificarPedido(p, 'restar')} className="p-1 bg-red-500/10 text-red-500 rounded hover:bg-red-500/20 active:scale-95 transition-all">
-                                                <Minus size={16}/>
-                                            </button>
+                                             <button onClick={() => modificarPedido(p, 'restar')} className="p-1 bg-red-500/10 text-red-500 rounded hover:bg-red-500/20 active:scale-95 transition-all">
+                                                 <Minus size={16}/>
+                                             </button>
                                          )}
                                      </div>
                                  </div>
