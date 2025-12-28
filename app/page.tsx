@@ -246,7 +246,7 @@ const dictionary = {
     onb_enjoy_desc: "Scegli il tuo gusto preferito, ordina le fette e aspetta la magia del forno.",
     onb_btn_next: "Avanti",
     onb_btn_start: "Inizia",
-    feat_prog_title: "Progresso Pizza",
+    feat_prog_title: "Progreso Pizza",
     feat_prog_desc: "Questa barra si riempie man mano che si ordina. Quando è piena, va in forno!",
     feat_oven_title: "Stato Forno",
     feat_oven_desc: "Quando vedi fuoco e rosso, la tua pizza sta cuocendo.",
@@ -281,6 +281,9 @@ export default function VitoPizzaApp() {
   
   const [isCompact, setIsCompact] = useState(false);
   
+  // ESTADO PARA ORDEN CONGELADO (Para no saltar al dar click)
+  const [orderedIds, setOrderedIds] = useState<string[]>([]);
+  
   // ZOOM LEVELS - 0 to 4
   const [zoomLevel, setZoomLevel] = useState(0);
   const DESC_SIZES = ['text-xs', 'text-sm', 'text-base', 'text-lg', 'text-xl'];
@@ -311,7 +314,7 @@ export default function VitoPizzaApp() {
   const [misValoraciones, setMisValoraciones] = useState<string[]>([]);
   const [autoTranslations, setAutoTranslations] = useState<Record<string, Record<string, { name: string, desc: string }>>>({});
 
-  // ESTILOS BASE (Corregido con buttonSec)
+  // ESTILOS BASE
   const base = isDarkMode ? {
       bg: "bg-neutral-950",
       text: "text-white",
@@ -344,19 +347,12 @@ export default function VitoPizzaApp() {
 
   // HELPER PARA ESTILOS DE BOTONES INDIVIDUALES (Sin fondo)
   const getBtnClass = (isActive: boolean) => {
-      // BASE: Fondo Transparente Siempre. CAMBIO: p-1 a p-2
       const common = "p-2 rounded-full transition-all duration-300 flex items-center justify-center bg-transparent ";
       const scale = isActive ? "scale-110" : "hover:scale-105";
 
-      // MODO OSCURO
       if (isDarkMode) {
-          // Activo: Blanco brillante. Inactivo: Gris muy claro (200)
           return `${common} ${scale} ${isActive ? 'text-white' : 'text-neutral-200 hover:text-white'}`; 
-      }
-      
-      // MODO CLARO
-      else {
-          // Activo: Negro total. Inactivo: Gris oscuro (800)
+      } else {
           return `${common} ${scale} ${isActive ? 'text-black' : 'text-neutral-800 hover:text-black'}`; 
       }
   };
@@ -372,6 +368,45 @@ export default function VitoPizzaApp() {
   const prevComidosPerPizza = useRef<Record<string, number>>({});
   const prevCocinandoData = useRef<Record<string, boolean>>({});
   const firstLoadRef = useRef(true);
+
+  // --- NOTIFICACIONES MEJORADAS PARA ANDROID/PWA ---
+  const sendNotification = async (title: string, body: string) => {
+    if (Notification.permission === 'granted') {
+        try {
+            // Intenta usar ServiceWorkerRegistration primero (Estándar Mobile)
+            const reg = await navigator.serviceWorker.getRegistration();
+            if (reg) {
+                reg.showNotification(title, { body, icon: '/icon.png', badge: '/icon.png' });
+            } else {
+                // Fallback a API clásica
+                new Notification(title, { body, icon: '/icon.png' });
+            }
+        } catch (e) {
+            console.error("Error enviando notificación", e);
+            // Fallback extremo
+            try { new Notification(title, { body, icon: '/icon.png' }); } catch(err) {}
+        }
+    }
+  };
+
+  const toggleNotificaciones = () => { 
+      if (notifEnabled) { 
+          setNotifEnabled(false); 
+          localStorage.setItem('vito-notif-enabled', 'false'); 
+          mostrarMensaje(t.notifOff, 'info'); 
+      } else { 
+          Notification.requestPermission().then(perm => { 
+              if (perm === 'granted') { 
+                  setNotifEnabled(true); 
+                  localStorage.setItem('vito-notif-enabled', 'true'); 
+                  mostrarMensaje(t.notifOn, 'info'); 
+                  sendNotification("Il Forno di Vito", "¡Notificaciones activadas correctamente!");
+              } else { 
+                  alert("Activa las notificaciones en la configuración de tu navegador."); 
+              } 
+          }); 
+      } 
+  };
 
   const getEmptyStateMessage = () => {
     switch(filter) {
@@ -501,8 +536,6 @@ export default function VitoPizzaApp() {
       setLang(nextLang);
       localStorage.setItem('vito-lang', nextLang);
   };
-
-  const toggleNotificaciones = () => { if (notifEnabled) { setNotifEnabled(false); localStorage.setItem('vito-notif-enabled', 'false'); mostrarMensaje(t.notifOff, 'info'); } else { Notification.requestPermission().then(perm => { if (perm === 'granted') { setNotifEnabled(true); localStorage.setItem('vito-notif-enabled', 'true'); mostrarMensaje(t.notifOn, 'info'); try { new Notification("Il Forno di Vito", { body: "Ok!", icon: "/icon.png" }); } catch (e) {} } else { alert("Activa las notificaciones en la configuración de tu navegador."); } }); } };
   
   const translateText = async (text: string, targetLang: string) => {
     try {
@@ -523,7 +556,6 @@ export default function VitoPizzaApp() {
           let hasChanges = false;
 
           for (const p of pizzas) {
-              // Si no existe la entrada para esta pizza o para este idioma
               if (!newTrans[p.id]) newTrans[p.id] = {};
               if (!newTrans[p.id][lang]) {
                   const tName = await translateText(p.nombre, lang);
@@ -563,10 +595,18 @@ export default function VitoPizzaApp() {
              const p = m.filter(p => p.estado !== 'entregado').reduce((acc, x) => acc + x.cantidad_porciones, 0);
              res[pz.id] = { pendientes: p, comidos: c };
              if (p > 0) penInfo[pz.id] = p;
-             if (!firstLoadRef.current) { const prev = prevComidosPerPizza.current[pz.id] || 0; if (c > prev) { const dif = c - prev; mostrarMensaje(`¡${dif} de ${pz.nombre} listas!`, 'alerta'); } } prevComidosPerPizza.current[pz.id] = c;
+             if (!firstLoadRef.current) { 
+                 const prev = prevComidosPerPizza.current[pz.id] || 0; 
+                 if (c > prev) { 
+                     const dif = c - prev; 
+                     mostrarMensaje(`¡${dif} de ${pz.nombre} listas! No olvides calificarla luego.`, 'alerta'); 
+                     sendNotification("¡Pizza Lista!", `¡Tu ${pz.nombre} está lista! No olvides calificarla.`);
+                 } 
+             } 
+             prevComidosPerPizza.current[pz.id] = c;
         });
         setMiHistorial(res);
-        if (firstLoadRef.current) { dPiz.forEach(pz => { prevCocinandoData.current[pz.id] = pz.cocinando; }); firstLoadRef.current = false; } else { dPiz.forEach(pz => { const estaba = prevCocinandoData.current[pz.id] || false; if (pz.cocinando && !estaba && penInfo[pz.id]) { mostrarMensaje(`¡${penInfo[pz.id]} de ${pz.nombre} al horno!`, 'alerta'); } prevCocinandoData.current[pz.id] = pz.cocinando; }); }
+        if (firstLoadRef.current) { dPiz.forEach(pz => { prevCocinandoData.current[pz.id] = pz.cocinando; }); firstLoadRef.current = false; } else { dPiz.forEach(pz => { const estaba = prevCocinandoData.current[pz.id] || false; if (pz.cocinando && !estaba && penInfo[pz.id]) { mostrarMensaje(`¡${penInfo[pz.id]} de ${pz.nombre} al horno!`, 'alerta'); sendNotification("¡Al Horno!", `Tu ${pz.nombre} está cocinándose.`); } prevCocinandoData.current[pz.id] = pz.cocinando; }); }
       }
     }
     setCargando(false);
@@ -574,9 +614,11 @@ export default function VitoPizzaApp() {
 
   useEffect(() => { fetchDatos(); const c = supabase.channel('app-realtime').on('postgres_changes', { event: '*', schema: 'public' }, () => fetchDatos()).subscribe(); return () => { supabase.removeChannel(c); }; }, [fetchDatos]);
 
-  const pizzasOrdenadas = useMemo(() => {
+  // 1. CALCULO DE DATOS (Se actualiza siempre que cambian pedidos, etc.)
+  const enrichedPizzas = useMemo(() => {
       const globalAvg = allRatings.length > 0 ? (allRatings.reduce((a, r) => a + r.rating, 0) / allRatings.length) : 0;
-      let lista = pizzas.map(pizza => {
+      
+      return pizzas.map(pizza => {
           const totalStock = (pizza.stock || 0) * (pizza.porciones_individuales || config.porciones_por_pizza);
           const used = pedidos.filter(p => p.pizza_id === pizza.id).reduce((a, c) => a + c.cantidad_porciones, 0);
           const stockRestante = Math.max(0, totalStock - used);
@@ -599,27 +641,65 @@ export default function VitoPizzaApp() {
               ...pizza, 
               displayName, 
               displayDesc,
-              stockRestante, target, ocupadasActual: pen % target, faltanParaCompletar: target - (pen % target), avgRating: avg, countRating: countRating, sortRating: sortR 
+              stockRestante, 
+              target, 
+              ocupadasActual: pen % target, 
+              faltanParaCompletar: target - (pen % target), 
+              avgRating: avg, 
+              countRating: countRating, 
+              sortRating: sortR,
+              totalPendientes: pen 
           };
       });
+  }, [pizzas, pedidos, config, allRatings, lang, autoTranslations]);
 
-      if (filter !== 'all') {
-          lista = lista.filter(p => {
-              if (filter === 'top') return p.avgRating && parseFloat(p.avgRating) >= 4.5;
-              if (filter === 'to_rate') return miHistorial[p.id]?.comidos > 0 && !misValoraciones.includes(p.id);
-              if (filter === 'ordered') return (miHistorial[p.id]?.pendientes > 0 || miHistorial[p.id]?.comidos > 0);
-              if (filter === 'new') return (!miHistorial[p.id]?.pendientes && !miHistorial[p.id]?.comidos);
-              if (filter === 'stock') return p.stockRestante > 0;
-              return true;
-          });
-      }
+  // 2. LOGICA DE ORDENAMIENTO (Separada para congelar)
+  useEffect(() => {
+    if (enrichedPizzas.length === 0) return;
 
-      return lista.sort((a, b) => {
-          if (orden === 'ranking') return b.sortRating - a.sortRating;
-          if (orden === 'estado') { if (a.cocinando && !b.cocinando) return -1; if (!a.cocinando && b.cocinando) return 1; if (a.stockRestante > 0 && b.stockRestante <= 0) return -1; if (a.stockRestante <= 0 && b.stockRestante > 0) return 1; }
-          return a.displayName.localeCompare(b.displayName); 
-      });
-  }, [pizzas, pedidos, orden, config, allRatings, filter, miHistorial, misValoraciones, lang, autoTranslations]);
+    let lista = enrichedPizzas;
+    if (filter !== 'all') {
+        lista = lista.filter(p => {
+            if (filter === 'top') return p.avgRating && parseFloat(p.avgRating) >= 4.5;
+            if (filter === 'to_rate') return miHistorial[p.id]?.comidos > 0 && !misValoraciones.includes(p.id);
+            if (filter === 'ordered') return (miHistorial[p.id]?.pendientes > 0 || miHistorial[p.id]?.comidos > 0);
+            if (filter === 'new') return (!miHistorial[p.id]?.pendientes && !miHistorial[p.id]?.comidos);
+            if (filter === 'stock') return p.stockRestante > 0;
+            return true;
+        });
+    }
+
+    lista.sort((a, b) => {
+        const aReady = !a.cocinando && a.totalPendientes >= a.target;
+        const bReady = !b.cocinando && b.totalPendientes >= b.target;
+        if (aReady && !bReady) return -1;
+        if (!aReady && bReady) return 1;
+
+        if (a.cocinando && !b.cocinando) return -1;
+        if (!a.cocinando && b.cocinando) return 1;
+
+        const aStock = a.stockRestante > 0;
+        const bStock = b.stockRestante > 0;
+        if (aStock && !bStock) return -1;
+        if (!aStock && bStock) return 1;
+
+        if (orden === 'ranking') return b.sortRating - a.sortRating;
+        if (orden === 'nombre') return a.displayName.localeCompare(b.displayName);
+
+        const aActive = a.ocupadasActual;
+        const bActive = b.ocupadasActual;
+        if (aActive !== bActive) return bActive - aActive; 
+
+        return a.displayName.localeCompare(b.displayName); 
+    });
+
+    setOrderedIds(lista.map(p => p.id));
+  }, [
+      orden, 
+      filter, 
+      pizzas.length, 
+      JSON.stringify(pizzas.map(p => ({ id: p.id, cocinando: p.cocinando, stock: p.stock }))) 
+  ]);
 
   const mySummary = useMemo(() => {
       let t = 0, w = 0, o = 0, r = 0;
@@ -899,18 +979,25 @@ export default function VitoPizzaApp() {
 
         <div className="space-y-3 pb-4">
            {cargando ? <p className={`text-center ${base.subtext} mt-10 animate-pulse`}>{t.loading}</p> : 
-             pizzasOrdenadas.length === 0 ? (<div className="text-center py-10 opacity-60"><p className="text-4xl mb-2">👻</p><p className={`text-sm font-bold ${base.subtext}`}>{getEmptyStateMessage()}</p></div>) :
-             pizzasOrdenadas.map(pizza => (
+             orderedIds.length === 0 ? (<div className="text-center py-10 opacity-60"><p className="text-4xl mb-2">👻</p><p className={`text-sm font-bold ${base.subtext}`}>{getEmptyStateMessage()}</p></div>) :
+             orderedIds.map(id => {
+               // Buscamos la pizza actualizada en enrichedPizzas usando el ID ordenado
+               const pizza = enrichedPizzas.find(p => p.id === id);
+               if (!pizza) return null;
+               
+               const totalUser = (miHistorial[pizza.id]?.pendientes || 0) + (miHistorial[pizza.id]?.comidos || 0);
+
+               return (
                <div key={pizza.id} className={`${base.card} rounded-[36px] border ${pizza.stockRestante === 0 ? 'border-neutral-200 dark:border-neutral-800' : pizza.cocinando ? 'border-red-600/30' : ''} shadow-lg relative overflow-hidden group ${isCompact ? 'p-3' : 'p-5'}`}>
                    <div className="flex justify-between items-start mb-2"><div className="flex-1"><div className="flex flex-wrap items-center gap-2 mb-1">
                      <h2 className={`font-bold ${isCompact ? 'text-lg' : 'text-2xl'} ${pizza.stockRestante === 0 ? 'text-gray-400 dark:text-neutral-600' : base.text}`}>
                          {pizza.displayName}
                      </h2>
-                     <div className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs ${base.badge}`}><Star size={12} className={pizza.countRating > 0 ? "text-yellow-500" : "text-gray-500 opacity-50"} fill="currentColor" /><span className={`font-bold ${pizza.countRating > 0 ? '' : 'text-gray-500 opacity-50'}`}>{pizza.avgRating || '0.0'}</span><span className={`text-[10px] ${pizza.countRating > 0 ? 'opacity-60' : 'text-gray-500 opacity-40'}`}>({pizza.countRating || 0})</span>{miHistorial[pizza.id]?.comidos > 0 && !misValoraciones.includes(pizza.id) && (<button onClick={() => openRating(pizza)} className="ml-1 bg-yellow-500 text-black px-1.5 py-0.5 rounded text-[9px] font-bold animate-pulse hover:scale-105 transition-transform">{t.rateBtn}</button>)}</div>{pizza.cocinando && <span className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">{t.inOven}</span>}</div>{!isCompact && (<p className={`leading-relaxed max-w-[200px] ${base.subtext} ${DESC_SIZES[zoomLevel]}`}>{pizza.displayDesc}</p>)}<p className={`font-mono mt-1 ${pizza.stockRestante === 0 ? 'text-red-500 font-bold' : base.subtext} ${STOCK_SIZES[zoomLevel]}`}>{pizza.stockRestante === 0 ? t.soldOut : `${t.ingredientsFor} ${pizza.stockRestante} ${t.portionsMore}`}</p></div></div>
+                     <div className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs ${base.badge}`}><Star size={12} className={pizza.countRating > 0 ? "text-yellow-500" : "text-gray-500 opacity-50"} fill="currentColor" /><span className={`font-bold ${pizza.countRating > 0 ? '' : 'text-gray-500 opacity-50'}`}>{pizza.avgRating || '0.0'}</span><span className={`text-[10px] ${pizza.countRating > 0 ? 'opacity-60' : 'text-gray-500 opacity-40'}`}>({pizza.countRating || 0})</span>{miHistorial[pizza.id]?.comidos > 0 && !misValoraciones.includes(pizza.id) && (<button onClick={() => openRating(pizza)} className="ml-1 bg-yellow-500 text-black px-1.5 py-0.5 rounded text-[9px] font-bold animate-pulse hover:scale-105 transition-transform">{t.rateBtn}</button>)}</div>{pizza.cocinando && <span className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">{t.inOven}</span>}</div>{!isCompact && (<p className={`leading-relaxed max-w-[200px] ${base.subtext} ${DESC_SIZES[zoomLevel]}`}>{pizza.displayDesc}</p>)}<p className={`font-mono mt-1 ${pizza.stockRestante === 0 ? 'text-red-500 font-bold' : base.subtext} ${STOCK_SIZES[zoomLevel]}`}>{pizza.stockRestante === 0 ? t.soldOut : `${t.ingredientsFor} ${pizza.stockRestante} ${t.portionsMore}`}</p></div>{totalUser > 0 && (<div className="text-right ml-2"><span className={`text-[10px] font-bold px-2 py-1 rounded border whitespace-nowrap ${isDarkMode ? 'bg-white/10 border-white/20 text-white' : 'bg-black/5 border-black/10 text-black'}`}>PEDISTE: {totalUser}</span></div>)}</div>
                    <div className={`rounded-2xl border ${isCompact ? 'p-2 mb-2 mt-1' : 'p-3 mb-5 mt-4'} ${base.progressBg}`}><div className={`flex justify-between text-[10px] font-bold uppercase tracking-wider mb-2 ${base.subtext}`}><span>{pizza.faltanParaCompletar === pizza.target ? t.newPizza : t.progress}</span><span className={pizza.faltanParaCompletar === 0 ? currentTheme.text : base.subtext}>{pizza.faltanParaCompletar > 0 ? `${t.missing} ${pizza.faltanParaCompletar}` : t.completed}</span></div><div className={`rounded-full overflow-hidden flex border ${isCompact ? 'h-1.5' : 'h-2'} ${base.progressTrack}`}>{[...Array(pizza.target)].map((_, i) => (<div key={i} className={`flex-1 border-r last:border-0 ${isDarkMode ? 'border-black/50' : 'border-white/50'} ${i < pizza.ocupadasActual ? `bg-gradient-to-r ${currentTheme.name === 'Carbone' ? 'from-white to-neutral-300' : currentTheme.gradient}` : 'bg-transparent'}`}></div>))}</div></div>
                    <div className="flex gap-3">{miHistorial[pizza.id]?.pendientes > 0 && (<button onClick={() => modificarPedido(pizza, 'restar')} className={`rounded-2xl flex items-center justify-center border active:scale-95 transition ${base.buttonSec} ${isCompact ? 'w-12 h-10' : 'w-16 h-14'}`}><Minus size={isCompact ? 16 : 20} /></button>)}{pizza.stockRestante > 0 ? (<button onClick={() => modificarPedido(pizza, 'sumar')} className={`flex-1 rounded-2xl font-bold text-white shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 bg-gradient-to-r ${currentTheme.gradient} hover:brightness-110 ${isCompact ? 'h-10 text-base' : 'h-14 text-lg'}`}><Plus size={isCompact ? 18 : 24} strokeWidth={3} /> {t.buttonOrder}</button>) : (<div className={`flex-1 rounded-2xl font-bold flex items-center justify-center border ${isDarkMode ? 'text-neutral-500 bg-neutral-900 border-neutral-800' : 'text-gray-400 bg-gray-100 border-gray-200'} ${isCompact ? 'h-10 text-xs' : 'h-14 text-sm'}`}>{t.soldOut}</div>)}</div>
                </div>
-           ))}
+           )})}
         </div>
       </div>
 
