@@ -6,7 +6,7 @@ import {
   Pizza, Settings, Plus, Trash2, ChefHat, Eye, EyeOff, CheckCircle, 
   Clock, Flame, LogOut, List, User, Bell, ArrowRight, ArrowDownAZ, 
   ArrowUpNarrowWide, Maximize2, Minimize2, Users, Ban, RotateCcw, 
-  KeyRound, LayoutDashboard, XCircle, Sun, Moon, BarChart3, Star, MessageSquare, Palette, Save, UserCheck, ImageIcon, UploadCloud, Timer as TimerIcon, Tag, ChevronUp, ChevronDown, CheckSquare, Square, Calculator, ShoppingBag, X
+  KeyRound, LayoutDashboard, XCircle, Sun, Moon, BarChart3, Star, MessageSquare, Palette, Save, UserCheck, ImageIcon, UploadCloud, Timer as TimerIcon, Tag, ChevronUp, ChevronDown, CheckSquare, Square, Calculator, ShoppingBag, X, Minus, Pencil
 } from 'lucide-react';
 
 const supabase = createClient(
@@ -23,7 +23,7 @@ const formatSeconds = (seconds: number) => {
 };
 
 // --- COMPONENTE CONTROL DE TIEMPO (Flechas) ---
-const TimeControl = ({ value, onChange }: { value: number, onChange: (val: number) => void }) => {
+const TimeControl = ({ value, onChange, isDarkMode }: { value: number, onChange: (val: number) => void, isDarkMode: boolean }) => {
     const m = Math.floor(value / 60);
     const s = value % 60;
 
@@ -41,18 +41,21 @@ const TimeControl = ({ value, onChange }: { value: number, onChange: (val: numbe
         onChange(newM * 60 + newS);
     };
 
+    const btnClass = isDarkMode ? "hover:bg-white/10 active:bg-white/20 text-white" : "hover:bg-black/10 active:bg-black/20 text-black";
+
     return (
-        <div className="flex flex-col items-center border rounded-lg overflow-hidden w-full bg-white/5 border-white/20">
-            <div className="flex w-full">
-                <div className="flex-1 flex flex-col items-center border-r border-white/10">
-                    <button onClick={() => adjust('m', 1)} className="w-full flex justify-center hover:bg-white/10 active:bg-white/20 p-1"><ChevronUp size={14}/></button>
-                    <span className="text-sm font-mono font-bold leading-none py-1">{m.toString().padStart(2,'0')}</span>
-                    <button onClick={() => adjust('m', -1)} className="w-full flex justify-center hover:bg-white/10 active:bg-white/20 p-1"><ChevronDown size={14}/></button>
+        <div className="flex flex-col items-center w-full">
+            <div className="flex w-full items-center justify-center gap-1">
+                <div className="flex flex-col items-center">
+                    <button onClick={() => adjust('m', 1)} className={`${btnClass} p-0.5 rounded`}><ChevronUp size={12}/></button>
+                    <span className="text-sm font-mono font-bold leading-none">{m.toString().padStart(2,'0')}</span>
+                    <button onClick={() => adjust('m', -1)} className={`${btnClass} p-0.5 rounded`}><ChevronDown size={12}/></button>
                 </div>
-                <div className="flex-1 flex flex-col items-center">
-                    <button onClick={() => adjust('s', 10)} className="w-full flex justify-center hover:bg-white/10 active:bg-white/20 p-1"><ChevronUp size={14}/></button>
-                    <span className="text-sm font-mono font-bold leading-none py-1">{s.toString().padStart(2,'0')}</span>
-                    <button onClick={() => adjust('s', -10)} className="w-full flex justify-center hover:bg-white/10 active:bg-white/20 p-1"><ChevronDown size={14}/></button>
+                <span className="pb-1">:</span>
+                <div className="flex flex-col items-center">
+                    <button onClick={() => adjust('s', 10)} className={`${btnClass} p-0.5 rounded`}><ChevronUp size={12}/></button>
+                    <span className="text-sm font-mono font-bold leading-none">{s.toString().padStart(2,'0')}</span>
+                    <button onClick={() => adjust('s', -10)} className={`${btnClass} p-0.5 rounded`}><ChevronDown size={12}/></button>
                 </div>
             </div>
         </div>
@@ -119,13 +122,14 @@ export default function AdminPage() {
   const [autenticado, setAutenticado] = useState(false);
   const [password, setPassword] = useState('');
   const [view, setView] = useState<'cocina' | 'pedidos' | 'menu' | 'ingredientes' | 'usuarios' | 'config' | 'ranking'>('cocina');
-  
+   
   // DATOS
   const [pedidos, setPedidos] = useState<any[]>([]); 
   const [pizzas, setPizzas] = useState<any[]>([]);
   const [ingredientes, setIngredientes] = useState<any[]>([]);
   const [recetas, setRecetas] = useState<any[]>([]);
-  
+  const [reservedState, setReservedState] = useState<Record<string, number>>({});
+   
   // ESTADO LOCAL
   const [edits, setEdits] = useState<Record<string, any>>({});
   const [invitadosDB, setInvitadosDB] = useState<any[]>([]); 
@@ -134,31 +138,35 @@ export default function AdminPage() {
   const [invitadosCount, setInvitadosCount] = useState(0);
   const [onlineUsers, setOnlineUsers] = useState(0);
   const prevPedidosCount = useRef(0);
-  
+   
   // NUEVA PIZZA
   const [newPizzaName, setNewPizzaName] = useState('');
   const [newPizzaDesc, setNewPizzaDesc] = useState('');
   const [newPizzaImg, setNewPizzaImg] = useState('');
   const [newPizzaTime, setNewPizzaTime] = useState(90);
-  const [newPizzaCat, setNewPizzaCat] = useState(''); // Default vacio
+  const [newPizzaCat, setNewPizzaCat] = useState(''); 
+  const [newPizzaPortions, setNewPizzaPortions] = useState(8);
   const [uploading, setUploading] = useState(false);
-  
-  // NUEVA PIZZA RECETAS (Temporal)
+   
+  // NUEVA PIZZA RECETAS
   const [newPizzaIngredients, setNewPizzaIngredients] = useState<{ingrediente_id: string, nombre: string, cantidad: number}[]>([]);
   const [newPizzaSelectedIng, setNewPizzaSelectedIng] = useState('');
-  
-  // INPUTS DE CANTIDAD (STRING PARA PERMITIR BORRAR)
   const [newPizzaRecipeQty, setNewPizzaRecipeQty] = useState<string | number>('');
 
-  // NUEVO INGREDIENTE
+  // ESTADOS INGREDIENTES
   const [newIngName, setNewIngName] = useState('');
   const [newIngQty, setNewIngQty] = useState<string | number>('');
-  const [newIngUnit, setNewIngUnit] = useState('u');
+  const [newIngUnit, setNewIngUnit] = useState('g');
+  const [selectedIngId, setSelectedIngId] = useState('');
+   
+  // ESTADOS EDICION INGREDIENTE EN LISTA
+  const [editingIngId, setEditingIngId] = useState<string | null>(null);
+  const [editIngForm, setEditIngForm] = useState<{nombre: string, cantidad: number | string, unidad: string}>({nombre:'', cantidad:0, unidad:'g'});
 
-  // ASIGNAR RECETA EXISTENTE (Estados volátiles para inputs)
+  // ASIGNAR RECETA EXISTENTE
   const [tempRecipeIng, setTempRecipeIng] = useState<Record<string, string>>({});
   const [tempRecipeQty, setTempRecipeQty] = useState<Record<string, string | number>>({});
-  
+   
   const [newGuestName, setNewGuestName] = useState('');
   const [newPass, setNewPass] = useState('');
   const [confirmPass, setConfirmPass] = useState('');
@@ -183,7 +191,10 @@ export default function AdminPage() {
       divider: "border-neutral-800",
       metric: "bg-neutral-900 border-neutral-800",
       blocked: "bg-red-900/10 border-red-900/30",
-      bar: "bg-neutral-900/50 backdrop-blur-md border-white/10 shadow-lg text-white border"
+      bar: "bg-neutral-900/50 backdrop-blur-md border-white/10 shadow-lg text-white border",
+      // Estilos específicos para bloques internos que daban problemas
+      innerCard: "bg-neutral-800 border-neutral-700 text-white",
+      uploadBox: "bg-neutral-800 border-neutral-600 hover:bg-neutral-700"
   } : {
       bg: "bg-gray-100 text-gray-900",
       card: "bg-white border-gray-200 shadow-sm",
@@ -196,7 +207,10 @@ export default function AdminPage() {
       divider: "border-gray-200",
       metric: "bg-white border-gray-200 shadow-sm",
       blocked: "bg-red-50 border-red-200",
-      bar: "bg-white/50 backdrop-blur-md border-gray-300 shadow-lg text-gray-900 border"
+      bar: "bg-white/50 backdrop-blur-md border-gray-300 shadow-lg text-gray-900 border",
+      // Estilos específicos para modo claro
+      innerCard: "bg-neutral-100 border-neutral-200 text-gray-900",
+      uploadBox: "bg-neutral-100 border-neutral-300 hover:bg-neutral-200"
   };
 
   useEffect(() => {
@@ -241,7 +255,7 @@ export default function AdminPage() {
   const cargarDatos = async () => {
     const now = new Date(); if (now.getHours() < 6) now.setDate(now.getDate() - 1); now.setHours(6, 0, 0, 0); const iso = now.toISOString();
     
-    // Carga paralela para consistencia
+    // Carga paralela
     const [piz, ing, rec, ped, inv, conf, val] = await Promise.all([
         supabase.from('menu_pizzas').select('*').order('created_at', { ascending: true }),
         supabase.from('ingredientes').select('*').order('nombre'),
@@ -264,6 +278,10 @@ export default function AdminPage() {
     if(inv.data) setInvitadosDB(inv.data);
     if(conf.data) setConfig(conf.data);
     if(val.data) setValoraciones(val.data);
+    
+    if(piz.data && ing.data && rec.data && ped.data) {
+        actualizarStockGlobal();
+    }
   };
 
   const compressImage = async (file: File): Promise<Blob> => {
@@ -288,7 +306,6 @@ export default function AdminPage() {
       });
   };
 
-  // --- MANEJO DE EDICION LOCAL ---
   const handleLocalEdit = (id: string, field: string, value: any) => {
       setEdits(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
   };
@@ -307,7 +324,6 @@ export default function AdminPage() {
       }
 
       if (local_recipe) {
-          // Reemplazo total de la receta
           await supabase.from('recetas').delete().eq('pizza_id', id);
           if (local_recipe.length > 0) {
               const rows = local_recipe.map((r: any) => ({
@@ -318,12 +334,8 @@ export default function AdminPage() {
               await supabase.from('recetas').insert(rows);
           }
       }
-
-      // Recargar todo para recalcular stock
       await cargarDatos();
-      // Y forzar update de stock global
-      await actualizarStockGlobal();
-
+      await actualizarStockGlobal(); 
       setEdits(prev => { const newEdits = { ...prev }; delete newEdits[id]; return newEdits; });
   };
 
@@ -343,78 +355,76 @@ export default function AdminPage() {
       } catch (error: any) { alert('Error: ' + error.message); } finally { setUploading(false); }
   };
 
-  // --- LOGICA STOCK ---
-  // IMPORTANTE: Calcula basandose en el inventario actual
-  const calcularStockPizza = (pizzaId: string, recipeList: any[]) => {
-      if (!recipeList || recipeList.length === 0) return 0; // Sin receta = 0 stock para seguridad, o se puede poner 999. Usuario pidió basado en stock. Si no tiene receta no usa stock, entonces 0? O 999? Mejor 0 para obligar a poner receta.
-      
-      let maxPizzas = Infinity;
-      recipeList.forEach(item => {
-          const ing = ingredientes.find(i => i.id === item.ingrediente_id);
-          // Si el ingrediente existe y requiere cantidad > 0
-          if (ing && item.cantidad_requerida > 0) {
-              const posibles = Math.floor(ing.cantidad_disponible / item.cantidad_requerida);
-              if (posibles < maxPizzas) maxPizzas = posibles;
-          } else if (!ing || ing.cantidad_disponible <= 0) {
-              // Si falta el ingrediente o stock es 0 o negativo
-              maxPizzas = 0;
-          }
-      });
-      return maxPizzas === Infinity ? 0 : maxPizzas;
-  };
-
   const actualizarStockGlobal = async () => {
-      // Fetch fresco para asegurar calculo correcto
-      const { data: allRecetas } = await supabase.from('recetas').select('*');
-      const { data: allIngs } = await supabase.from('ingredientes').select('*');
-      const { data: allPizzas } = await supabase.from('menu_pizzas').select('*');
+      const now = new Date(); if (now.getHours() < 6) now.setDate(now.getDate() - 1); now.setHours(6, 0, 0, 0); const iso = now.toISOString();
+
+      const [ { data: allRecetas }, { data: allIngs }, { data: allPizzas }, { data: allPendientes }, { data: configDia } ] = await Promise.all([
+          supabase.from('recetas').select('*'),
+          supabase.from('ingredientes').select('*'),
+          supabase.from('menu_pizzas').select('*'),
+          supabase.from('pedidos').select('*').eq('estado', 'pendiente').gte('created_at', iso), 
+          supabase.from('configuracion_dia').select('*').single()
+      ]);
       
-      if(!allRecetas || !allIngs || !allPizzas) return;
+      if(!allRecetas || !allIngs || !allPizzas || !allPendientes || !configDia) return;
+
+      const porcionesDefault = configDia.porciones_por_pizza || 8;
+      const reservedStock: Record<string, number> = {};
+      
+      allPendientes.forEach((pedido: any) => {
+          const pizza = allPizzas.find((p:any) => p.id === pedido.pizza_id);
+          const porcionesEntera = pizza?.porciones_individuales || porcionesDefault;
+          const fraccion = pedido.cantidad_porciones / porcionesEntera;
+          const recetaPizza = allRecetas.filter((r: any) => r.pizza_id === pedido.pizza_id);
+          
+          recetaPizza.forEach((item: any) => {
+              const cantidadNecesaria = item.cantidad_requerida * fraccion;
+              reservedStock[item.ingrediente_id] = (reservedStock[item.ingrediente_id] || 0) + cantidadNecesaria;
+          });
+      });
+      
+      setReservedState(reservedStock);
 
       const updates = allPizzas.map(async (p) => {
           const pRecetas = allRecetas.filter((r: any) => r.pizza_id === p.id);
-          // Logica de calculo in-place
-          let stockReal = 999;
+          let stockVirtual = 999; 
+
           if (pRecetas.length > 0) {
-              let min = Infinity;
+              let minPizzasPosibles = Infinity;
               pRecetas.forEach((item: any) => {
                   const ing = allIngs.find((i: any) => i.id === item.ingrediente_id);
-                  if(ing && item.cantidad_requerida > 0) {
-                      const pos = Math.floor(ing.cantidad_disponible / item.cantidad_requerida);
-                      if(pos < min) min = pos;
+                  if (ing) {
+                      const fisico = ing.cantidad_disponible || 0;
+                      const reservado = reservedStock[ing.id] || 0;
+                      const disponibleReal = Math.max(0, fisico - reservado);
+                      const posibles = item.cantidad_requerida > 0 ? Math.floor(disponibleReal / item.cantidad_requerida) : 999;
+                      if (posibles < minPizzasPosibles) minPizzasPosibles = posibles;
                   } else {
-                      min = 0;
+                      minPizzasPosibles = 0; 
                   }
               });
-              stockReal = min === Infinity ? 0 : min;
+              stockVirtual = minPizzasPosibles === Infinity ? 0 : minPizzasPosibles;
           } else {
-              stockReal = 0; // Sin receta = sin stock
+             stockVirtual = 0; 
           }
 
-          if (p.stock !== stockReal) {
-              await supabase.from('menu_pizzas').update({ stock: stockReal }).eq('id', p.id);
+          if (p.stock !== stockVirtual) {
+              await supabase.from('menu_pizzas').update({ stock: stockVirtual }).eq('id', p.id);
           }
       });
       
       await Promise.all(updates);
-      cargarDatos(); // Refrescar UI
+      const { data: refreshedPizzas } = await supabase.from('menu_pizzas').select('*').order('created_at', { ascending: true });
+      if(refreshedPizzas) setPizzas(refreshedPizzas);
   };
 
   const toggleCocinando = async (p: any) => { 
-      if(!p.cocinando && p.totalPendientes < p.target) { alert("Falta para 1 pizza"); return; } 
+      if(!p.cocinando && p.totalPendientes < p.target) { alert("Falta para 1 entera"); return; } 
       const newState = !p.cocinando;
       const startTime = newState ? new Date().toISOString() : null;
 
-      // ACTUALIZAR INVENTARIO
       if (newState) {
-          // COCINAR: Restar ingredientes
           const receta = recetas.filter(r => r.pizza_id === p.id);
-          const stockActual = calcularStockPizza(p.id, receta);
-          
-          if (receta.length > 0 && stockActual <= 0) {
-              alert("¡Faltan ingredientes en el inventario!"); return;
-          }
-
           if(receta.length > 0) {
               for (const item of receta) {
                   const ing = ingredientes.find(i => i.id === item.ingrediente_id);
@@ -425,7 +435,6 @@ export default function AdminPage() {
               }
           }
       } else {
-          // CANCELAR COCCION: Devolver ingredientes
           const receta = recetas.filter(r => r.pizza_id === p.id);
           if(receta.length > 0) {
               for (const item of receta) {
@@ -439,11 +448,24 @@ export default function AdminPage() {
       }
 
       await supabase.from('menu_pizzas').update({ cocinando: newState, cocinando_inicio: startTime }).eq('id', p.id);
-      
-      // Al cambiar el inventario (restar/sumar), hay que recalcular el stock visual de TODAS las pizzas
-      // ya que pueden compartir ingredientes
       await actualizarStockGlobal();
+      const { data: ings } = await supabase.from('ingredientes').select('*').order('nombre');
+      if(ings) setIngredientes(ings);
   };
+
+  // CALCULO STOCK DINAMICO NUEVA PIZZA
+  const stockEstimadoNueva = useMemo(() => {
+      if (newPizzaIngredients.length === 0) return 0;
+      let min = Infinity;
+      newPizzaIngredients.forEach(item => {
+          const ing = ingredientes.find(i => i.id === item.ingrediente_id);
+          if(ing) {
+              const possible = Math.floor(ing.cantidad_disponible / item.cantidad);
+              if(possible < min) min = possible;
+          } else { min = 0; }
+      });
+      return min === Infinity ? 0 : min;
+  }, [newPizzaIngredients, ingredientes]);
 
   const metricas = useMemo(() => {
       const lista = pizzas.filter(p => p.activa).map(pizza => {
@@ -451,7 +473,6 @@ export default function AdminPage() {
         const totalPendientes = pendientes.reduce((acc, curr) => acc + curr.cantidad_porciones, 0);
         const target = pizza.porciones_individuales || config.porciones_por_pizza;
         
-        // El stock visual viene directo de la DB (que actualizamos constantemente)
         return { ...pizza, totalPendientes, completas: Math.floor(totalPendientes / target), faltan: target - (totalPendientes % target), target, percent: ((totalPendientes % target) / target) * 100, pedidosPendientes: pendientes, stockRestante: pizza.stock };
       });
       return lista.sort((a, b) => {
@@ -463,26 +484,10 @@ export default function AdminPage() {
       });
   }, [pizzas, pedidos, config, orden]);
 
-  // Categories
-  const uniqueCategories = useMemo(() => {
-      const cats = new Set<string>(); cats.add('General');
-      pizzas.forEach(p => { if(p.categoria) cats.add(p.categoria); });
-      return Array.from(cats);
-  }, [pizzas]);
-  const activeCategories: string[] = useMemo(() => {
-      try {
-          const parsed = JSON.parse(config.categoria_activa);
-          if (parsed === 'Todas' || (Array.isArray(parsed) && parsed.length === 0)) return []; 
-          return Array.isArray(parsed) ? parsed : ['General'];
-      } catch { return ['General']; }
-  }, [config.categoria_activa]);
-  const toggleCategory = async (cat: string) => {
-      const current = new Set(activeCategories);
-      if (current.has(cat)) current.delete(cat); else current.add(cat);
-      const newArr = Array.from(current);
-      setConfig({...config, categoria_activa: JSON.stringify(newArr)});
-      await supabase.from('configuracion_dia').update({ categoria_activa: JSON.stringify(newArr) }).eq('id', config.id);
-  };
+  // Categories & Stats
+  const uniqueCategories = useMemo(() => { const cats = new Set<string>(); cats.add('General'); pizzas.forEach(p => { if(p.categoria) cats.add(p.categoria); }); return Array.from(cats); }, [pizzas]);
+  const activeCategories: string[] = useMemo(() => { try { const parsed = JSON.parse(config.categoria_activa); if (parsed === 'Todas' || (Array.isArray(parsed) && parsed.length === 0)) return []; return Array.isArray(parsed) ? parsed : ['General']; } catch { return ['General']; } }, [config.categoria_activa]);
+  const toggleCategory = async (cat: string) => { const current = new Set(activeCategories); if (current.has(cat)) current.delete(cat); else current.add(cat); const newArr = Array.from(current); setConfig({...config, categoria_activa: JSON.stringify(newArr)}); await supabase.from('configuracion_dia').update({ categoria_activa: JSON.stringify(newArr) }).eq('id', config.id); };
 
   const stats = useMemo(() => {
       const totalPendientes = metricas.reduce((acc, m) => acc + m.totalPendientes, 0);
@@ -511,33 +516,21 @@ export default function AdminPage() {
       return { nombre: nombreReal, detalle, totalPendienteGeneral, totalEnHorno, totalEnEspera };
   }).sort((a, b) => b.totalPendienteGeneral - a.totalPendienteGeneral);
 
-  const ranking = useMemo(() => {
-      return pizzas.map(p => {
-          const vals = valoraciones.filter(v => v.pizza_id === p.id);
-          const avg = vals.length > 0 ? (vals.reduce((a, b) => a + b.rating, 0) / vals.length) : 0;
-          const orders = pedidos.filter(ped => ped.pizza_id === p.id).reduce((acc, c) => acc + c.cantidad_porciones, 0);
-          return { ...p, avg: parseFloat(avg.toFixed(1)), count: vals.length, totalOrders: orders };
-      }).sort((a, b) => b.avg - a.avg);
-  }, [pizzas, valoraciones, pedidos]);
+  const ranking = useMemo(() => { return pizzas.map(p => { const vals = valoraciones.filter(v => v.pizza_id === p.id); const avg = vals.length > 0 ? (vals.reduce((a, b) => a + b.rating, 0) / vals.length) : 0; const orders = pedidos.filter(ped => ped.pizza_id === p.id).reduce((acc, c) => acc + c.cantidad_porciones, 0); return { ...p, avg: parseFloat(avg.toFixed(1)), count: vals.length, totalOrders: orders }; }).sort((a, b) => b.avg - a.avg); }, [pizzas, valoraciones, pedidos]);
 
-  const allUsersList = useMemo(() => {
-      const map = new Map();
-      invitadosDB.forEach(u => map.set(u.nombre.toLowerCase(), { ...u, source: 'db', origen: u.origen || 'admin' }));
-      pedidos.forEach(p => { 
-          const key = p.invitado_nombre.toLowerCase();
-          if (!map.has(key)) map.set(key, { id: null, nombre: p.invitado_nombre, bloqueado: false, source: 'ped', totalOrders: p.cantidad_porciones }); 
-          else { const existing = map.get(key); map.set(key, { ...existing, totalOrders: (existing.totalOrders || 0) + p.cantidad_porciones }); }
-      });
-      invitadosDB.forEach(u => { const key = u.nombre.toLowerCase(); if(map.has(key)) { const existing = map.get(key); map.set(key, { ...existing, source: 'db', id: u.id, origen: u.origen || 'admin' }); }});
-      return Array.from(map.values()).sort((a, b) => a.nombre.localeCompare(b.nombre));
-  }, [invitadosDB, pedidos]);
+  const allUsersList = useMemo(() => { const map = new Map(); invitadosDB.forEach(u => map.set(u.nombre.toLowerCase(), { ...u, source: 'db', origen: u.origen || 'admin' })); pedidos.forEach(p => {  const key = p.invitado_nombre.toLowerCase(); if (!map.has(key)) map.set(key, { id: null, nombre: p.invitado_nombre, bloqueado: false, source: 'ped', totalOrders: p.cantidad_porciones });  else { const existing = map.get(key); map.set(key, { ...existing, totalOrders: (existing.totalOrders || 0) + p.cantidad_porciones }); } }); invitadosDB.forEach(u => { const key = u.nombre.toLowerCase(); if(map.has(key)) { const existing = map.get(key); map.set(key, { ...existing, source: 'db', id: u.id, origen: u.origen || 'admin' }); }}); return Array.from(map.values()).sort((a, b) => a.nombre.localeCompare(b.nombre)); }, [invitadosDB, pedidos]);
 
   // ACTIONS
   const eliminarUsuario = async (nombre: string, userDB: any) => { if(!confirm(`¿ELIMINAR a ${nombre}?`)) return; await supabase.from('pedidos').delete().eq('invitado_nombre', nombre); if(userDB?.id) { await supabase.from('lista_invitados').delete().eq('id', userDB.id); } cargarDatos(); };
-  const eliminarPedidosGusto = async (nom: string, pid: string) => { if(confirm(`¿Borrar pendientes?`)) { const ids = pedidos.filter(p => p.invitado_nombre.toLowerCase() === nom.toLowerCase() && p.pizza_id === pid && p.estado === 'pendiente').map(p => p.id); if(ids.length) await supabase.from('pedidos').delete().in('id', ids); cargarDatos(); } };
+  const eliminarPedidosGusto = async (nom: string, pid: string) => { 
+      if(confirm(`¿Borrar pendientes?`)) { 
+          const ids = pedidos.filter(p => p.invitado_nombre.toLowerCase() === nom.toLowerCase() && p.pizza_id === pid && p.estado === 'pendiente').map(p => p.id); 
+          if(ids.length) await supabase.from('pedidos').delete().in('id', ids); 
+          cargarDatos(); 
+      } 
+  };
   const entregar = async (p: any) => { if(!confirm(`¿Salió ${p.nombre}?`)) return; let n = p.target; const ids=[]; for(const pd of p.pedidosPendientes){ if(n<=0) break; ids.push(pd.id); n-=pd.cantidad_porciones; } if(ids.length) { await supabase.from('pedidos').update({ estado: 'entregado' }).in('id', ids); await supabase.from('menu_pizzas').update({ cocinando: false, cocinando_inicio: null }).eq('id', p.id); cargarDatos(); } };
   
-  // UpdateP (Immediate or Local)
   const updateP = async (id: string, field: string, val: any) => { 
       if (field === 'activa') { 
           await supabase.from('menu_pizzas').update({ activa: val }).eq('id', id); 
@@ -549,7 +542,7 @@ export default function AdminPage() {
   
   const addP = async () => { 
       if(!newPizzaName) return; 
-      const { data: pizzaData, error } = await supabase.from('menu_pizzas').insert([{ nombre: newPizzaName, descripcion: newPizzaDesc, stock: 0, imagen_url: newPizzaImg, tiempo_coccion: newPizzaTime, categoria: newPizzaCat, activa: true }]).select().single();
+      const { data: pizzaData } = await supabase.from('menu_pizzas').insert([{ nombre: newPizzaName, descripcion: newPizzaDesc, stock: 0, imagen_url: newPizzaImg, tiempo_coccion: newPizzaTime, categoria: newPizzaCat, activa: true, porciones_individuales: newPizzaPortions }]).select().single();
       
       if(pizzaData && newPizzaIngredients.length > 0) {
           const rows = newPizzaIngredients.map(r => ({
@@ -559,7 +552,6 @@ export default function AdminPage() {
           }));
           await supabase.from('recetas').insert(rows);
       }
-
       setNewPizzaName(''); setNewPizzaDesc(''); setNewPizzaImg(''); setNewPizzaIngredients([]); 
       await actualizarStockGlobal(); 
   };
@@ -572,47 +564,72 @@ export default function AdminPage() {
   const resetU = async (nom: string) => { if(!confirm(`¿Reset pedidos de ${nom}?`)) return; const userExists = invitadosDB.some(u => u.nombre.toLowerCase() === nom.toLowerCase()); if (!userExists) { await supabase.from('lista_invitados').insert([{ nombre: nom, origen: 'guest' }]); } const ids = pedidos.filter(p => p.invitado_nombre.toLowerCase() === nom.toLowerCase()).map(p => p.id); if(ids.length) await supabase.from('pedidos').delete().in('id', ids); cargarDatos(); };
   const resetAllOrders = async () => { const promptText = prompt('Escribe "BORRAR TODO" para confirmar'); if (promptText?.toUpperCase() !== "BORRAR TODO") return; const { error } = await supabase.from('pedidos').delete().neq('id', '00000000-0000-0000-0000-000000000000'); if(error) alert("Error: " + error.message); else { alert("Pedidos eliminados."); cargarDatos(); } };
   const delVal = async (id: string) => { if(confirm("¿Borrar reseña?")) { await supabase.from('valoraciones').delete().eq('id', id); cargarDatos(); } };
-  const delValPizza = async (pid: string) => { if(confirm("¿Borrar reseñas de esta pizza?")) { await supabase.from('valoraciones').delete().eq('pizza_id', pid); cargarDatos(); } };
+  const delValPizza = async (pid: string) => { if(confirm("¿Borrar reseñas de este item?")) { await supabase.from('valoraciones').delete().eq('pizza_id', pid); cargarDatos(); } };
   const delAllVal = async () => { if(prompt("Escribe BORRAR") === 'BORRAR') { const { data } = await supabase.from('valoraciones').select('id'); const ids = data?.map(v => v.id) || []; if(ids.length) await supabase.from('valoraciones').delete().in('id', ids); cargarDatos(); } };
 
-  // --- INGREDIENTES ACTIONS ---
-  // Suma al existente o crea nuevo
+  // --- INGREDIENTES ACTIONS (MEJORADO) ---
   const addIng = async () => { 
-      if(!newIngName || newIngQty === '') return;
+      if(!newIngName) return; 
+      const qtyNum = newIngQty === '' ? 0 : Number(newIngQty); 
       
-      const qtyNum = Number(newIngQty);
-      
-      // Buscar si existe (case insensitive)
-      const { data: existing } = await supabase.from('ingredientes').select('*').ilike('nombre', newIngName).single();
+      let existing = null;
+      if (selectedIngId) {
+          existing = ingredientes.find(i => i.id === selectedIngId);
+      } else {
+          existing = ingredientes.find(i => i.nombre.toLowerCase() === newIngName.toLowerCase());
+      }
       
       if (existing) {
-          // Update sum
           await supabase.from('ingredientes').update({ cantidad_disponible: existing.cantidad_disponible + qtyNum }).eq('id', existing.id);
       } else {
-          // Insert new
           await supabase.from('ingredientes').insert([{ nombre: newIngName, cantidad_disponible: qtyNum, unidad: newIngUnit }]); 
       }
       
-      setNewIngName(''); setNewIngQty(''); 
-      // Al cambiar stock, recalcular pizzas
+      setNewIngName(''); setNewIngQty(''); setSelectedIngId(''); 
       await actualizarStockGlobal();
+      cargarDatos();
   };
 
-  const updateIng = async (id: string, cant: number) => { 
-      await supabase.from('ingredientes').update({ cantidad_disponible: cant }).eq('id', id); 
-      // Al cambiar manual, recalcular pizzas
-      await actualizarStockGlobal(); 
+  const startEditIng = (ing: any) => {
+      setEditingIngId(ing.id);
+      setEditIngForm({ nombre: ing.nombre, cantidad: ing.cantidad_disponible, unidad: ing.unidad || 'g' });
   };
+
+  const cancelEditIng = () => {
+      setEditingIngId(null);
+  };
+
+  const saveEditIng = async (id: string) => {
+      const qty = Number(editIngForm.cantidad);
+      await supabase.from('ingredientes').update({ nombre: editIngForm.nombre, cantidad_disponible: qty, unidad: editIngForm.unidad }).eq('id', id);
+      setEditingIngId(null);
+      await actualizarStockGlobal();
+      cargarDatos();
+  };
+
+  const delIng = async (id: string) => { if(confirm('¿Borrar ingrediente?')) await supabase.from('ingredientes').delete().eq('id', id); await actualizarStockGlobal(); cargarDatos(); };
   
-  const delIng = async (id: string) => { if(confirm('¿Borrar?')) await supabase.from('ingredientes').delete().eq('id', id); await actualizarStockGlobal(); };
-  
+  const handleSelectIng = (e: any) => {
+      const id = e.target.value;
+      if (id === 'new') {
+          setSelectedIngId('');
+          setNewIngName('');
+      } else {
+          const ing = ingredientes.find(i => i.id === id);
+          if (ing) {
+              setSelectedIngId(ing.id);
+              setNewIngName(ing.nombre);
+              setNewIngUnit(ing.unidad || 'g');
+          }
+      }
+  };
+
   // --- ADD INGREDIENT TO NEW PIZZA (MEMORY) ---
   const addToNewPizzaRecipe = () => {
       if(!newPizzaSelectedIng) return;
       const [ingId, name] = newPizzaSelectedIng.split('|');
       const qty = Number(newPizzaRecipeQty);
       if(qty <= 0) return;
-
       setNewPizzaIngredients(prev => [...prev, { ingrediente_id: ingId, nombre: name, cantidad: qty }]);
       setNewPizzaSelectedIng(''); setNewPizzaRecipeQty(1);
   };
@@ -640,7 +657,6 @@ export default function AdminPage() {
             <input type="password" value={password} onChange={e => setPassword(e.target.value)} className={`w-full p-4 rounded-xl border outline-none ${base.input}`} placeholder="Contraseña..." autoFocus />
             <button type="submit" className={`w-full ${currentTheme.color} text-white font-bold py-4 rounded-xl hover:opacity-90 transition`}>ENTRAR</button>
         </form>
-        {/* BOTON AGREGADO */}
         <div className="mt-4 pt-4 border-t border-gray-200 dark:border-white/10">
             <button onClick={() => window.location.href='/'} className={`w-full py-3 rounded-xl border flex items-center justify-center gap-2 font-bold ${base.buttonSec}`}>
                 <Users size={20} /> MODO INVITADOS
@@ -669,12 +685,12 @@ export default function AdminPage() {
       <div className="relative z-10 pt-24 px-4 pb-36">
         {view === 'cocina' && (
             <div className="grid grid-cols-2 gap-4 mb-4">
-                <div className={`p-3 rounded-2xl border ${base.metric}`}><h4 className={`text-[10px] font-bold uppercase mb-2 text-center border-b pb-1 ${base.divider} ${base.subtext}`}>PIZZAS (Enteras)</h4><div className="grid grid-cols-2 gap-2"><div className="text-center"><p className={`text-[9px] uppercase font-bold ${base.subtext}`}>En Curso</p><p className="text-xl font-bold">{stats.pizzasIncompletas}</p></div><div className="text-center"><p className={`text-[9px] uppercase font-bold ${base.subtext}`}>Entregadas</p><p className="text-xl font-bold">{stats.totalPizzasEntregadas}</p></div></div></div>
+                <div className={`p-3 rounded-2xl border ${base.metric}`}><h4 className={`text-[10px] font-bold uppercase mb-2 text-center border-b pb-1 ${base.divider} ${base.subtext}`}>ENTERAS</h4><div className="grid grid-cols-2 gap-2"><div className="text-center"><p className={`text-[9px] uppercase font-bold ${base.subtext}`}>En Curso</p><p className="text-xl font-bold">{stats.pizzasIncompletas}</p></div><div className="text-center"><p className={`text-[9px] uppercase font-bold ${base.subtext}`}>Entregadas</p><p className="text-xl font-bold">{stats.totalPizzasEntregadas}</p></div></div></div>
                 <div className={`p-3 rounded-2xl border ${base.metric}`}><h4 className={`text-[10px] font-bold uppercase mb-2 text-center border-b pb-1 ${base.divider} ${base.subtext}`}>PORCIONES</h4><div className="grid grid-cols-2 gap-2"><div className="text-center"><p className={`text-[9px] uppercase font-bold ${base.subtext}`}>Pedidas</p><p className="text-xl font-bold">{stats.totalPendientes}</p></div><div className="text-center"><p className={`text-[9px] uppercase font-bold ${base.subtext}`}>En Stock</p><p className="text-xl font-bold">{stats.totalStockPorciones}</p></div></div></div>
             </div>
         )}
         <main className="max-w-4xl mx-auto space-y-4 w-full">
-            {view === 'cocina' && (<div className="grid gap-3">{metricas.map(p => (<div key={p.id} className={`${base.card} rounded-3xl border relative overflow-hidden transition-all ${p.cocinando ? 'border-red-600/50 shadow-lg' : ''} ${isCompact ? 'p-3' : 'p-5'}`}>{!isCompact && p.cocinando && (<div className="absolute -right-10 -bottom-10 text-red-600/20"><Flame size={150} /></div>)}<div className="flex justify-between items-start mb-2 relative z-10"><div><h3 className={`font-bold flex items-center gap-2 ${isCompact ? 'text-base' : 'text-xl'}`}>{p.nombre}{p.cocinando && <span className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">EN HORNO</span>}</h3><p className={`text-xs ${base.subtext} flex items-center gap-1 mt-1`}><Clock size={12}/> Pendientes: {p.totalPendientes}</p><p className={`text-[10px] mt-1 font-mono ${p.stockRestante === 0 ? 'text-red-500 font-bold' : base.subtext}`}>Stock: {p.stockRestante} porc.</p></div><div className="flex flex-col items-center gap-1">{p.cocinando && p.cocinando_inicio && <CookingTimer start={p.cocinando_inicio} duration={p.tiempo_coccion || 60} />}<button onClick={() => toggleCocinando(p)} className={`rounded-xl transition-all flex items-center justify-center ${p.cocinando ? 'bg-red-600 text-white shadow-lg scale-105' : base.buttonSec} ${isCompact ? 'p-2' : 'p-3'}`}><Flame size={isCompact ? 16 : 20} className={p.cocinando ? 'animate-bounce' : ''} /></button></div></div><div className={`relative ${isDarkMode ? 'bg-black' : 'bg-gray-300'} rounded-full overflow-hidden z-10 mb-3 ${isCompact ? 'h-2' : 'h-4'}`}><div className="absolute inset-0 flex justify-between px-[1px] z-20">{[...Array(p.target)].map((_, i) => <div key={i} className={`w-[1px] h-full ${isDarkMode ? 'bg-white/10' : 'bg-white/50'}`}></div>)}</div><div className={`absolute h-full ${p.cocinando ? 'bg-red-600' : currentTheme.color} transition-all duration-700`} style={{ width: `${p.percent}%` }}></div></div>{p.completas > 0 ? (<button onClick={() => entregar(p)} className={`w-full ${currentTheme.color} text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg active:scale-95 ${isCompact ? 'py-2 text-sm' : 'py-3'}`}><CheckCircle size={isCompact ? 16 : 20} /> ¡PIZZA LISTA! ({p.completas})</button>) : (<div className={`w-full text-center text-xs ${base.subtext} font-mono border rounded-xl ${isDarkMode ? 'border-neutral-800' : 'border-gray-200'} ${isCompact ? 'py-1' : 'py-2'}`}>Faltan {p.faltan} porc.</div>)}</div>))}</div>)}
+            {view === 'cocina' && (<div className="grid gap-3">{metricas.map(p => (<div key={p.id} className={`${base.card} rounded-3xl border relative overflow-hidden transition-all ${p.cocinando ? 'border-red-600/50 shadow-lg' : ''} ${isCompact ? 'p-3' : 'p-5'}`}>{!isCompact && p.cocinando && (<div className="absolute -right-10 -bottom-10 text-red-600/20"><Flame size={150} /></div>)}<div className="flex justify-between items-start mb-2 relative z-10"><div><h3 className={`font-bold flex items-center gap-2 ${isCompact ? 'text-base' : 'text-xl'}`}>{p.nombre}{p.cocinando && <span className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">EN HORNO</span>}</h3><p className={`text-xs ${base.subtext} flex items-center gap-1 mt-1`}><Clock size={12}/> Pendientes: {p.totalPendientes}</p><p className={`text-[10px] mt-1 font-mono ${p.stockRestante === 0 ? 'text-red-500 font-bold' : base.subtext}`}>STOCK VIRTUAL: {p.stockRestante} u</p></div><div className="flex flex-col items-center gap-1">{p.cocinando && p.cocinando_inicio && <CookingTimer start={p.cocinando_inicio} duration={p.tiempo_coccion || 60} />}<button onClick={() => toggleCocinando(p)} className={`rounded-xl transition-all flex items-center justify-center ${p.cocinando ? 'bg-red-600 text-white shadow-lg scale-105' : base.buttonSec} ${isCompact ? 'p-2' : 'p-3'}`}><Flame size={isCompact ? 16 : 20} className={p.cocinando ? 'animate-bounce' : ''} /></button></div></div><div className={`relative ${isDarkMode ? 'bg-black' : 'bg-gray-300'} rounded-full overflow-hidden z-10 mb-3 ${isCompact ? 'h-2' : 'h-4'}`}><div className="absolute inset-0 flex justify-between px-[1px] z-20">{[...Array(p.target)].map((_, i) => <div key={i} className={`w-[1px] h-full ${isDarkMode ? 'bg-white/10' : 'bg-white/50'}`}></div>)}</div><div className={`absolute h-full ${p.cocinando ? 'bg-red-600' : currentTheme.color} transition-all duration-700`} style={{ width: `${p.percent}%` }}></div></div>{p.completas > 0 ? (<button onClick={() => entregar(p)} className={`w-full ${currentTheme.color} text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg active:scale-95 ${isCompact ? 'py-2 text-sm' : 'py-3'}`}><CheckCircle size={isCompact ? 16 : 20} /> ¡LISTA! ({p.completas})</button>) : (<div className={`w-full text-center text-xs ${base.subtext} font-mono border rounded-xl ${isDarkMode ? 'border-neutral-800' : 'border-gray-200'} ${isCompact ? 'py-1' : 'py-2'}`}>Faltan {p.faltan} porc.</div>)}</div>))}</div>)}
             {view === 'pedidos' && (
                 <div className="space-y-4">
                     <div className={`p-4 rounded-3xl border mb-6 shadow-sm flex items-center justify-center ${base.card}`}><h2 className={`text-sm font-bold uppercase tracking-widest ${base.textHead}`}>Pedidos Activos</h2></div>
@@ -686,28 +702,141 @@ export default function AdminPage() {
             
             {view === 'ingredientes' && (
                 <div className="space-y-6">
-                    <div className={`p-6 rounded-3xl border ${base.card}`}><h3 className={`font-bold mb-4 flex items-center gap-2 ${base.subtext}`}><Plus size={18}/> Nuevo Ingrediente</h3><div className="flex gap-2"><input className={`w-full p-3 rounded-xl border outline-none ${base.input}`} placeholder="Nombre..." value={newIngName} onChange={e => setNewIngName(e.target.value)} /><input type="number" className={`w-24 p-3 rounded-xl border outline-none text-center ${base.input}`} placeholder="Cant" value={newIngQty === 0 ? '' : newIngQty} onChange={e => setNewIngQty(e.target.value)} /><button onClick={addIng} className={`${currentTheme.color} text-white font-bold px-4 rounded-xl`}>ADD</button></div></div>
-                    <div className="grid gap-3">{ingredientes.map(ing => (<div key={ing.id} className={`p-3 rounded-2xl border flex justify-between items-center ${base.card}`}><span className="font-bold text-sm">{ing.nombre}</span><div className="flex items-center gap-2"><input type="number" value={ing.cantidad_disponible} onChange={e => updateIng(ing.id, Number(e.target.value))} className={`w-20 text-center p-1 rounded-lg border bg-transparent ${base.input}`} /><span className="text-xs opacity-50">{ing.unidad}</span><button onClick={() => delIng(ing.id)} className="p-2 text-red-500 hover:bg-red-100 rounded-lg"><Trash2 size={16}/></button></div></div>))}</div>
+                    {/* ZONA AGREGAR */}
+                    <div className={`p-6 rounded-3xl border ${base.card}`}>
+                        <h3 className={`font-bold mb-4 flex items-center gap-2 ${base.subtext}`}><Plus size={18}/> Agregar Stock / Nuevo</h3>
+                        
+                        <div className="flex flex-col gap-3">
+                            <div className="flex gap-2">
+                                {/* Selector Híbrido */}
+                                <div className="flex-1 relative">
+                                    <select 
+                                        className={`absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10`}
+                                        onChange={handleSelectIng}
+                                        value={selectedIngId || 'new'}
+                                    >
+                                        <option value="new">Nuevo (Escribir nombre)</option>
+                                        {ingredientes.map(i => <option key={i.id} value={i.id}>{i.nombre}</option>)}
+                                    </select>
+                                    <input 
+                                        className={`w-full p-3 rounded-xl border outline-none ${base.input}`} 
+                                        placeholder="Nombre del ingrediente..." 
+                                        value={newIngName} 
+                                        onChange={e => { setNewIngName(e.target.value); setSelectedIngId(''); }} 
+                                    />
+                                    <div className="absolute right-3 top-3 pointer-events-none opacity-50"><ChevronDown size={16}/></div>
+                                </div>
+                            </div>
+
+                            <div className="flex gap-2">
+                                <input 
+                                    type="number" 
+                                    className={`flex-1 p-3 rounded-xl border outline-none text-center ${base.input}`} 
+                                    placeholder="Cant (0)" 
+                                    value={newIngQty} 
+                                    onChange={e => setNewIngQty(e.target.value)} 
+                                />
+                                <select 
+                                    className={`w-24 p-3 rounded-xl border outline-none bg-transparent ${base.input}`} 
+                                    value={newIngUnit} 
+                                    onChange={e => setNewIngUnit(e.target.value)}
+                                >
+                                    <option value="u" className="text-black">u</option>
+                                    <option value="g" className="text-black">g</option>
+                                    <option value="kg" className="text-black">kg</option>
+                                    <option value="ml" className="text-black">ml</option>
+                                    <option value="L" className="text-black">L</option>
+                                </select>
+                                <button onClick={addIng} className={`${currentTheme.color} text-white font-bold px-6 rounded-xl shadow-lg active:scale-95 transition-transform`}>
+                                    {selectedIngId ? 'SUMAR' : 'CREAR'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    {/* LISTA FIJA ABAJO */}
+                    <div className="grid gap-2 pb-20">
+                        {ingredientes.map(ing => {
+                            const reservado = reservedState[ing.id] || 0;
+                            const disponible = Math.max(0, ing.cantidad_disponible - reservado);
+                            
+                            return (
+                            <div key={ing.id} className={`p-3 rounded-2xl border flex flex-col gap-2 transition-all ${base.card} ${editingIngId === ing.id ? 'border-yellow-500/50 bg-yellow-500/5' : ''}`}>
+                                
+                                {editingIngId === ing.id ? (
+                                    // MODO EDICION
+                                    <div className="flex items-center gap-2">
+                                        <div className="flex-1 flex flex-col gap-2">
+                                            <input 
+                                                value={editIngForm.nombre} 
+                                                onChange={e => setEditIngForm({...editIngForm, nombre: e.target.value})} 
+                                                className={`p-2 rounded-lg border text-sm ${base.input}`}
+                                            />
+                                            <div className="flex gap-2">
+                                                <input 
+                                                    type="number" 
+                                                    value={editIngForm.cantidad} 
+                                                    onChange={e => setEditIngForm({...editIngForm, cantidad: e.target.value})} 
+                                                    className={`w-24 p-2 rounded-lg border text-center ${base.input}`}
+                                                />
+                                                <select 
+                                                    value={editIngForm.unidad} 
+                                                    onChange={e => setEditIngForm({...editIngForm, unidad: e.target.value})} 
+                                                    className={`flex-1 p-2 rounded-lg border bg-transparent ${base.input}`}
+                                                >
+                                                    <option value="u" className="text-black">u</option>
+                                                    <option value="g" className="text-black">g</option>
+                                                    <option value="kg" className="text-black">kg</option>
+                                                    <option value="ml" className="text-black">ml</option>
+                                                    <option value="L" className="text-black">L</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-col gap-2">
+                                            <button onClick={() => saveEditIng(ing.id)} className="p-3 bg-green-600 text-white rounded-xl shadow-lg"><CheckCircle size={20}/></button>
+                                            <button onClick={cancelEditIng} className="p-3 bg-red-600 text-white rounded-xl shadow-lg"><XCircle size={20}/></button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    // MODO LECTURA
+                                    <div className="flex justify-between items-center">
+                                        <div className="flex-1">
+                                            <span className="font-bold text-sm block mb-1">{ing.nombre}</span>
+                                            <div className="flex items-baseline gap-1">
+                                                <span className={`font-mono font-bold text-2xl ${disponible <= 0 ? 'text-red-500' : ''}`}>{disponible}</span>
+                                                <span className="text-xs opacity-50 font-bold uppercase">{ing.unidad} (Disp)</span>
+                                            </div>
+                                            {reservado > 0 && <span className="text-[10px] opacity-60">Físico: {ing.cantidad_disponible} | En uso: {reservado.toFixed(1)}</span>}
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <button onClick={() => startEditIng(ing)} className={`p-2 rounded-xl border ${base.buttonSec}`}><Pencil size={18}/></button>
+                                            <button onClick={() => delIng(ing.id)} className="p-2 text-red-500 bg-red-500/10 hover:bg-red-500/20 rounded-xl border border-red-500/20"><Trash2 size={18}/></button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )})}
+                    </div>
                 </div>
             )}
 
             {view === 'menu' && (
                 <div className="space-y-6">
-                    <div className={`${base.card} p-4 rounded-3xl border flex flex-col gap-2`}>
-                        <label className={`text-xs font-bold ${base.subtext}`}>Mostrar en Invitados:</label>
+                    <div className={`${base.card} p-5 rounded-3xl border flex flex-col gap-3 shadow-sm`}>
+                        <label className={`text-xs font-bold uppercase tracking-wider opacity-60 ${base.subtext}`}>Mostrar en Invitados:</label>
                         <div className="flex flex-wrap gap-2">
                              <button onClick={async () => {
                                  const isAll = activeCategories.includes('Todas');
                                  const newVal = isAll ? ['General'] : ['Todas'];
                                  setConfig({...config, categoria_activa: JSON.stringify(newVal)});
                                  await supabase.from('configuracion_dia').update({ categoria_activa: JSON.stringify(newVal) }).eq('id', config.id);
-                             }} className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${activeCategories.includes('Todas') ? 'bg-neutral-600 text-white border-neutral-500' : 'bg-transparent border-gray-500 text-gray-500'}`}>
+                             }} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border transition-all ${activeCategories.includes('Todas') ? 'bg-neutral-800 text-white border-neutral-700' : 'bg-neutral-100 dark:bg-white/5 border-transparent text-gray-500'}`}>
                                  {activeCategories.includes('Todas') ? <CheckSquare size={14}/> : <Square size={14}/>} Todas
                              </button>
                              {uniqueCategories.map(cat => {
                                  const isActive = activeCategories.includes(cat);
                                  return (
-                                     <button key={cat} onClick={() => toggleCategory(cat)} className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${isActive ? 'bg-neutral-600 text-white border-neutral-500' : 'bg-transparent border-gray-500 text-gray-500'}`}>
+                                     <button key={cat} onClick={() => toggleCategory(cat)} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border transition-all ${isActive ? 'bg-neutral-800 text-white border-neutral-700' : 'bg-neutral-100 dark:bg-white/5 border-transparent text-gray-500'}`}>
                                          {isActive ? <CheckSquare size={14}/> : <Square size={14}/>} {cat}
                                      </button>
                                  )
@@ -715,99 +844,154 @@ export default function AdminPage() {
                         </div>
                     </div>
 
-                    <div className={`p-6 rounded-3xl border ${base.card}`}><h3 className={`font-bold mb-4 flex items-center gap-2 ${base.subtext}`}><Plus size={18}/> Nueva variante</h3><input className={`w-full p-4 rounded-2xl border mb-2 outline-none ${base.input}`} placeholder="Nombre..." value={newPizzaName} onChange={e => setNewPizzaName(e.target.value)} /><textarea className={`w-full p-4 rounded-2xl border mb-4 text-sm outline-none ${base.input}`} placeholder="Ingredientes..." value={newPizzaDesc} onChange={e => setNewPizzaDesc(e.target.value)} />
-                    
-                    {/* INGREDIENTES SELECTOR EN NUEVA VARIANTE */}
-                    <div className="bg-black/10 p-3 rounded-xl mb-4 border border-white/5">
-                        <div className="flex flex-wrap gap-2 mb-2">
-                             {newPizzaIngredients.map((ing, i) => (
-                                 <span key={i} className="text-xs bg-white/20 px-2 py-1 rounded-lg flex items-center gap-1">
-                                     {ing.nombre}: {ing.cantidad} <button onClick={() => removeFromNewPizzaRecipe(i)}><X size={12}/></button>
-                                 </span>
-                             ))}
+                    <div className={`p-5 rounded-3xl border shadow-sm relative overflow-hidden group ${base.card}`}>
+                        <div className="flex justify-between items-start mb-4">
+                            <h3 className={`font-bold flex items-center gap-2 text-xl ${base.subtext}`}><Plus size={24}/> Nuevo Item</h3>
+                            <button onClick={addP} disabled={uploading} className={`${currentTheme.color} text-white font-bold px-6 py-2 rounded-xl shadow-lg active:scale-95 transition-all text-sm`}>CREAR</button>
                         </div>
-                        <div className="flex gap-2">
-                            <select className={`flex-1 p-1 text-xs rounded-lg ${base.input}`} value={newPizzaSelectedIng} onChange={e => setNewPizzaSelectedIng(e.target.value)}>
-                                <option value="">+ Ingrediente</option>
-                                {ingredientes.map(i => <option key={i.id} value={`${i.id}|${i.nombre}`}>{i.nombre} (Disp: {i.cantidad_disponible})</option>)}
-                            </select>
-                            <input type="number" className={`w-16 p-1 text-xs rounded-lg text-center ${base.input}`} value={newPizzaRecipeQty} onChange={e => setNewPizzaRecipeQty(Number(e.target.value) || '')} />
-                            <button onClick={addToNewPizzaRecipe} className="bg-green-600 text-white px-3 rounded-lg text-xs font-bold">OK</button>
-                        </div>
-                    </div>
+                        
+                        <div className="flex flex-col gap-4">
+                            <input className={`w-full text-2xl font-bold bg-transparent outline-none placeholder-opacity-30 ${isDarkMode ? 'placeholder-white' : 'placeholder-black'}`} placeholder="Nombre del plato..." value={newPizzaName} onChange={e => setNewPizzaName(e.target.value)} />
+                            
+                            <div className="flex gap-4">
+                                <label className={`flex-shrink-0 cursor-pointer w-24 h-24 rounded-2xl overflow-hidden border-2 border-dashed ${base.uploadBox} flex items-center justify-center transition-colors group relative`}>
+                                    {newPizzaImg ? <img src={newPizzaImg} className="w-full h-full object-cover"/> : <ImageIcon size={24} className="opacity-30"/>}
+                                    <div className="absolute inset-0 bg-black/50 hidden group-hover:flex items-center justify-center text-white"><UploadCloud size={20}/></div>
+                                    <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e)} disabled={uploading}/>
+                                </label>
+                                <textarea className={`flex-1 p-0 bg-transparent text-sm leading-relaxed outline-none resize-none h-24 placeholder-opacity-40 ${isDarkMode ? 'placeholder-white' : 'placeholder-black'}`} placeholder="Descripción..." value={newPizzaDesc} onChange={e => setNewPizzaDesc(e.target.value)} />
+                            </div>
 
-                    <div className="grid grid-cols-4 gap-2 mb-4">
-                        <div className="flex flex-col items-center"><span className={`text-xs font-bold ${base.subtext} mb-1`}>Categoria</span><input list="categories" className={`p-2 rounded-xl border w-full text-center text-xs ${base.input}`} value={newPizzaCat} onChange={e => setNewPizzaCat(e.target.value)} /><datalist id="categories">{uniqueCategories.map(c => <option key={c} value={c}/>)}</datalist></div>
-                        <div className="flex flex-col items-center justify-center opacity-50"><span className={`text-[10px] uppercase font-bold mb-1`}>Stock</span><span className="text-xl font-bold">-</span></div>
-                        <div className="flex flex-col items-center w-full"><span className={`text-xs font-bold ${base.subtext} mb-1`}>Timer</span><TimeControl value={newPizzaTime} onChange={setNewPizzaTime}/></div>
-                        <div className="flex flex-col items-center"><span className={`text-xs font-bold ${base.subtext} mb-1`}>Foto</span><label className={`flex items-center justify-center w-full h-[42px] rounded-xl border cursor-pointer ${base.buttonSec} ${uploading ? 'opacity-50' : ''}`}><UploadCloud size={16}/><input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e)} disabled={uploading}/></label></div>
+                            {/* INGREDIENTES SELECTOR */}
+                            <div className={`${base.innerCard} p-3 rounded-2xl`}>
+                                <div className="flex flex-wrap gap-2 mb-3">
+                                     {newPizzaIngredients.map((ing, i) => (
+                                         <span key={i} className="text-xs bg-white shadow-sm dark:bg-white/10 px-3 py-1.5 rounded-lg flex items-center gap-2 font-bold text-black dark:text-white">
+                                             {ing.nombre} <span className="opacity-50 text-[10px]">{ing.cantidad}</span> <button onClick={() => removeFromNewPizzaRecipe(i)}><X size={12}/></button>
+                                         </span>
+                                     ))}
+                                </div>
+                                <div className="flex gap-2">
+                                    <select className={`flex-1 p-2 text-sm rounded-xl font-bold outline-none bg-white dark:bg-black/20 text-black dark:text-white`} value={newPizzaSelectedIng} onChange={e => setNewPizzaSelectedIng(e.target.value)}>
+                                        <option value="">+ Agregar Ingrediente</option>
+                                        {ingredientes.map(i => <option key={i.id} value={`${i.id}|${i.nombre}`}>{i.nombre} (Disp: {i.cantidad_disponible})</option>)}
+                                    </select>
+                                    <input type="number" className={`w-20 p-2 text-sm rounded-xl text-center font-bold outline-none bg-white dark:bg-black/20 text-black dark:text-white`} value={newPizzaRecipeQty} onChange={e => setNewPizzaRecipeQty(Number(e.target.value) || '')} placeholder="Cant" />
+                                    <button onClick={addToNewPizzaRecipe} className="bg-neutral-800 dark:bg-white text-white dark:text-black px-4 rounded-xl text-sm font-bold shadow-sm">OK</button>
+                                </div>
+                            </div>
+
+                            {/* GRID DE DATOS */}
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-2">
+                                <div className={`${base.innerCard} p-3 rounded-2xl flex flex-col items-center justify-center text-center`}>
+                                    <span className="text-[10px] uppercase font-bold opacity-50 tracking-wider mb-1">Categoria</span>
+                                    <input list="categories" className="w-full text-center font-bold bg-transparent outline-none text-sm" value={newPizzaCat} onChange={e => setNewPizzaCat(e.target.value)} />
+                                    <datalist id="categories">{uniqueCategories.map(c => <option key={c} value={c}/>)}</datalist>
+                                </div>
+                                <div className={`${base.innerCard} p-3 rounded-2xl flex flex-col items-center justify-center text-center`}>
+                                    <span className="text-[10px] uppercase font-bold opacity-50 tracking-wider mb-1">Porciones</span>
+                                    <input type="number" className="w-full text-center font-bold bg-transparent outline-none text-sm" value={newPizzaPortions} onChange={e => setNewPizzaPortions(Number(e.target.value))} />
+                                </div>
+                                <div className={`${base.innerCard} p-3 rounded-2xl flex flex-col items-center justify-center text-center`}>
+                                    <span className="text-[10px] uppercase font-bold opacity-50 tracking-wider mb-1">Stock Est.</span>
+                                    <span className="text-xl font-bold">{stockEstimadoNueva}</span>
+                                </div>
+                                <div className={`${base.innerCard} p-3 rounded-2xl flex flex-col items-center justify-center text-center`}>
+                                    <span className="text-[10px] uppercase font-bold opacity-50 tracking-wider mb-1">Timer</span>
+                                    <TimeControl value={newPizzaTime} onChange={setNewPizzaTime} isDarkMode={isDarkMode}/>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    {newPizzaImg && <div className="mb-4"><img src={newPizzaImg} alt="Preview" className="h-20 w-auto rounded-lg border border-white/20"/></div>}<button onClick={addP} disabled={uploading} className={`w-full ${currentTheme.color} text-white font-bold py-4 rounded-2xl`}>AGREGAR</button></div>
                     
-                    <div className="space-y-4">{pizzas.map((p: any) => {
+                    <div className="space-y-4">
+                        {pizzas.map((p: any) => {
                         const isEdited = !!edits[p.id];
                         const display = { ...p, ...edits[p.id] }; 
                         const isNewRecipe = !!edits[p.id]?.local_recipe;
                         const currentRecipe = isNewRecipe ? edits[p.id].local_recipe : recetas.filter(r => r.pizza_id === p.id).map(r => ({...r, nombre: ingredientes.find(i => i.id === r.ingrediente_id)?.nombre || '?'}));
-                        const stockCalc = calcularStockPizza(p.id, isNewRecipe ? currentRecipe : recetas.filter(r => r.pizza_id === p.id));
                         
                         return (
-                        <div key={p.id} className={`p-4 rounded-3xl border flex flex-col gap-3 ${base.card} ${isEdited ? 'border-yellow-500/50' : ''}`}>
-                            <div className="flex justify-between items-start gap-3"><input value={display.nombre} onChange={e => updateP(p.id, 'nombre', e.target.value)} className="bg-transparent font-bold text-xl outline-none w-full border-b border-transparent focus:border-gray-500" />
-                                <div className="flex gap-2">
+                        <div key={p.id} className={`p-5 rounded-3xl border flex flex-col gap-4 relative overflow-hidden transition-all ${base.card} ${isEdited ? 'border-yellow-500/50' : ''}`}>
+                            {/* HEADER */}
+                            <div className="flex justify-between items-start">
+                                <input value={display.nombre} onChange={e => updateP(p.id, 'nombre', e.target.value)} className="bg-transparent font-bold text-2xl outline-none w-full border-b border-transparent focus:border-white/20 pb-1" />
+                                <div className="flex gap-2 ml-4">
                                     {isEdited && (
                                         <>
-                                            <button onClick={() => savePizzaChanges(p.id)} className="p-2 bg-yellow-500 text-black rounded-xl animate-pulse shadow-lg"><Save size={18}/></button>
-                                            <button onClick={() => cancelChanges(p.id)} className="p-2 bg-red-500 text-white rounded-xl shadow-lg"><X size={18}/></button>
+                                            <button onClick={() => savePizzaChanges(p.id)} className="p-2 bg-yellow-500 text-black rounded-xl animate-pulse shadow-lg hover:scale-105 transition-transform"><Save size={18}/></button>
+                                            <button onClick={() => cancelChanges(p.id)} className="p-2 bg-red-500 text-white rounded-xl shadow-lg hover:scale-105 transition-transform"><X size={18}/></button>
                                         </>
                                     )}
-                                    <button onClick={() => updateP(p.id, 'activa', !p.activa)} className={`p-2 rounded-xl ${p.activa ? base.buttonSec : 'bg-black text-neutral-600'}`}>{p.activa ? <Eye size={18}/> : <EyeOff size={18}/>}</button><button onClick={() => delP(p.id)} className="p-2 text-red-500 hover:bg-red-100 rounded-xl"><Trash2 size={18}/></button>
+                                    <button onClick={() => updateP(p.id, 'activa', !p.activa)} className={`p-2 rounded-xl transition-colors ${p.activa ? 'bg-white/10 hover:bg-white/20' : 'bg-black/50 text-neutral-500'}`}>{p.activa ? <Eye size={18}/> : <EyeOff size={18}/>}</button>
+                                    <button onClick={() => delP(p.id)} className="p-2 text-red-500 hover:bg-red-500/10 rounded-xl transition-colors"><Trash2 size={18}/></button>
                                 </div>
                             </div>
-                            <div className="flex gap-2"><label className="cursor-pointer relative w-16 h-16 rounded-lg overflow-hidden bg-neutral-900 group flex-shrink-0">{display.imagen_url ? <img src={display.imagen_url} className="w-full h-full object-cover"/> : <div className="flex items-center justify-center h-full text-neutral-600"><ImageIcon size={20}/></div>}<div className="absolute inset-0 bg-black/50 hidden group-hover:flex items-center justify-center text-white"><UploadCloud size={16}/></div><input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, p.id)}/></label><textarea value={display.descripcion || ''} onChange={e => updateP(p.id, 'descripcion', e.target.value)} className={`flex-1 p-2 rounded-xl text-sm outline-none resize-none h-16 ${base.input} opacity-80`} /></div>
+
+                            {/* BODY */}
+                            <div className="flex gap-4">
+                                <label className="cursor-pointer relative w-20 h-20 rounded-xl overflow-hidden bg-neutral-900 group flex-shrink-0 shadow-inner">
+                                    {display.imagen_url ? <img src={display.imagen_url} className="w-full h-full object-cover"/> : <div className="flex items-center justify-center h-full text-neutral-600"><ImageIcon size={20}/></div>}
+                                    <div className="absolute inset-0 bg-black/50 hidden group-hover:flex items-center justify-center text-white"><UploadCloud size={16}/></div>
+                                    <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, p.id)}/>
+                                </label>
+                                <textarea value={display.descripcion || ''} onChange={e => updateP(p.id, 'descripcion', e.target.value)} className={`flex-1 p-0 bg-transparent text-sm leading-relaxed outline-none resize-none h-20 opacity-80 placeholder-opacity-30 ${isDarkMode ? 'placeholder-white' : 'placeholder-black'}`} placeholder="Descripción..." />
+                            </div>
                             
                             {/* RECETAS EN EDICION */}
-                            <div className="bg-black/20 p-2 rounded-xl">
-                                <p className="text-[10px] font-bold uppercase mb-1 opacity-50">Receta (Ingredientes)</p>
-                                <div className="flex flex-wrap gap-2 mb-2">
+                            <div className={`${base.innerCard} p-3 rounded-2xl`}>
+                                <div className="flex justify-between items-center mb-2">
+                                    <p className="text-[10px] font-bold uppercase opacity-50 tracking-wider">Receta</p>
+                                    <span className="text-[10px] font-bold bg-black/20 px-2 py-0.5 rounded-full">{currentRecipe.length} Ingredientes</span>
+                                </div>
+                                <div className="flex flex-wrap gap-2 mb-3">
                                     {currentRecipe.map((r: any, idx: number) => (
-                                        <span key={idx} className="text-xs bg-white/10 px-2 py-1 rounded-lg flex items-center gap-1 border border-white/5">
+                                        <span key={idx} className="text-xs bg-white dark:bg-white/10 px-2 py-1 rounded-lg flex items-center gap-1 border border-black/5 dark:border-white/5 font-medium text-black dark:text-white">
                                             {r.nombre}: {r.cantidad_requerida}
                                             <button onClick={() => removeFromExistingPizza(p.id, idx, currentRecipe)} className="text-red-400 hover:text-red-300 ml-1"><X size={12}/></button>
                                         </span>
                                     ))}
                                 </div>
                                 <div className="flex gap-2">
-                                    <select className={`flex-1 p-1 text-xs rounded-lg ${base.input}`} value={tempRecipeIng[p.id] || ''} onChange={e => setTempRecipeIng({...tempRecipeIng, [p.id]: e.target.value})}>
+                                    <select className={`flex-1 p-1.5 text-xs rounded-lg font-bold outline-none bg-white dark:bg-black/20 text-black dark:text-white`} value={tempRecipeIng[p.id] || ''} onChange={e => setTempRecipeIng({...tempRecipeIng, [p.id]: e.target.value})}>
                                         <option value="">+ Ingrediente</option>
-                                        {ingredientes.map(i => <option key={i.id} value={`${i.id}|${i.nombre}`}>{i.nombre} (Disp: {i.cantidad_disponible})</option>)}
+                                        {ingredientes.map(i => <option key={i.id} value={`${i.id}|${i.nombre}`}>{i.nombre} (Disp: {Math.max(0, i.cantidad_disponible - (reservedState[i.id] || 0))})</option>)}
                                     </select>
-                                    <input type="number" placeholder="Cant" className={`w-16 p-1 text-xs rounded-lg text-center ${base.input}`} value={tempRecipeQty[p.id] || ''} onChange={e => setTempRecipeQty({...tempRecipeQty, [p.id]: Number(e.target.value) || ''})} />
+                                    <input type="number" placeholder="Cant" className={`w-16 p-1.5 text-xs rounded-lg text-center font-bold outline-none bg-white dark:bg-black/20 text-black dark:text-white`} value={tempRecipeQty[p.id] || ''} onChange={e => setTempRecipeQty({...tempRecipeQty, [p.id]: Number(e.target.value) || ''})} />
                                     <button onClick={() => {
                                         if(!tempRecipeIng[p.id]) return;
                                         const [ingId, name] = tempRecipeIng[p.id].split('|');
                                         addToExistingPizza(p.id, ingId, name, tempRecipeQty[p.id] || 0, currentRecipe);
                                         setTempRecipeIng({...tempRecipeIng, [p.id]: ''}); // Reset select
                                         setTempRecipeQty({...tempRecipeQty, [p.id]: ''});
-                                    }} className="bg-green-600 text-white px-2 rounded-lg text-xs font-bold">OK</button>
+                                    }} className="bg-neutral-800 dark:bg-white text-white dark:text-black px-3 rounded-lg text-xs font-bold">OK</button>
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-4 gap-2">
-                                <div className={`flex flex-col items-center justify-center p-2 rounded-xl border ${base.input}`}><span className="text-[8px] uppercase font-bold opacity-50 mb-1">Cat</span><input list="categories" value={display.categoria || ''} onChange={e => updateP(p.id, 'categoria', e.target.value)} className={`w-full text-center bg-transparent outline-none text-xs font-bold`} /></div>
-                                <div className={`flex flex-col items-center justify-center p-2 rounded-xl border ${base.input}`}><span className="text-[8px] uppercase font-bold opacity-50 mb-1">Corte</span><select value={display.porciones_individuales || ''} onChange={e => updateP(p.id, 'porciones_individuales', e.target.value ? parseInt(e.target.value) : null)} className={`w-full text-center bg-transparent outline-none text-xs font-bold`}><option value="">Global</option><option value="4">4</option><option value="6">6</option><option value="8">8</option><option value="10">10</option></select></div>
+                            {/* GRID STATS */}
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                <div className={`${base.innerCard} p-2 rounded-2xl flex flex-col items-center justify-center text-center`}>
+                                    <span className="text-[9px] uppercase font-bold opacity-50 tracking-wider mb-1">Categoria</span>
+                                    <input list="categories" value={display.categoria || ''} onChange={e => updateP(p.id, 'categoria', e.target.value)} className={`w-full text-center bg-transparent outline-none text-sm font-bold`} />
+                                </div>
+                                <div className={`${base.innerCard} p-2 rounded-2xl flex flex-col items-center justify-center text-center`}>
+                                    <span className="text-[9px] uppercase font-bold opacity-50 tracking-wider mb-1">Porciones</span>
+                                    <input type="number" value={display.porciones_individuales || ''} onChange={e => updateP(p.id, 'porciones_individuales', e.target.value ? parseInt(e.target.value) : null)} className={`w-full text-center bg-transparent outline-none text-sm font-bold`} />
+                                </div>
                                 
-                                {/* STOCK MIXTO (MANUAL O CALCULADO) */}
-                                <div className={`flex flex-col items-center justify-center p-2 rounded-xl border ${base.input} relative overflow-hidden`}>
-                                    <span className="text-[8px] uppercase font-bold opacity-50 mb-1">Stock</span>
+                                <div className={`${base.innerCard} p-2 rounded-2xl flex flex-col items-center justify-center relative overflow-hidden text-center`}>
+                                    <span className="text-[9px] uppercase font-bold opacity-50 tracking-wider mb-1">Stock Virtual</span>
                                     {currentRecipe.length > 0 ? (
-                                        <div className="flex items-center gap-1 font-bold text-lg"><Calculator size={12} className="opacity-50"/> {stockCalc}</div>
+                                        <div className="flex items-center gap-1 font-bold text-xl"><Calculator size={14} className="opacity-30"/> {p.stock}</div>
                                     ) : (
-                                        <input type="number" value={display.stock || 0} onChange={e => updateP(p.id, 'stock', parseInt(e.target.value))} className={`w-full text-center bg-transparent outline-none text-xs font-bold`} />
+                                        <input type="number" value={display.stock || 0} onChange={e => updateP(p.id, 'stock', parseInt(e.target.value))} className={`w-full text-center bg-transparent outline-none text-sm font-bold`} />
                                     )}
                                 </div>
 
-                                <div className={`flex flex-col items-center justify-center p-2 rounded-xl border ${base.input}`}><span className="text-[8px] uppercase font-bold opacity-50 mb-1">Timer</span><TimeControl value={display.tiempo_coccion || 60} onChange={val => updateP(p.id, 'tiempo_coccion', val)} /></div>
+                                <div className={`${base.innerCard} p-2 rounded-2xl flex flex-col items-center justify-center text-center`}>
+                                    <span className="text-[9px] uppercase font-bold opacity-50 tracking-wider mb-1">Timer</span>
+                                    <TimeControl value={display.tiempo_coccion || 60} onChange={val => updateP(p.id, 'tiempo_coccion', val)} isDarkMode={isDarkMode} />
+                                </div>
                             </div>
                         </div>
                     );})}</div>
@@ -816,7 +1000,7 @@ export default function AdminPage() {
             {view === 'ranking' && (
                 <div className="space-y-6">
                     <div className={`p-6 rounded-3xl ${base.card} mb-6 shadow-sm flex justify-between items-center`}><h3 className={`font-bold uppercase tracking-widest text-sm ${base.textHead}`}>Ranking & Feedback</h3><button onClick={delAllVal} className="text-[10px] bg-red-900/30 text-red-500 px-3 py-1 rounded-full border border-red-900/50 hover:bg-red-900/50 transition-colors">RESET ALL</button></div>
-                    <div className="grid gap-3">{ranking.map((p: any) => (<div key={p.id} className={`p-3 rounded-2xl border flex justify-between items-center ${base.card}`}><div className="flex items-center gap-3"><div className="text-center w-12"><div className="text-xl font-bold text-yellow-500 flex justify-center items-center gap-0.5">{p.avg} <Star size={12} fill="currentColor"/></div><div className={`text-[9px] ${base.subtext}`}>{p.count} votes</div></div><div><div className="font-bold text-sm">{p.nombre}</div><div className={`text-[10px] ${base.subtext}`}>{p.totalOrders} porciones</div></div></div><button onClick={() => delValPizza(p.id)} className="p-2 text-neutral-500 hover:text-red-500 transition-colors" title="Reset pizza"><RotateCcw size={16} /></button></div>))}</div>
+                    <div className="grid gap-3">{ranking.map((p: any) => (<div key={p.id} className={`p-3 rounded-2xl border flex justify-between items-center ${base.card}`}><div className="flex items-center gap-3"><div className="text-center w-12"><div className="text-xl font-bold text-yellow-500 flex justify-center items-center gap-0.5">{p.avg} <Star size={12} fill="currentColor"/></div><div className={`text-[9px] ${base.subtext}`}>{p.count} votes</div></div><div><div className="font-bold text-sm">{p.nombre}</div><div className={`text-[10px] ${base.subtext}`}>{p.totalOrders} porciones</div></div></div><button onClick={() => delValPizza(p.id)} className="p-2 text-neutral-500 hover:text-red-500 transition-colors" title="Reset item"><RotateCcw size={16} /></button></div>))}</div>
                 </div>
             )}
             {view === 'usuarios' && (
