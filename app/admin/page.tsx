@@ -25,7 +25,9 @@ const CookingTimer = ({ start, duration, onFinish }: { start: string, duration: 
             const now = new Date().getTime();
             const elapsedSeconds = Math.floor((now - startTime) / 1000);
             const remaining = Math.max(0, duration - elapsedSeconds);
+            
             setTimeLeft(remaining);
+            
             if (remaining === 0 && onFinish) onFinish();
         }, 1000);
         return () => clearInterval(interval);
@@ -88,6 +90,7 @@ export default function AdminPage() {
   const [onlineUsers, setOnlineUsers] = useState(0);
   const prevPedidosCount = useRef(0);
   
+  // Estados para nueva pizza
   const [newPizzaName, setNewPizzaName] = useState('');
   const [newPizzaDesc, setNewPizzaDesc] = useState('');
   const [newPizzaStock, setNewPizzaStock] = useState(5);
@@ -145,16 +148,33 @@ export default function AdminPage() {
     const savedCompact = localStorage.getItem('vito-compact');
     if (savedCompact) setIsCompact(savedCompact === 'true');
     
+    // --- LÓGICA DE PRESENCIA (USUARIOS ONLINE) IGUAL A INVITADOS ---
     const presenceChannel = supabase.channel('online-users');
-    presenceChannel.on('presence', { event: 'sync' }, () => {
-        setOnlineUsers(Object.keys(presenceChannel.presenceState()).length);
-    }).subscribe();
+    presenceChannel
+      .on('presence', { event: 'sync' }, () => {
+        const state = presenceChannel.presenceState();
+        setOnlineUsers(Object.keys(state).length);
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await presenceChannel.track({
+            online_at: new Date().toISOString(),
+            role: 'admin' // Para diferenciar si quisieras, pero el conteo es global
+          });
+        }
+      });
 
+    // Canal de datos (Pedidos, Pizzas, etc)
+    let dbChannel: any = null;
     if (autenticado) {
       cargarDatos();
-      const channel = supabase.channel('admin-realtime').on('postgres_changes', { event: '*', schema: 'public' }, () => cargarDatos()).subscribe();
-      return () => { supabase.removeChannel(channel); supabase.removeChannel(presenceChannel); };
+      dbChannel = supabase.channel('admin-realtime').on('postgres_changes', { event: '*', schema: 'public' }, () => cargarDatos()).subscribe();
     }
+
+    return () => {
+        supabase.removeChannel(presenceChannel);
+        if(dbChannel) supabase.removeChannel(dbChannel);
+    };
   }, [autenticado]);
 
   const toggleDarkMode = () => { setIsDarkMode(!isDarkMode); localStorage.setItem('vito-dark-mode', String(!isDarkMode)); };
@@ -311,6 +331,7 @@ export default function AdminPage() {
   const resetU = async (nom: string) => { 
       if(!confirm(`¿Reset pedidos de ${nom}?`)) return;
       const userExists = invitadosDB.some(u => u.nombre.toLowerCase() === nom.toLowerCase());
+      // CORRECCIÓN: Usar origen: 'guest'
       if (!userExists) {
           await supabase.from('lista_invitados').insert([{ nombre: nom, origen: 'guest' }]);
       }
@@ -319,11 +340,20 @@ export default function AdminPage() {
       cargarDatos(); 
   };
 
+  // CORRECCIÓN: Botón Reset Global (UUID Fix)
   const resetAllOrders = async () => {
       const promptText = prompt('Escribe "BORRAR TODO" para confirmar');
       if (promptText?.toUpperCase() !== "BORRAR TODO") return;
-      const { error } = await supabase.from('pedidos').delete().not('id', 'is', null); 
-      if(error) alert("Error: " + error.message); else { alert("Pedidos eliminados."); cargarDatos(); }
+      
+      // FIX: usar neq para uuid "cero" dummy o simplemente not null en ID
+      const { error } = await supabase.from('pedidos').delete().neq('id', '00000000-0000-0000-0000-000000000000'); 
+      
+      if(error) {
+          alert("Error al borrar: " + error.message);
+      } else {
+          alert("Todos los pedidos han sido eliminados.");
+          cargarDatos();
+      }
   };
 
   const delVal = async (id: string) => { if(confirm("¿Borrar reseña?")) { await supabase.from('valoraciones').delete().eq('id', id); cargarDatos(); } };
@@ -359,7 +389,7 @@ export default function AdminPage() {
               <button onClick={() => window.location.href='/'} className={`p-2 rounded-full border ${base.buttonSec} ml-1`}><LogOut size={16} /></button>
           </div>
       </div>
-      <div className="relative z-10 pt-24 px-4">
+      <div className="relative z-10 pt-24 px-4 pb-36">
         {view === 'cocina' && (
             <div className="grid grid-cols-2 gap-4 mb-4">
                 <div className={`p-3 rounded-2xl border ${base.metric}`}><h4 className={`text-[10px] font-bold uppercase mb-2 text-center border-b pb-1 ${base.divider} ${base.subtext}`}>PIZZAS (Enteras)</h4><div className="grid grid-cols-2 gap-2"><div className="text-center"><p className={`text-[9px] uppercase font-bold ${base.subtext}`}>En Curso</p><p className="text-xl font-bold">{stats.pizzasIncompletas}</p></div><div className="text-center"><p className={`text-[9px] uppercase font-bold ${base.subtext}`}>Entregadas</p><p className="text-xl font-bold">{stats.totalPizzasEntregadas}</p></div></div></div>
@@ -370,7 +400,7 @@ export default function AdminPage() {
             {view === 'cocina' && (<div className="grid gap-3">{metricas.map(p => (<div key={p.id} className={`${base.card} rounded-3xl border relative overflow-hidden transition-all ${p.cocinando ? 'border-red-600/50 shadow-lg' : ''} ${isCompact ? 'p-3' : 'p-5'}`}>{!isCompact && p.cocinando && (<div className="absolute -right-10 -bottom-10 text-red-600/20"><Flame size={150} /></div>)}<div className="flex justify-between items-start mb-2 relative z-10"><div><h3 className={`font-bold flex items-center gap-2 ${isCompact ? 'text-base' : 'text-xl'}`}>{p.nombre}{p.cocinando && <span className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">EN HORNO</span>}</h3><p className={`text-xs ${base.subtext} flex items-center gap-1 mt-1`}><Clock size={12}/> Pendientes: {p.totalPendientes}</p><p className={`text-[10px] mt-1 font-mono ${p.stockRestante === 0 ? 'text-red-500 font-bold' : base.subtext}`}>Stock: {p.stockRestante} porc.</p></div><div className="flex flex-col items-center gap-1">{p.cocinando && p.cocinando_inicio && <CookingTimer start={p.cocinando_inicio} duration={p.tiempo_coccion || 60} />}<button onClick={() => toggleCocinando(p)} className={`rounded-xl transition-all flex items-center justify-center ${p.cocinando ? 'bg-red-600 text-white shadow-lg scale-105' : base.buttonSec} ${isCompact ? 'p-2' : 'p-3'}`}><Flame size={isCompact ? 16 : 20} className={p.cocinando ? 'animate-bounce' : ''} /></button></div></div><div className={`relative ${isDarkMode ? 'bg-black' : 'bg-gray-300'} rounded-full overflow-hidden z-10 mb-3 ${isCompact ? 'h-2' : 'h-4'}`}><div className="absolute inset-0 flex justify-between px-[1px] z-20">{[...Array(p.target)].map((_, i) => <div key={i} className={`w-[1px] h-full ${isDarkMode ? 'bg-white/10' : 'bg-white/50'}`}></div>)}</div><div className={`absolute h-full ${p.cocinando ? 'bg-red-600' : currentTheme.color} transition-all duration-700`} style={{ width: `${p.percent}%` }}></div></div>{p.completas > 0 ? (<button onClick={() => entregar(p)} className={`w-full ${currentTheme.color} text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg active:scale-95 ${isCompact ? 'py-2 text-sm' : 'py-3'}`}><CheckCircle size={isCompact ? 16 : 20} /> ¡PIZZA LISTA! ({p.completas})</button>) : (<div className={`w-full text-center text-xs ${base.subtext} font-mono border rounded-xl ${isDarkMode ? 'border-neutral-800' : 'border-gray-200'} ${isCompact ? 'py-1' : 'py-2'}`}>Faltan {p.faltan} porc.</div>)}</div>))}</div>)}
             {view === 'pedidos' && (
                 <div className="space-y-4">
-                    <div className={`p-4 rounded-2xl border mb-4 shadow-sm flex items-center justify-center ${base.card}`}><h2 className={`text-sm font-bold uppercase tracking-widest ${base.textHead}`}>Pedidos Activos</h2></div>
+                    <div className={`p-4 rounded-3xl border mb-6 shadow-sm flex items-center justify-center ${base.card}`}><h2 className={`text-sm font-bold uppercase tracking-widest ${base.textHead}`}>Pedidos Activos</h2></div>
                     {pedidosAgrupados.length === 0 ? <p className={`text-center ${base.subtext}`}>Sin pedidos.</p> : pedidosAgrupados.map((u, i) => { 
                         const userDB = invitadosDB.find(x => x.nombre.toLowerCase() === u.nombre.toLowerCase()); 
                         return (<div key={i} className={`${base.card} p-4 rounded-2xl border relative`}><button onClick={() => eliminarUsuario(u.nombre, userDB)} className={`absolute top-4 right-4 p-2 rounded-lg ${base.buttonIcon} hover:text-red-500`}><Trash2 size={16} /></button><div className={`flex justify-between border-b pb-2 mb-3 pr-10 ${base.divider}`}><h3 className="font-bold flex items-center gap-2 capitalize text-lg"><User size={18}/> {u.nombre}{u.totalEnHorno > 0 && <span className="bg-red-600 text-white text-[10px] px-2 py-0.5 rounded-full font-bold animate-pulse">EN HORNO</span>}{u.totalEnEspera > 0 && <span className="bg-orange-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold animate-pulse">ESPERANDO</span>}</h3></div><div className="space-y-2">{u.detalle.map((d: any, k: number) => (<div key={k} className={`flex justify-between items-center text-sm p-2 rounded-lg border ${isDarkMode ? 'bg-black/20 border-white/5' : 'bg-gray-50 border-gray-200'}`}><div className="flex items-center"><span>{d.nombre}</span>{d.oldestPending && <Timer startTime={d.oldestPending} />}</div><div className="flex items-center gap-2 text-xs font-bold">{d.enHorno > 0 && (<span className="text-red-500 flex items-center gap-1"><Flame size={12}/> {d.enHorno}</span>)}{d.enEspera > 0 && (<span className="text-yellow-500 flex items-center gap-1"><Clock size={12}/> {d.enEspera}</span>)}{d.entregada > 0 && (<span className="text-green-500 flex items-center gap-1"><CheckCircle size={12}/> {d.entregada}</span>)}<button onClick={(e) => { e.stopPropagation(); eliminarPedidosGusto(u.nombre, d.id); }} className="p-1 ml-2 bg-red-900/20 text-red-500 rounded hover:bg-red-900/40 border border-red-900/30"><XCircle size={14} /></button></div></div>))}</div></div>); 
@@ -385,7 +415,7 @@ export default function AdminPage() {
             )}
             {view === 'ranking' && (
                 <div className="space-y-6">
-                    <div className={`p-4 rounded-2xl border mb-4 shadow-sm flex justify-between items-center ${base.card}`}><h3 className={`font-bold uppercase tracking-widest text-sm ${base.textHead}`}>Ranking & Feedback</h3><button onClick={delAllVal} className="text-[10px] bg-red-900/30 text-red-500 px-3 py-1 rounded-full border border-red-900/50 hover:bg-red-900/50 transition-colors">RESET ALL</button></div>
+                    <div className={`p-6 rounded-3xl border mb-6 shadow-sm flex justify-between items-center ${base.card}`}><h3 className={`font-bold uppercase tracking-widest text-sm ${base.textHead}`}>Ranking & Feedback</h3><button onClick={delAllVal} className="text-[10px] bg-red-900/30 text-red-500 px-3 py-1 rounded-full border border-red-900/50 hover:bg-red-900/50 transition-colors">RESET ALL</button></div>
                     <div className="grid gap-3">{ranking.map(p => (<div key={p.id} className={`p-3 rounded-2xl border flex justify-between items-center ${base.card}`}><div className="flex items-center gap-3"><div className="text-center w-12"><div className="text-xl font-bold text-yellow-500 flex justify-center items-center gap-0.5">{p.avg} <Star size={12} fill="currentColor"/></div><div className={`text-[9px] ${base.subtext}`}>{p.count} votes</div></div><div><div className="font-bold text-sm">{p.nombre}</div><div className={`text-[10px] ${base.subtext}`}>{p.totalOrders} porciones</div></div></div><button onClick={() => delValPizza(p.id)} className="p-2 text-neutral-500 hover:text-red-500 transition-colors" title="Reset pizza"><RotateCcw size={16} /></button></div>))}</div>
                     <div className="space-y-4 mt-6"><h3 className={`font-bold text-sm uppercase tracking-widest ${base.subtext}`}>Últimos Comentarios</h3>{valoraciones.length === 0 ? <p className={`text-center text-xs ${base.subtext}`}>Sin valoraciones.</p> : valoraciones.map((v, i) => (<div key={i} className={`p-4 rounded-2xl border ${base.card} relative group`}><button onClick={() => delVal(v.id)} className="absolute top-4 right-4 text-neutral-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={14}/></button><div className="flex justify-between mb-2 pr-6"><span className="font-bold text-sm flex items-center gap-2"><User size={14}/> {v.invitado_nombre}</span><span className="text-xs text-yellow-500 font-bold flex items-center gap-1">{v.rating} <Star size={10} fill="currentColor"/></span></div><div className="text-xs mb-2 bg-black/20 p-1 px-2 rounded w-max border border-white/5 text-neutral-400">{pizzas.find(p => p.id === v.pizza_id)?.nombre || 'Pizza'}</div>{v.comentario && <p className="text-sm italic opacity-80">"{v.comentario}"</p>}</div>))}</div>
                 </div>
