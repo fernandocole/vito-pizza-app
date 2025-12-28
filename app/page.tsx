@@ -5,7 +5,7 @@ import {
   Plus, Minus, User, Palette, Lock, PartyPopper, Bell, BellOff, 
   ArrowDownAZ, ArrowUpNarrowWide, Maximize2, Minimize2, AlertCircle, 
   KeyRound, ArrowRight, Sun, Moon, Star, X, Filter, TrendingUp, 
-  CheckCircle, Clock, Package, ChefHat, Flame, Type, Download, ChevronRight, Check, Languages, LayoutTemplate, Users
+  CheckCircle, Clock, Package, ChefHat, Flame, Type, Download, ChevronRight, Check, Languages, LayoutTemplate, Users, ThumbsUp, ImageIcon
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -14,6 +14,32 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+// --- COMPONENTE TEMPORIZADOR INVITADOS (AJUSTADO) ---
+const CookingTimer = ({ start, duration }: { start: string, duration: number }) => {
+    const [timeLeft, setTimeLeft] = useState(duration);
+    
+    useEffect(() => {
+        if (!start) return;
+        const interval = setInterval(() => {
+            const startTime = new Date(start).getTime();
+            const now = new Date().getTime();
+            const elapsedSeconds = Math.floor((now - startTime) / 1000);
+            const remaining = Math.max(0, duration - elapsedSeconds);
+            setTimeLeft(remaining);
+        }, 1000);
+        return () => clearInterval(interval);
+    }, [start, duration]);
+
+    const isFinished = timeLeft === 0;
+
+    return (
+        <span className={`ml-1 text-[10px] px-2 py-0.5 rounded-full font-mono font-bold flex items-center gap-1 transition-colors ${isFinished ? 'bg-black/20 text-white/50' : 'bg-black/40 text-white'}`}>
+            <Clock size={10}/> 
+            {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
+        </span>
+    );
+};
+
 // --- COLORES / TEMAS ---
 const THEMES = [
   { name: 'Carbone', color: 'bg-neutral-600', gradient: 'from-neutral-700 to-neutral-900', border: 'border-neutral-600/40', text: 'text-neutral-400' },
@@ -21,7 +47,6 @@ const THEMES = [
   { name: 'Pistacho', color: 'bg-lime-600', gradient: 'from-lime-600 to-green-900', border: 'border-lime-600/40', text: 'text-lime-400' },
   { name: 'Fuego', color: 'bg-red-600', gradient: 'from-red-600 to-rose-900', border: 'border-red-600/40', text: 'text-red-500' },
   { name: 'Violeta', color: 'bg-violet-600', gradient: 'from-violet-600 to-purple-900', border: 'border-violet-600/40', text: 'text-violet-400' },
-  // NUEVOS TEMAS ESTILO INSTA/GRADIENT
   { name: 'Insta', color: 'bg-pink-600', gradient: 'from-purple-600 via-pink-600 to-orange-500', border: 'border-pink-600/40', text: 'text-pink-500' },
   { name: 'Aurora', color: 'bg-indigo-600', gradient: 'from-blue-500 via-indigo-500 to-purple-500', border: 'border-indigo-600/40', text: 'text-indigo-400' },
   { name: 'Sunset', color: 'bg-orange-500', gradient: 'from-rose-500 via-orange-500 to-yellow-500', border: 'border-orange-500/40', text: 'text-orange-500' },
@@ -32,7 +57,6 @@ const THEMES = [
 // --- DICCIONARIO DE UI ---
 const dictionary = {
   es: {
-    // App Base
     welcomeTitle: "Gracias por venir hoy,",
     welcomeSub: "será un placer cocinar para vos. 🫠",
     whoAreYou: "Tu nombre?",
@@ -280,18 +304,24 @@ export default function VitoPizzaApp() {
   const [filter, setFilter] = useState<'all' | 'top' | 'to_rate' | 'ordered' | 'new' | 'stock'>('all');
   
   const [isCompact, setIsCompact] = useState(false);
+  const [imageToView, setImageToView] = useState<string | null>(null);
   
   // ESTADO PARA ORDEN CONGELADO (Para no saltar al dar click)
   const [orderedIds, setOrderedIds] = useState<string[]>([]);
   
-  // ZOOM LEVELS - 0 to 4
+  // LATE RATING PROMPT
+  const [showLateRatingModal, setShowLateRatingModal] = useState(false);
+  const [lateRatingPizza, setLateRatingPizza] = useState<any>(null);
+  const processedOrderIds = useRef<Set<string>>(new Set());
+  
+  // ZOOM LEVELS
   const [zoomLevel, setZoomLevel] = useState(0);
   const DESC_SIZES = ['text-xs', 'text-sm', 'text-base', 'text-lg', 'text-xl'];
   const STOCK_SIZES = ['text-[10px]', 'text-xs', 'text-sm', 'text-base', 'text-lg'];
 
-  // DEFAULT SETTINGS: LIGHT & TURQUESA
+  // DEFAULT SETTINGS
   const [isDarkMode, setIsDarkMode] = useState(false); 
-  const [currentTheme, setCurrentTheme] = useState(THEMES[1]); // Turquesa default
+  const [currentTheme, setCurrentTheme] = useState(THEMES[1]);
   const [showThemeSelector, setShowThemeSelector] = useState(false);
 
   const [bannerIndex, setBannerIndex] = useState(0);
@@ -345,11 +375,10 @@ export default function VitoPizzaApp() {
       bar: "bg-white/50 backdrop-blur-md border-gray-300 shadow-lg text-gray-900 border"
   };
 
-  // HELPER PARA ESTILOS DE BOTONES INDIVIDUALES (Sin fondo)
+  // HELPER PARA ESTILOS DE BOTONES INDIVIDUALES
   const getBtnClass = (isActive: boolean) => {
       const common = "p-2 rounded-full transition-all duration-300 flex items-center justify-center bg-transparent ";
       const scale = isActive ? "scale-110" : "hover:scale-105";
-
       if (isDarkMode) {
           return `${common} ${scale} ${isActive ? 'text-white' : 'text-neutral-200 hover:text-white'}`; 
       } else {
@@ -369,21 +398,17 @@ export default function VitoPizzaApp() {
   const prevCocinandoData = useRef<Record<string, boolean>>({});
   const firstLoadRef = useRef(true);
 
-  // --- NOTIFICACIONES MEJORADAS PARA ANDROID/PWA ---
   const sendNotification = async (title: string, body: string) => {
     if (Notification.permission === 'granted') {
         try {
-            // Intenta usar ServiceWorkerRegistration primero (Estándar Mobile)
             const reg = await navigator.serviceWorker.getRegistration();
             if (reg) {
                 reg.showNotification(title, { body, icon: '/icon.png', badge: '/icon.png' });
             } else {
-                // Fallback a API clásica
                 new Notification(title, { body, icon: '/icon.png' });
             }
         } catch (e) {
             console.error("Error enviando notificación", e);
-            // Fallback extremo
             try { new Notification(title, { body, icon: '/icon.png' }); } catch(err) {}
         }
     }
@@ -420,14 +445,12 @@ export default function VitoPizzaApp() {
   };
 
   useEffect(() => {
-    // ONBOARDING CHECK
     const hasSeenOnboarding = localStorage.getItem('vito-onboarding-seen');
     if (!hasSeenOnboarding) setShowOnboarding(true);
 
     const savedName = localStorage.getItem('vito-guest-name');
     if (savedName) setNombreInvitado(savedName);
     
-    // THEME & MODE INIT
     const savedTheme = localStorage.getItem('vito-guest-theme');
     if (savedTheme) setCurrentTheme(THEMES.find(t => t.name === savedTheme) || THEMES[1]);
     else setCurrentTheme(THEMES[1]);
@@ -436,7 +459,6 @@ export default function VitoPizzaApp() {
     if (savedMode !== null) setIsDarkMode(savedMode === 'true');
     else setIsDarkMode(false);
 
-    // LANGUAGE INIT
     const savedLang = localStorage.getItem('vito-lang');
     if (savedLang) setLang(savedLang as LangType);
 
@@ -452,7 +474,6 @@ export default function VitoPizzaApp() {
     if(savedPass) setGuestPassInput(savedPass);
     const interval = setInterval(() => { setBannerIndex((prev) => prev + 1); }, 3000);
 
-    // PWA INSTALL LISTENER
     const handleBeforeInstallPrompt = (e: any) => {
         e.preventDefault();
         setDeferredPrompt(e);
@@ -460,7 +481,6 @@ export default function VitoPizzaApp() {
     };
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
-    // ONLINE PRESENCE TRACKING
     const presenceChannel = supabase.channel('online-users');
     presenceChannel
       .on('presence', { event: 'sync' }, () => {
@@ -482,22 +502,13 @@ export default function VitoPizzaApp() {
     };
   }, []);
 
-  // SWIPE HANDLERS
   const onTouchStart = (e: any) => setTouchStart(e.targetTouches[0].clientX);
   const onTouchMove = (e: any) => setTouchEnd(e.targetTouches[0].clientX);
   const onTouchEnd = () => {
       if (!touchStart || !touchEnd) return;
       const distance = touchStart - touchEnd;
-      const isLeftSwipe = distance > 50;
-      const isRightSwipe = distance < -50;
-      
-      if (isLeftSwipe && onboardingStep < 3) {
-          setOnboardingStep(prev => prev + 1);
-      }
-      if (isRightSwipe && onboardingStep > 0) {
-          setOnboardingStep(prev => prev - 1);
-      }
-      // Reset
+      if (distance > 50 && onboardingStep < 3) setOnboardingStep(prev => prev + 1);
+      if (distance < -50 && onboardingStep > 0) setOnboardingStep(prev => prev - 1);
       setTouchStart(0);
       setTouchEnd(0);
   };
@@ -519,7 +530,6 @@ export default function VitoPizzaApp() {
   const toggleOrden = () => { const n = orden === 'estado' ? 'nombre' : (orden === 'nombre' ? 'ranking' : 'estado'); setOrden(n); localStorage.setItem('vito-orden', n); };
   const toggleCompact = () => { const n = !isCompact; setIsCompact(n); localStorage.setItem('vito-compact', String(n)); };
   
-  // ZOOM CYCLE LOGIC (5 LEVELS)
   const cycleTextSize = () => { 
       setZoomLevel(prev => (prev + 1) % 5);
   };
@@ -550,11 +560,9 @@ export default function VitoPizzaApp() {
 
   useEffect(() => {
       if (lang === 'es' || pizzas.length === 0) return;
-
       const translateAll = async () => {
           const newTrans = { ...autoTranslations };
           let hasChanges = false;
-
           for (const p of pizzas) {
               if (!newTrans[p.id]) newTrans[p.id] = {};
               if (!newTrans[p.id][lang]) {
@@ -564,10 +572,8 @@ export default function VitoPizzaApp() {
                   hasChanges = true;
               }
           }
-
           if (hasChanges) setAutoTranslations(newTrans);
       };
-
       translateAll();
   }, [lang, pizzas, autoTranslations]);
 
@@ -614,50 +620,35 @@ export default function VitoPizzaApp() {
 
   useEffect(() => { fetchDatos(); const c = supabase.channel('app-realtime').on('postgres_changes', { event: '*', schema: 'public' }, () => fetchDatos()).subscribe(); return () => { supabase.removeChannel(c); }; }, [fetchDatos]);
 
-  // 1. CALCULO DE DATOS (Se actualiza siempre que cambian pedidos, etc.)
   const enrichedPizzas = useMemo(() => {
       const globalAvg = allRatings.length > 0 ? (allRatings.reduce((a, r) => a + r.rating, 0) / allRatings.length) : 0;
-      
       return pizzas.map(pizza => {
           const totalStock = (pizza.stock || 0) * (pizza.porciones_individuales || config.porciones_por_pizza);
           const used = pedidos.filter(p => p.pizza_id === pizza.id).reduce((a, c) => a + c.cantidad_porciones, 0);
           const stockRestante = Math.max(0, totalStock - used);
           const pen = pedidos.filter(p => p.pizza_id === pizza.id && p.estado !== 'entregado').reduce((a, c) => a + c.cantidad_porciones, 0);
           const target = pizza.porciones_individuales || config.porciones_por_pizza;
-          
           const rats = allRatings.filter(r => r.pizza_id === pizza.id);
           const avg = rats.length > 0 ? (rats.reduce((a, b) => a + b.rating, 0) / rats.length).toFixed(1) : null;
           const sortR = rats.length > 0 ? (rats.reduce((a, b) => a + b.rating, 0) / rats.length) : globalAvg;
           const countRating = rats.length;
-
           let displayName = pizza.nombre;
           let displayDesc = pizza.descripcion;
           if (lang !== 'es' && autoTranslations[pizza.id] && autoTranslations[pizza.id][lang]) {
               displayName = autoTranslations[pizza.id][lang].name;
               displayDesc = autoTranslations[pizza.id][lang].desc;
           }
-
           return { 
-              ...pizza, 
-              displayName, 
-              displayDesc,
-              stockRestante, 
-              target, 
-              ocupadasActual: pen % target, 
-              faltanParaCompletar: target - (pen % target), 
-              avgRating: avg, 
-              countRating: countRating, 
-              sortRating: sortR,
-              totalPendientes: pen 
+              ...pizza, displayName, displayDesc, stockRestante, target, 
+              ocupadasActual: pen % target, faltanParaCompletar: target - (pen % target), 
+              avgRating: avg, countRating: countRating, sortRating: sortR, totalPendientes: pen 
           };
       });
   }, [pizzas, pedidos, config, allRatings, lang, autoTranslations]);
 
-  // 2. LOGICA DE ORDENAMIENTO (Separada para congelar)
   useEffect(() => {
     if (enrichedPizzas.length === 0) return;
-
-    let lista = enrichedPizzas;
+    let lista = [...enrichedPizzas];
     if (filter !== 'all') {
         lista = lista.filter(p => {
             if (filter === 'top') return p.avgRating && parseFloat(p.avgRating) >= 4.5;
@@ -668,49 +659,49 @@ export default function VitoPizzaApp() {
             return true;
         });
     }
-
     lista.sort((a, b) => {
         const aReady = !a.cocinando && a.totalPendientes >= a.target;
         const bReady = !b.cocinando && b.totalPendientes >= b.target;
         if (aReady && !bReady) return -1;
         if (!aReady && bReady) return 1;
-
         if (a.cocinando && !b.cocinando) return -1;
         if (!a.cocinando && b.cocinando) return 1;
-
         const aStock = a.stockRestante > 0;
         const bStock = b.stockRestante > 0;
         if (aStock && !bStock) return -1;
         if (!aStock && bStock) return 1;
-
         if (orden === 'ranking') return b.sortRating - a.sortRating;
         if (orden === 'nombre') return a.displayName.localeCompare(b.displayName);
-
         const aActive = a.ocupadasActual;
         const bActive = b.ocupadasActual;
         if (aActive !== bActive) return bActive - aActive; 
-
         return a.displayName.localeCompare(b.displayName); 
     });
-
     setOrderedIds(lista.map(p => p.id));
-  }, [
-      orden, 
-      filter, 
-      pizzas.length, 
-      JSON.stringify(pizzas.map(p => ({ id: p.id, cocinando: p.cocinando, stock: p.stock }))) 
-  ]);
+  }, [orden, filter, pizzas.length, JSON.stringify(pizzas.map(p => ({ id: p.id, cocinando: p.cocinando, stock: p.stock })))]);
+
+  useEffect(() => {
+      if(!nombreInvitado) return;
+      const delivered = pedidos.filter(p => p.invitado_nombre === nombreInvitado && p.estado === 'entregado');
+      if (firstLoadRef.current) { delivered.forEach(p => processedOrderIds.current.add(p.id)); return; }
+      delivered.forEach(p => {
+          if (!processedOrderIds.current.has(p.id)) {
+              processedOrderIds.current.add(p.id);
+              setTimeout(() => {
+                  const pz = pizzas.find(z => z.id === p.pizza_id);
+                  if(pz) {
+                      sendNotification("¿Qué tal estuvo?", `Hace 10 min comiste ${pz.nombre}. ¿Te gustaría calificarla?`);
+                      setLateRatingPizza(pz);
+                      setShowLateRatingModal(true);
+                  }
+              }, 600000); 
+          }
+      });
+  }, [pedidos, nombreInvitado, pizzas]);
 
   const mySummary = useMemo(() => {
       let t = 0, w = 0, o = 0, r = 0;
-      pizzas.forEach(p => {
-          const h = miHistorial[p.id];
-          if(h) {
-              const pen = h.pendientes;
-              if (pen > 0) { if (p.cocinando) o += pen; else w += pen; }
-              r += h.comidos; t += (h.comidos + pen);
-          }
-      });
+      pizzas.forEach(p => { const h = miHistorial[p.id]; if(h) { const pen = h.pendientes; if (pen > 0) { if (p.cocinando) o += pen; else w += pen; } r += h.comidos; t += (h.comidos + pen); } });
       return { total: t, wait: w, oven: o, ready: r };
   }, [miHistorial, pizzas]);
 
@@ -722,12 +713,8 @@ export default function VitoPizzaApp() {
           const avg = vals.length > 0 ? vals.reduce((a, b) => a + b.rating, 0) / vals.length : 0;
           const totS = (p.stock || 0) * (p.porciones_individuales || config.porciones_por_pizza);
           const us = pedidos.filter(ped => ped.pizza_id === p.id).reduce((a, c) => a + c.cantidad_porciones, 0);
-          
           let dName = p.nombre;
-          if (lang !== 'es' && autoTranslations[p.id] && autoTranslations[p.id][lang]) {
-              dName = autoTranslations[p.id][lang].name;
-          }
-
+          if (lang !== 'es' && autoTranslations[p.id] && autoTranslations[p.id][lang]) dName = autoTranslations[p.id][lang].name;
           return { ...p, displayName: dName, stock: Math.max(0, totS - us), avg, count: vals.length };
       });
       pData.forEach(p => { if (p.stock === 0) msgs.push(`${p.displayName}: ${t.soldOut} 😭`); else if (p.stock <= 5) msgs.push(`${t.only} ${p.stock} ${t.of} ${p.displayName}! 🏃`); });
@@ -739,7 +726,7 @@ export default function VitoPizzaApp() {
   }, [invitadosActivos, pizzas, pedidos, bannerIndex, cargando, t, config, allRatings, lang, autoTranslations]);
 
   const openRating = (p: any) => { setPizzaToRate(p); setRatingValue(0); setCommentValue(''); setShowRatingModal(true); };
-  const submitRating = async () => { if (ratingValue === 0) return; await supabase.from('valoraciones').insert([{ pizza_id: pizzaToRate.id, invitado_nombre: nombreInvitado, rating: ratingValue, comentario: commentValue }]); setMisValoraciones(prev => [...prev, pizzaToRate.id]); setShowRatingModal(false); fetchDatos(); };
+  const submitRating = async () => { if (ratingValue === 0) return; await supabase.from('valoraciones').insert([{ pizza_id: pizzaToRate.id, invitado_nombre: nombreInvitado, rating: ratingValue, comentario: commentValue }]); setMisValoraciones(prev => [...prev, pizzaToRate.id]); setShowRatingModal(false); setShowLateRatingModal(false); fetchDatos(); };
   async function modificarPedido(p: any, acc: 'sumar' | 'restar') {
     if (!nombreInvitado.trim()) { alert(t.errorName); return; }
     if (usuarioBloqueado) { alert(`${t.blocked}: ${motivoBloqueo || ''}`); return; }
@@ -769,174 +756,35 @@ export default function VitoPizzaApp() {
 
   return (
     <div className={`min-h-screen font-sans pb-28 transition-colors duration-500 overflow-x-hidden ${base.bg}`}>
-      
-      {/* ONBOARDING OVERLAY EN MODO CLARO Y ESTILIZADO */}
+      {/* Onboarding Overlay */}
       {showOnboarding && (
-          <div 
-            onTouchStart={onTouchStart} 
-            onTouchMove={onTouchMove} 
-            onTouchEnd={onTouchEnd} 
-            className="fixed inset-0 z-[100] bg-white/95 backdrop-blur-xl flex flex-col items-center justify-center p-8 text-center text-neutral-900 animate-in fade-in duration-500 select-none"
-          >
-              <div className="absolute top-6 right-6">
-                  <button onClick={rotarIdioma} className="bg-neutral-100 p-2 rounded-full font-bold text-xs shadow-sm border flex items-center gap-2">
-                      <Languages size={14}/> {lang.toUpperCase()}
-                  </button>
-              </div>
-
+          <div onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} className="fixed inset-0 z-[100] bg-white/95 backdrop-blur-xl flex flex-col items-center justify-center p-8 text-center text-neutral-900 animate-in fade-in duration-500 select-none">
+              <div className="absolute top-6 right-6"><button onClick={rotarIdioma} className="bg-neutral-100 p-2 rounded-full font-bold text-xs shadow-sm border flex items-center gap-2"><Languages size={14}/> {lang.toUpperCase()}</button></div>
               <div className="max-w-md w-full relative h-[70vh] flex flex-col justify-center">
-                  
-                  {/* SLIDE 0: WELCOME */}
-                  {onboardingStep === 0 && (
-                      <div className="flex flex-col items-center gap-6 animate-in slide-in-from-right-10 duration-500">
-                          <img src="/logo.png" alt="Logo" className="h-40 w-auto object-contain drop-shadow-xl" />
-                          <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-teal-500 to-emerald-700">{t.onb_wel_title}</h1>
-                          <p className="text-neutral-500 text-lg leading-relaxed px-4">{t.onb_wel_desc}</p>
-                      </div>
-                  )}
-
-                  {/* SLIDE 1: INSTALL APP */}
-                  {onboardingStep === 1 && (
-                      <div className="flex flex-col items-center gap-6 animate-in slide-in-from-right-10 duration-500">
-                          <div className="w-32 h-32 rounded-full bg-teal-50 flex items-center justify-center mb-2 shadow-inner">
-                              <Download size={64} className="text-teal-500 animate-bounce" strokeWidth={1.5} />
-                          </div>
-                          <h1 className="text-3xl font-bold text-neutral-800">{t.onb_inst_title}</h1>
-                          <p className="text-neutral-500 text-lg leading-relaxed px-4">{t.onb_inst_desc}</p>
-                      </div>
-                  )}
-
-                  {/* SLIDE 2: HOW IT WORKS (DETAILED VISUALS) */}
-                  {onboardingStep === 2 && (
-                      <div className="flex flex-col items-center gap-4 animate-in slide-in-from-right-10 duration-500 text-left w-full">
-                          <h1 className="text-3xl font-bold text-neutral-800 text-center w-full mb-2">{t.onb_how_title}</h1>
-                          
-                          {/* Visual Block: Progress Bar */}
-                          <div className="bg-white p-3 rounded-2xl flex items-center gap-4 w-full border border-neutral-100 shadow-sm">
-                              <div className="bg-teal-50 p-3 rounded-xl text-teal-600"><LayoutTemplate size={24}/></div>
-                              <div className="flex-1">
-                                  <p className="font-bold text-base text-neutral-800 mb-1">{t.feat_prog_title}</p>
-                                  <div className="h-1.5 w-full bg-neutral-100 rounded-full overflow-hidden"><div className="h-full w-1/2 bg-teal-500 rounded-full"></div></div>
-                                  <p className="text-sm text-neutral-500 mt-1">{t.feat_prog_desc}</p>
-                              </div>
-                          </div>
-
-                          {/* Visual Block: Oven Status */}
-                          <div className="bg-white p-3 rounded-2xl flex items-center gap-4 w-full border border-neutral-100 shadow-sm">
-                              <div className="bg-orange-50 p-3 rounded-xl text-orange-600"><Flame size={24}/></div>
-                              <div className="flex-1">
-                                  <p className="font-bold text-base text-neutral-800 mb-1">{t.feat_oven_title}</p>
-                                  <span className="text-[9px] bg-red-600 text-white px-2 py-0.5 rounded-full font-bold">EN HORNO</span>
-                                  <p className="text-sm text-neutral-500 mt-1">{t.feat_oven_desc}</p>
-                              </div>
-                          </div>
-
-                          {/* Visual Block: Controls */}
-                          <div className="bg-white p-3 rounded-2xl flex items-center gap-4 w-full border border-neutral-100 shadow-sm">
-                              <div className="bg-purple-50 p-3 rounded-xl text-purple-600"><Palette size={24}/></div>
-                              <div className="flex-1">
-                                  <p className="font-bold text-base text-neutral-800 mb-1">{t.feat_ctrl_title}</p>
-                                  <div className="flex gap-2 mb-1">
-                                      <div className="w-4 h-4 rounded-full bg-neutral-200"></div>
-                                      <div className="w-4 h-4 rounded-full bg-neutral-200"></div>
-                                      <div className="w-4 h-4 rounded-full bg-neutral-200"></div>
-                                  </div>
-                                  <p className="text-sm text-neutral-500">{t.feat_ctrl_desc}</p>
-                              </div>
-                          </div>
-                      </div>
-                  )}
-
-                  {/* SLIDE 3: ENJOY */}
-                  {onboardingStep === 3 && (
-                      <div className="flex flex-col items-center gap-6 animate-in slide-in-from-right-10 duration-500">
-                          <div className="w-32 h-32 rounded-full bg-yellow-50 flex items-center justify-center mb-2 shadow-inner">
-                              <PartyPopper size={64} className="text-yellow-500" strokeWidth={1.5} />
-                          </div>
-                          <h1 className="text-3xl font-bold text-neutral-800">{t.onb_enjoy_title}</h1>
-                          <p className="text-neutral-500 text-lg leading-relaxed px-4">{t.onb_enjoy_desc}</p>
-                      </div>
-                  )}
+                  {onboardingStep === 0 && (<div className="flex flex-col items-center gap-6 animate-in slide-in-from-right-10 duration-500"><img src="/logo.png" alt="Logo" className="h-40 w-auto object-contain drop-shadow-xl" /><h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-teal-500 to-emerald-700">{t.onb_wel_title}</h1><p className="text-neutral-500 text-lg leading-relaxed px-4">{t.onb_wel_desc}</p></div>)}
+                  {onboardingStep === 1 && (<div className="flex flex-col items-center gap-6 animate-in slide-in-from-right-10 duration-500"><div className="w-32 h-32 rounded-full bg-teal-50 flex items-center justify-center mb-2 shadow-inner"><Download size={64} className="text-teal-500 animate-bounce" strokeWidth={1.5} /></div><h1 className="text-3xl font-bold text-neutral-800">{t.onb_inst_title}</h1><p className="text-neutral-500 text-lg leading-relaxed px-4">{t.onb_inst_desc}</p></div>)}
+                  {onboardingStep === 2 && (<div className="flex flex-col items-center gap-4 animate-in slide-in-from-right-10 duration-500 text-left w-full"><h1 className="text-3xl font-bold text-neutral-800 text-center w-full mb-2">{t.onb_how_title}</h1><div className="bg-white p-3 rounded-2xl flex items-center gap-4 w-full border border-neutral-100 shadow-sm"><div className="bg-teal-50 p-3 rounded-xl text-teal-600"><LayoutTemplate size={24}/></div><div className="flex-1"><p className="font-bold text-base text-neutral-800 mb-1">{t.feat_prog_title}</p><div className="h-1.5 w-full bg-neutral-100 rounded-full overflow-hidden"><div className="h-full w-1/2 bg-teal-500 rounded-full"></div></div><p className="text-sm text-neutral-500 mt-1">{t.feat_prog_desc}</p></div></div><div className="bg-white p-3 rounded-2xl flex items-center gap-4 w-full border border-neutral-100 shadow-sm"><div className="bg-orange-50 p-3 rounded-xl text-orange-600"><Flame size={24}/></div><div className="flex-1"><p className="font-bold text-base text-neutral-800 mb-1">{t.feat_oven_title}</p><span className="text-[9px] bg-red-600 text-white px-2 py-0.5 rounded-full font-bold">EN HORNO</span><p className="text-sm text-neutral-500 mt-1">{t.feat_oven_desc}</p></div></div><div className="bg-white p-3 rounded-2xl flex items-center gap-4 w-full border border-neutral-100 shadow-sm"><div className="bg-purple-50 p-3 rounded-xl text-purple-600"><Palette size={24}/></div><div className="flex-1"><p className="font-bold text-base text-neutral-800 mb-1">{t.feat_ctrl_title}</p><div className="flex gap-2 mb-1"><div className="w-4 h-4 rounded-full bg-neutral-200"></div><div className="w-4 h-4 rounded-full bg-neutral-200"></div><div className="w-4 h-4 rounded-full bg-neutral-200"></div></div><p className="text-sm text-neutral-500">{t.feat_ctrl_desc}</p></div></div></div>)}
+                  {onboardingStep === 3 && (<div className="flex flex-col items-center gap-6 animate-in slide-in-from-right-10 duration-500"><div className="w-32 h-32 rounded-full bg-yellow-50 flex items-center justify-center mb-2 shadow-inner"><PartyPopper size={64} className="text-yellow-500" strokeWidth={1.5} /></div><h1 className="text-3xl font-bold text-neutral-800">{t.onb_enjoy_title}</h1><p className="text-neutral-500 text-lg leading-relaxed px-4">{t.onb_enjoy_desc}</p></div>)}
               </div>
-
-              {/* NAVIGATION */}
-              <div className="fixed bottom-10 left-0 right-0 flex flex-col items-center gap-6 px-8">
-                  <div className="flex gap-2">
-                      {[0, 1, 2, 3].map(i => (
-                          <div key={i} className={`h-1.5 rounded-full transition-all duration-300 ${i === onboardingStep ? 'bg-teal-600 w-8' : 'bg-neutral-200 w-2'}`}></div>
-                      ))}
-                  </div>
-                  <button 
-                      onClick={() => {
-                          if (onboardingStep < 3) setOnboardingStep(prev => prev + 1);
-                          else completeOnboarding();
-                      }}
-                      className="bg-neutral-900 text-white w-full py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-black transition-all shadow-xl active:scale-95"
-                  >
-                      {onboardingStep === 3 ? t.onb_btn_start : t.onb_btn_next} {onboardingStep < 3 ? <ChevronRight size={18} /> : <Check size={18}/>}
-                  </button>
-              </div>
+              <div className="fixed bottom-10 left-0 right-0 flex flex-col items-center gap-6 px-8"><div className="flex gap-2">{[0, 1, 2, 3].map(i => (<div key={i} className={`h-1.5 rounded-full transition-all duration-300 ${i === onboardingStep ? 'bg-teal-600 w-8' : 'bg-neutral-200 w-2'}`}></div>))}</div><button onClick={() => { if (onboardingStep < 3) setOnboardingStep(prev => prev + 1); else completeOnboarding(); }} className="bg-neutral-900 text-white w-full py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-black transition-all shadow-xl active:scale-95">{onboardingStep === 3 ? t.onb_btn_start : t.onb_btn_next} {onboardingStep < 3 ? <ChevronRight size={18} /> : <Check size={18}/>}</button></div>
           </div>
       )}
 
-      {/* HEADER FLOTANTE BOTONES */}
+      {/* Header */}
       <div className="fixed top-4 left-4 right-4 z-50 flex items-center justify-between pointer-events-none">
           <div className={`p-1 rounded-full border shadow-lg flex gap-1 pointer-events-auto ${base.bar}`}>
-              {/* NOTIFICACIONES - CAMBIO: size={20} */}
-              <button onClick={toggleNotificaciones} className={getBtnClass(notifEnabled)}>
-                  {notifEnabled ? <Bell size={20} /> : <BellOff size={20} />}
-              </button>
-              
-              {/* IDIOMA (Simple button) - CAMBIO: text-xs */}
-              <button onClick={rotarIdioma} className={getBtnClass(false) + " font-bold text-xs border border-current/20"}>
-                  {lang.toUpperCase()}
-              </button>
-
-              {/* ONLINE USERS - CAMBIO: size={16} y text-xs */}
-              <div className="flex items-center justify-center gap-1 p-2 rounded-full text-xs font-bold transition-all animate-pulse">
-                  <Users size={16} className={isDarkMode ? "text-green-400" : "text-green-700"} />
-                  <span className={isDarkMode ? 'text-white' : 'text-black'}>{onlineUsers}</span>
-              </div>
+              <button onClick={toggleNotificaciones} className={getBtnClass(notifEnabled)}>{notifEnabled ? <Bell size={20} /> : <BellOff size={20} />}</button>
+              <button onClick={rotarIdioma} className={getBtnClass(false) + " font-bold text-xs border border-current/20"}>{lang.toUpperCase()}</button>
+              <div className="flex items-center justify-center gap-1 p-2 rounded-full text-xs font-bold transition-all animate-pulse"><Users size={16} className={isDarkMode ? "text-green-400" : "text-green-700"} /><span className={isDarkMode ? 'text-white' : 'text-black'}>{onlineUsers} / {config.total_invitados}</span></div>
           </div>
-
           <div className={`p-1 rounded-full border shadow-lg flex gap-1 pointer-events-auto ${base.bar}`}>
-              {/* INSTALAR APP - CAMBIO: size={20} */}
-              {isInstallable && (
-                  <button onClick={handleInstallClick} className={getBtnClass(false) + " animate-bounce"}>
-                      <Download size={20} />
-                  </button>
-              )}
-              
-              {/* ZOOM TEXTO - CAMBIO: size={20} */}
-              <button onClick={cycleTextSize} className={getBtnClass(false)}>
-                  <Type size={20} />
-              </button>
-              
-              {/* ORDENAR - CAMBIO: size={20} */}
-              <button onClick={toggleOrden} className={getBtnClass(false)}>
-                  {orden === 'estado' ? <ArrowUpNarrowWide size={20} /> : (orden === 'nombre' ? <ArrowDownAZ size={20} /> : <TrendingUp size={20}/>)}
-              </button>
-
-              {/* EXPANDIR / CONTRAER (Activo si !isCompact) - CAMBIO: size={20} */}
-              <button onClick={toggleCompact} className={getBtnClass(!isCompact)}>
-                  {!isCompact ? <Minimize2 size={20}/> : <Maximize2 size={20}/>}
-              </button>
-
-              {/* MODO OSCURO - CAMBIO: size={20} */}
-              <button onClick={toggleDarkMode} className={getBtnClass(false)}>
-                  {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
-              </button>
-              
-              {/* TEMA - CAMBIO: size={20} */}
-              <button onClick={() => setShowThemeSelector(!showThemeSelector)} className={getBtnClass(false)}>
-                  <Palette size={20} />
-              </button>
-              
-              {/* ADMIN - CAMBIO: size={20} */}
-              <Link href="/admin" className={getBtnClass(false)}>
-                  <Lock size={20} />
-              </Link>
-              
+              {isInstallable && (<button onClick={handleInstallClick} className={getBtnClass(false) + " animate-bounce"}><Download size={20} /></button>)}
+              <button onClick={cycleTextSize} className={getBtnClass(false)}><Type size={20} /></button>
+              <button onClick={toggleOrden} className={getBtnClass(false)}>{orden === 'estado' ? <ArrowUpNarrowWide size={20} /> : (orden === 'nombre' ? <ArrowDownAZ size={20} /> : <TrendingUp size={20}/>)}</button>
+              <button onClick={toggleCompact} className={getBtnClass(!isCompact)}>{!isCompact ? <Minimize2 size={20}/> : <Maximize2 size={20}/>}</button>
+              <button onClick={toggleDarkMode} className={getBtnClass(false)}>{isDarkMode ? <Sun size={20} /> : <Moon size={20} />}</button>
+              <button onClick={() => setShowThemeSelector(!showThemeSelector)} className={getBtnClass(false)}><Palette size={20} /></button>
+              <Link href="/admin" className={getBtnClass(false)}><Lock size={20} /></Link>
               {showThemeSelector && (<div className="absolute top-14 right-0 bg-black/90 backdrop-blur p-2 rounded-xl flex gap-2 animate-in fade-in border border-white/20 shadow-xl">{THEMES.map(theme => (<button key={theme.name} onClick={() => changeTheme(theme)} className={`w-6 h-6 rounded-full ${theme.color} border-2 border-white ring-2 ring-transparent hover:scale-110 transition-transform`}></button>))}</div>)}
           </div>
       </div>
@@ -947,17 +795,15 @@ export default function VitoPizzaApp() {
              <div className="mb-6"><h1 className="text-3xl font-bold leading-tight drop-shadow-md text-white">{t.welcomeTitle} <br/> <span className="opacity-80 font-normal text-xl">{t.welcomeSub}</span></h1></div>
              <div className="flex items-center gap-3 text-sm font-medium bg-black/30 p-3 rounded-2xl w-max backdrop-blur-md border border-white/10 text-white animate-in fade-in duration-500 mx-auto mb-4"><span className="text-neutral-300 text-xs font-bold">{currentBannerText}</span></div>
              <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar px-2">
-                 <button onClick={() => changeFilter('all')} className={`px-4 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors ${filter === 'all' ? base.activeChip : base.inactiveChip}`}>{t.fAll}</button>
-                 <button onClick={() => changeFilter('stock')} className={`px-4 py-1.5 rounded-full text-xs whitespace-nowrap flex items-center gap-1 transition-colors ${filter === 'stock' ? base.activeChip : base.inactiveChip}`}><Package size={12}/> {t.fStock}</button>
-                 <button onClick={() => changeFilter('top')} className={`px-4 py-1.5 rounded-full text-xs whitespace-nowrap flex items-center gap-1 transition-colors ${filter === 'top' ? base.activeChip : base.inactiveChip}`}><Star size={12}/> {t.fTop}</button>
-                 <button onClick={() => changeFilter('to_rate')} className={`px-4 py-1.5 rounded-full text-xs whitespace-nowrap flex items-center gap-1 transition-colors ${filter === 'to_rate' ? base.activeChip : base.inactiveChip}`}><CheckCircle size={12}/> {t.fRate}</button>
-                 <button onClick={() => changeFilter('ordered')} className={`px-4 py-1.5 rounded-full text-xs whitespace-nowrap flex items-center gap-1 transition-colors ${filter === 'ordered' ? base.activeChip : base.inactiveChip}`}><Clock size={12}/> {t.fOrdered}</button>
-                 <button onClick={() => changeFilter('new')} className={`px-4 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors ${filter === 'new' ? base.activeChip : base.inactiveChip}`}>{t.fNew}</button>
+                 {['all','stock','top','to_rate','ordered','new'].map(f => (
+                     <button key={f} onClick={() => changeFilter(f as any)} className={`px-4 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors ${filter === f ? base.activeChip : base.inactiveChip}`}>{f === 'all' ? t.fAll : f === 'stock' ? t.fStock : f === 'top' ? t.fTop : f === 'to_rate' ? t.fRate : f === 'ordered' ? t.fOrdered : t.fNew}</button>
+                 ))}
              </div>
          </div>
       </div>
 
       <div className="px-4 mt-6 relative z-20 max-w-lg mx-auto pb-20">
+        {/* User Select */}
         <div className={`${base.card} p-2 rounded-2xl border flex items-center gap-3 mb-6`}>
              <div className={`p-3 rounded-full bg-gradient-to-br ${currentTheme.gradient} text-white shadow-lg`}><User size={24} /></div>
              <div className="flex-1 pr-2">
@@ -973,27 +819,65 @@ export default function VitoPizzaApp() {
              </div>
         </div>
 
+        {/* Global Message */}
         {mensaje && (<div className={`fixed top-20 left-4 right-4 p-3 rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] z-40 flex flex-col items-center justify-center animate-bounce-in text-center ${mensaje.tipo === 'alerta' ? 'border-4 border-neutral-900 font-bold' : 'border-2 border-neutral-200 font-bold'} bg-white text-black`}><div className="flex items-center gap-2 mb-1 text-sm">{mensaje.tipo === 'alerta' && mensaje.texto.includes('horno') && <PartyPopper size={18} className="text-orange-600" />}{mensaje.texto}</div>{mensaje.tipo === 'alerta' && (<button onClick={() => setMensaje(null)} className="mt-1 bg-neutral-900 text-white px-6 py-1.5 rounded-full text-xs font-bold shadow-lg active:scale-95 hover:bg-black transition-transform">{t.okBtn}</button>)}</div>)}
 
+        {/* Lightbox Image */}
+        {imageToView && (
+            <div className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center p-4 animate-in fade-in" onClick={() => setImageToView(null)}>
+                <button onClick={() => setImageToView(null)} className="absolute top-4 right-4 text-white p-2 bg-white/10 rounded-full"><X size={24}/></button>
+                <img src={imageToView} alt="Pizza Zoom" className="max-w-full max-h-[80vh] rounded-2xl shadow-2xl" />
+            </div>
+        )}
+
+        {/* Rating Modal */}
         {showRatingModal && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in"><div className={`${base.card} p-6 rounded-3xl w-full max-w-sm relative shadow-2xl border`}><button onClick={() => setShowRatingModal(false)} className={`absolute top-4 right-4 ${base.subtext} hover:${base.text}`}><X /></button><h3 className={`text-xl font-bold mb-1 ${base.text}`}>{t.rateTitle} {pizzaToRate?.displayName}</h3><div className="flex justify-center gap-2 mb-6 mt-4">{[1, 2, 3, 4, 5].map(star => (<button key={star} onClick={() => setRatingValue(star)} className="transition-transform hover:scale-110"><Star size={32} fill={star <= ratingValue ? "#eab308" : "transparent"} className={star <= ratingValue ? "text-yellow-500" : "text-neutral-600"} /></button>))}</div><textarea className={`w-full p-3 rounded-xl border outline-none mb-4 resize-none h-24 ${base.input} ${isDarkMode ? 'border-neutral-700 bg-black/50' : 'border-gray-200 bg-gray-50'}`} placeholder="..." value={commentValue} onChange={e => setCommentValue(e.target.value)} /><button onClick={submitRating} disabled={ratingValue === 0} className={`w-full py-3 rounded-xl font-bold shadow-lg ${ratingValue > 0 ? `${currentTheme.color} text-white` : 'bg-neutral-800 text-neutral-500'}`}>{t.sendReview}</button></div></div>)}
 
+        {/* Late Rating Toast */}
+        {showLateRatingModal && lateRatingPizza && (
+            <div className="fixed bottom-20 left-4 right-4 z-50 animate-bounce-in">
+                <div className={`${base.card} p-4 rounded-2xl shadow-2xl border border-yellow-500/50 flex items-center justify-between gap-3`}>
+                    <div className="flex items-center gap-3"><div className="bg-yellow-500 p-2 rounded-xl text-black"><Star size={20} fill="black"/></div><div><p className={`text-sm font-bold ${base.text}`}>¿Te gustó {lateRatingPizza.displayName}?</p><p className={`text-[10px] ${base.subtext}`}>Comiste hace 10 min...</p></div></div>
+                    <div className="flex gap-2"><button onClick={() => { setShowLateRatingModal(false); }} className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${base.subtext}`}>Ahora no</button><button onClick={() => { setShowLateRatingModal(false); openRating(lateRatingPizza); }} className={`px-3 py-1.5 rounded-lg text-xs font-bold bg-yellow-500 text-black shadow-lg`}>Sí!</button></div>
+                </div>
+            </div>
+        )}
+
+        {/* Pizza List */}
         <div className="space-y-3 pb-4">
            {cargando ? <p className={`text-center ${base.subtext} mt-10 animate-pulse`}>{t.loading}</p> : 
              orderedIds.length === 0 ? (<div className="text-center py-10 opacity-60"><p className="text-4xl mb-2">👻</p><p className={`text-sm font-bold ${base.subtext}`}>{getEmptyStateMessage()}</p></div>) :
              orderedIds.map(id => {
-               // Buscamos la pizza actualizada en enrichedPizzas usando el ID ordenado
                const pizza = enrichedPizzas.find(p => p.id === id);
                if (!pizza) return null;
-               
-               const totalUser = (miHistorial[pizza.id]?.pendientes || 0) + (miHistorial[pizza.id]?.comidos || 0);
+               const hist = miHistorial[pizza.id];
+               const pendientes = hist?.pendientes || 0;
+               const comidos = hist?.comidos || 0;
 
                return (
                <div key={pizza.id} className={`${base.card} rounded-[36px] border ${pizza.stockRestante === 0 ? 'border-neutral-200 dark:border-neutral-800' : pizza.cocinando ? 'border-red-600/30' : ''} shadow-lg relative overflow-hidden group ${isCompact ? 'p-3' : 'p-5'}`}>
+                   {/* Imagen si no es compacto */}
+                   {!isCompact && pizza.imagen_url && (
+                       <div className="mb-4 w-full h-40 rounded-2xl overflow-hidden relative cursor-pointer" onClick={() => setImageToView(pizza.imagen_url)}>
+                           <img src={pizza.imagen_url} alt={pizza.displayName} className="w-full h-full object-cover transition-transform hover:scale-105" />
+                           <div className="absolute top-2 right-2 bg-black/50 p-1 rounded-full text-white"><Maximize2 size={14}/></div>
+                       </div>
+                   )}
                    <div className="flex justify-between items-start mb-2"><div className="flex-1"><div className="flex flex-wrap items-center gap-2 mb-1">
-                     <h2 className={`font-bold ${isCompact ? 'text-lg' : 'text-2xl'} ${pizza.stockRestante === 0 ? 'text-gray-400 dark:text-neutral-600' : base.text}`}>
-                         {pizza.displayName}
-                     </h2>
-                     <div className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs ${base.badge}`}><Star size={12} className={pizza.countRating > 0 ? "text-yellow-500" : "text-gray-500 opacity-50"} fill="currentColor" /><span className={`font-bold ${pizza.countRating > 0 ? '' : 'text-gray-500 opacity-50'}`}>{pizza.avgRating || '0.0'}</span><span className={`text-[10px] ${pizza.countRating > 0 ? 'opacity-60' : 'text-gray-500 opacity-40'}`}>({pizza.countRating || 0})</span>{miHistorial[pizza.id]?.comidos > 0 && !misValoraciones.includes(pizza.id) && (<button onClick={() => openRating(pizza)} className="ml-1 bg-yellow-500 text-black px-1.5 py-0.5 rounded text-[9px] font-bold animate-pulse hover:scale-105 transition-transform">{t.rateBtn}</button>)}</div>{pizza.cocinando && <span className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">{t.inOven}</span>}</div>{!isCompact && (<p className={`leading-relaxed max-w-[200px] ${base.subtext} ${DESC_SIZES[zoomLevel]}`}>{pizza.displayDesc}</p>)}<p className={`font-mono mt-1 ${pizza.stockRestante === 0 ? 'text-red-500 font-bold' : base.subtext} ${STOCK_SIZES[zoomLevel]}`}>{pizza.stockRestante === 0 ? t.soldOut : `${t.ingredientsFor} ${pizza.stockRestante} ${t.portionsMore}`}</p></div>{totalUser > 0 && (<div className="text-right ml-2"><span className={`text-[10px] font-bold px-2 py-1 rounded border whitespace-nowrap ${isDarkMode ? 'bg-white/10 border-white/20 text-white' : 'bg-black/5 border-black/10 text-black'}`}>PEDISTE: {totalUser}</span></div>)}</div>
+                     
+                     {/* Imagen COMPACTA (Avatar) */}
+                     {isCompact && pizza.imagen_url && (
+                       <img src={pizza.imagen_url} onClick={(e)=>{e.stopPropagation(); setImageToView(pizza.imagen_url)}} className="w-10 h-10 rounded-full object-cover border border-white/20 cursor-pointer hover:scale-110 transition-transform"/>
+                     )}
+
+                     <h2 className={`font-bold ${isCompact ? 'text-lg' : 'text-2xl'} ${pizza.stockRestante === 0 ? 'text-gray-400 dark:text-neutral-600' : base.text}`}>{pizza.displayName}</h2>
+                     <div className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs ${base.badge}`}><Star size={12} className={pizza.countRating > 0 ? "text-yellow-500" : "text-gray-500 opacity-50"} fill="currentColor" /><span className={`font-bold ${pizza.countRating > 0 ? '' : 'text-gray-500 opacity-50'}`}>{pizza.avgRating || '0.0'}</span><span className={`text-[10px] ${pizza.countRating > 0 ? 'opacity-60' : 'text-gray-500 opacity-40'}`}>({pizza.countRating || 0})</span>{miHistorial[pizza.id]?.comidos > 0 && !misValoraciones.includes(pizza.id) && (<button onClick={() => openRating(pizza)} className="ml-1 bg-yellow-500 text-black px-1.5 py-0.5 rounded text-[9px] font-bold animate-pulse hover:scale-105 transition-transform">{t.rateBtn}</button>)}</div>{pizza.cocinando && <span className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">{t.inOven}</span>}{pizza.cocinando && pizza.cocinando_inicio && <CookingTimer start={pizza.cocinando_inicio} duration={pizza.tiempo_coccion || 60}/>}</div>{!isCompact && (<p className={`leading-relaxed max-w-[200px] ${base.subtext} ${DESC_SIZES[zoomLevel]}`}>{pizza.displayDesc}</p>)}<p className={`font-mono mt-1 ${pizza.stockRestante === 0 ? 'text-red-500 font-bold' : base.subtext} ${STOCK_SIZES[zoomLevel]}`}>{pizza.stockRestante === 0 ? t.soldOut : `${t.ingredientsFor} ${pizza.stockRestante} ${t.portionsMore}`}</p></div>
+                     
+                     <div className="flex flex-col items-end gap-1 ml-2">
+                        {pendientes > 0 && (<span className={`text-[10px] font-bold px-2 py-0.5 rounded border whitespace-nowrap ${isDarkMode ? 'bg-white/10 border-white/20 text-white' : 'bg-neutral-800 border-neutral-800 text-white'}`}>PEDISTE: {pendientes}</span>)}
+                        {comidos > 0 && (<span className={`text-[10px] font-bold px-2 py-0.5 rounded border whitespace-nowrap ${isDarkMode ? 'bg-white/10 border-white/20 text-white' : 'bg-neutral-800 border-neutral-800 text-white'}`}>COMISTE: {comidos}</span>)}
+                     </div>
+                   </div>
                    <div className={`rounded-2xl border ${isCompact ? 'p-2 mb-2 mt-1' : 'p-3 mb-5 mt-4'} ${base.progressBg}`}><div className={`flex justify-between text-[10px] font-bold uppercase tracking-wider mb-2 ${base.subtext}`}><span>{pizza.faltanParaCompletar === pizza.target ? t.newPizza : t.progress}</span><span className={pizza.faltanParaCompletar === 0 ? currentTheme.text : base.subtext}>{pizza.faltanParaCompletar > 0 ? `${t.missing} ${pizza.faltanParaCompletar}` : t.completed}</span></div><div className={`rounded-full overflow-hidden flex border ${isCompact ? 'h-1.5' : 'h-2'} ${base.progressTrack}`}>{[...Array(pizza.target)].map((_, i) => (<div key={i} className={`flex-1 border-r last:border-0 ${isDarkMode ? 'border-black/50' : 'border-white/50'} ${i < pizza.ocupadasActual ? `bg-gradient-to-r ${currentTheme.name === 'Carbone' ? 'from-white to-neutral-300' : currentTheme.gradient}` : 'bg-transparent'}`}></div>))}</div></div>
                    <div className="flex gap-3">{miHistorial[pizza.id]?.pendientes > 0 && (<button onClick={() => modificarPedido(pizza, 'restar')} className={`rounded-2xl flex items-center justify-center border active:scale-95 transition ${base.buttonSec} ${isCompact ? 'w-12 h-10' : 'w-16 h-14'}`}><Minus size={isCompact ? 16 : 20} /></button>)}{pizza.stockRestante > 0 ? (<button onClick={() => modificarPedido(pizza, 'sumar')} className={`flex-1 rounded-2xl font-bold text-white shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 bg-gradient-to-r ${currentTheme.gradient} hover:brightness-110 ${isCompact ? 'h-10 text-base' : 'h-14 text-lg'}`}><Plus size={isCompact ? 18 : 24} strokeWidth={3} /> {t.buttonOrder}</button>) : (<div className={`flex-1 rounded-2xl font-bold flex items-center justify-center border ${isDarkMode ? 'text-neutral-500 bg-neutral-900 border-neutral-800' : 'text-gray-400 bg-gray-100 border-gray-200'} ${isCompact ? 'h-10 text-xs' : 'h-14 text-sm'}`}>{t.soldOut}</div>)}</div>
                </div>
