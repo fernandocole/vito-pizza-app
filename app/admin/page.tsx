@@ -247,8 +247,9 @@ export default function AdminPage() {
             const state = presenceChannel.presenceState();
             // Calcular SOLO los invitados
             const count = Object.values(state).reduce((acc: number, presences: any) => {
-                const isGuest = presences.some((p: any) => p.role === 'guest');
-                return acc + (isGuest ? 1 : 0);
+                // Filtramos por rol en el array de presencias de cada clave
+                const guests = presences.filter((p: any) => p.role === 'guest');
+                return acc + guests.length;
             }, 0);
             setOnlineUsers(count);
         })
@@ -487,7 +488,11 @@ export default function AdminPage() {
       return calcularStockDinamico(newPizzaIngredients, ingredientes);
   }, [newPizzaIngredients, ingredientes]);
 
+  // CATEGORIAS ACTIVAS (Memoizado para usar en filtro cocina y menu)
   const activeCategories: string[] = useMemo(() => { try { const parsed = JSON.parse(config.categoria_activa); if (parsed === 'Todas' || (Array.isArray(parsed) && parsed.length === 0)) return []; return Array.isArray(parsed) ? parsed : ['General']; } catch { return ['General']; } }, [config.categoria_activa]);
+
+  // Categories UNICAS (DEL MENU) - SIN GENERAL FORZADO
+  const uniqueCategories = useMemo(() => { const cats = new Set<string>(); pizzas.forEach(p => { if(p.categoria) cats.add(p.categoria); }); return Array.from(cats); }, [pizzas]);
 
   const metricas = useMemo(() => {
       // 1. Aplicar filtro de categorías también a cocina
@@ -514,8 +519,6 @@ export default function AdminPage() {
       });
   }, [pizzas, pedidos, config, orden, activeCategories]);
 
-  // Categories & Stats
-  const uniqueCategories = useMemo(() => { const cats = new Set<string>(); cats.add('General'); pizzas.forEach(p => { if(p.categoria) cats.add(p.categoria); }); return Array.from(cats); }, [pizzas]);
   const toggleCategory = async (cat: string) => { const current = new Set(activeCategories); if (current.has(cat)) current.delete(cat); else current.add(cat); const newArr = Array.from(current); setConfig({...config, categoria_activa: JSON.stringify(newArr)}); await supabase.from('configuracion_dia').update({ categoria_activa: JSON.stringify(newArr) }).eq('id', config.id); };
 
   const stats = useMemo(() => {
@@ -696,7 +699,6 @@ export default function AdminPage() {
         {view === 'cocina' && (
             <div className="grid grid-cols-2 gap-4 mb-4">
                 <div className={`p-3 rounded-2xl border ${base.metric}`}><h4 className={`text-[10px] font-bold uppercase mb-2 text-center border-b pb-1 ${base.divider} ${base.subtext}`}>ENTERAS</h4><div className="grid grid-cols-2 gap-2"><div className="text-center"><p className={`text-[9px] uppercase font-bold ${base.subtext}`}>En Curso</p><p className="text-xl font-bold">{stats.pizzasIncompletas}</p></div><div className="text-center"><p className={`text-[9px] uppercase font-bold ${base.subtext}`}>Entregadas</p><p className="text-xl font-bold">{stats.totalPizzasEntregadas}</p></div></div></div>
-                {/* CAMBIO: Eliminado STOCK, solo PEDIDAS */}
                 <div className={`p-3 rounded-2xl border flex flex-col justify-center items-center ${base.metric}`}>
                     <h4 className={`text-[10px] font-bold uppercase mb-2 text-center w-full border-b pb-1 ${base.divider} ${base.subtext}`}>PORCIONES PEDIDAS</h4>
                     <p className="text-3xl font-bold">{stats.totalPendientes}</p>
@@ -833,7 +835,7 @@ export default function AdminPage() {
             {view === 'menu' && (
                 <div className="space-y-6">
                     <div className={`${base.card} p-5 rounded-3xl border flex flex-col gap-3 shadow-sm`}>
-                        <label className={`text-xs font-bold uppercase tracking-wider opacity-60 ${base.subtext}`}>Mostrar en Invitados:</label>
+                        <label className={`text-xs font-bold uppercase tracking-wider opacity-60 ${base.subtext}`}>CATEGORIAS A MOSTRAR:</label>
                         <div className="flex flex-wrap gap-2">
                              <button onClick={async () => {
                                  const isAll = activeCategories.includes('Todas');
@@ -1043,10 +1045,12 @@ export default function AdminPage() {
                         <button onClick={async () => { await supabase.from('configuracion_dia').update({ mensaje_bienvenida: config.mensaje_bienvenida }).eq('id', config.id); alert('Guardado'); }} className={`font-bold px-4 rounded-xl self-end h-20 flex items-center justify-center ${isDarkMode ? 'bg-white text-black' : 'bg-black text-white'}`}>OK</button>
                     </div>
                     {/* GLOSARIO */}
-                    <div className="flex gap-2 mt-2 text-xs opacity-60">
-                        <span className="font-bold flex items-center gap-1"><Info size={12}/> Variables:</span>
+                    <div className="flex flex-wrap gap-2 mt-2 text-xs opacity-60">
+                        <span className="font-bold flex items-center gap-1 w-full"><Info size={12}/> Variables disponibles:</span>
                         <span className="bg-neutral-500/20 px-1.5 py-0.5 rounded font-mono">[nombre]</span>
                         <span className="bg-neutral-500/20 px-1.5 py-0.5 rounded font-mono">[fecha]</span>
+                        <span className="bg-neutral-500/20 px-1.5 py-0.5 rounded font-mono">[hora]</span>
+                        <span className="bg-neutral-500/20 px-1.5 py-0.5 rounded font-mono">[pizzas]</span>
                     </div>
                 </div>
                 <div className="flex justify-between items-center"><label className={`text-sm ${base.subtext}`}>Modo Estricto</label><button onClick={async () => { const n = !config.modo_estricto; setConfig({...config, modo_estricto: n}); await supabase.from('configuracion_dia').update({ modo_estricto: n }).eq('id', config.id); }} className={`w-12 h-6 rounded-full transition-colors relative ${config.modo_estricto ? 'bg-green-600' : 'bg-gray-400'}`}><div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all ${config.modo_estricto ? 'left-7' : 'left-1'}`}></div></button></div>
