@@ -6,7 +6,7 @@ import {
   Pizza, Settings, Plus, Trash2, ChefHat, Eye, EyeOff, CheckCircle, 
   Clock, Flame, LogOut, List, User, Bell, ArrowRight, ArrowDownAZ, 
   ArrowUpNarrowWide, Maximize2, Minimize2, Users, Ban, RotateCcw, 
-  KeyRound, LayoutDashboard, XCircle, Sun, Moon, BarChart3, Star, MessageSquare, Palette, Save, UserCheck, ImageIcon, UploadCloud, Timer as TimerIcon, Tag, ChevronUp, ChevronDown, CheckSquare, Square, Calculator, ShoppingBag, X, Minus, Pencil
+  KeyRound, LayoutDashboard, XCircle, Sun, Moon, BarChart3, Star, MessageSquare, Palette, Save, UserCheck, ImageIcon, UploadCloud, Timer as TimerIcon, Tag, ChevronUp, ChevronDown, CheckSquare, Square, Calculator, ShoppingBag, X, Minus, Pencil, Info
 } from 'lucide-react';
 
 const supabase = createClient(
@@ -239,15 +239,28 @@ export default function AdminPage() {
     const savedCompact = localStorage.getItem('vito-compact');
     if (savedCompact) setIsCompact(savedCompact === 'true');
     
+    // --- REAL-TIME PRESENCE LOGIC (FIXED) ---
     const presenceChannel = supabase.channel('online-users');
-    presenceChannel.on('presence', { event: 'sync' }, () => {
-        const state = presenceChannel.presenceState();
-        const count = Object.values(state).reduce((acc: number, presences: any) => {
-            const isGuest = presences.some((p: any) => p.role === 'guest');
-            return acc + (isGuest ? 1 : 0);
-        }, 0);
-        setOnlineUsers(count);
-    }).subscribe();
+    
+    presenceChannel
+        .on('presence', { event: 'sync' }, () => {
+            const state = presenceChannel.presenceState();
+            // Calcular SOLO los invitados
+            const count = Object.values(state).reduce((acc: number, presences: any) => {
+                const isGuest = presences.some((p: any) => p.role === 'guest');
+                return acc + (isGuest ? 1 : 0);
+            }, 0);
+            setOnlineUsers(count);
+        })
+        .subscribe(async (status) => {
+            if (status === 'SUBSCRIBED') {
+                // Admin se registra como 'admin' para no contar
+                await presenceChannel.track({
+                    online_at: new Date().toISOString(),
+                    role: 'admin'
+                });
+            }
+        });
 
     if (autenticado) {
       cargarDatos();
@@ -1028,6 +1041,12 @@ export default function AdminPage() {
                             className={`w-full p-3 rounded-xl border outline-none resize-none h-20 text-sm ${base.input}`} 
                         />
                         <button onClick={async () => { await supabase.from('configuracion_dia').update({ mensaje_bienvenida: config.mensaje_bienvenida }).eq('id', config.id); alert('Guardado'); }} className={`font-bold px-4 rounded-xl self-end h-20 flex items-center justify-center ${isDarkMode ? 'bg-white text-black' : 'bg-black text-white'}`}>OK</button>
+                    </div>
+                    {/* GLOSARIO */}
+                    <div className="flex gap-2 mt-2 text-xs opacity-60">
+                        <span className="font-bold flex items-center gap-1"><Info size={12}/> Variables:</span>
+                        <span className="bg-neutral-500/20 px-1.5 py-0.5 rounded font-mono">[nombre]</span>
+                        <span className="bg-neutral-500/20 px-1.5 py-0.5 rounded font-mono">[fecha]</span>
                     </div>
                 </div>
                 <div className="flex justify-between items-center"><label className={`text-sm ${base.subtext}`}>Modo Estricto</label><button onClick={async () => { const n = !config.modo_estricto; setConfig({...config, modo_estricto: n}); await supabase.from('configuracion_dia').update({ modo_estricto: n }).eq('id', config.id); }} className={`w-12 h-6 rounded-full transition-colors relative ${config.modo_estricto ? 'bg-green-600' : 'bg-gray-400'}`}><div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all ${config.modo_estricto ? 'left-7' : 'left-1'}`}></div></button></div>
