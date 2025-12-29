@@ -411,6 +411,15 @@ export default function VitoPizzaApp() {
   const prevCocinandoData = useRef<Record<string, boolean>>({});
   const firstLoadRef = useRef(true);
 
+  // HELPER PARA MENSAJE BIENVENIDA
+  const getWelcomeMessage = () => {
+      if (!config.mensaje_bienvenida) return null;
+      let msg = config.mensaje_bienvenida;
+      msg = msg.replace(/\[nombre\]/gi, nombreInvitado || 'Invitado');
+      msg = msg.replace(/\[fecha\]/gi, new Date().toLocaleDateString());
+      return msg;
+  };
+
   const sendNotification = async (title: string, body: string) => {
     if (Notification.permission === 'granted') {
         try {
@@ -955,8 +964,8 @@ export default function VitoPizzaApp() {
          <div className="relative z-10 pt-16">
              {/* TITULO EDITABLE */}
              <div className="mb-6">
-                 {config.mensaje_bienvenida ? (
-                     <h1 className="text-3xl font-bold leading-tight drop-shadow-md text-white whitespace-pre-wrap">{config.mensaje_bienvenida}</h1>
+                 {getWelcomeMessage() ? (
+                     <h1 className="text-3xl font-bold leading-tight drop-shadow-md text-white whitespace-pre-wrap">{getWelcomeMessage()}</h1>
                  ) : (
                      <h1 className="text-3xl font-bold leading-tight drop-shadow-md text-white">{t.welcomeTitle} <br/> <span className="opacity-80 font-normal text-xl">{t.welcomeSub}</span></h1>
                  )}
