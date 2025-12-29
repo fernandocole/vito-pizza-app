@@ -158,6 +158,8 @@ export default function VitoPizzaApp() {
   const [usuarioBloqueado, setUsuarioBloqueado] = useState(false);
   const [motivoBloqueo, setMotivoBloqueo] = useState('');
 
+  // REF NUEVA: Para guardar cuántas porciones pendientes tenía en el render anterior
+  const prevPendingPerPizzaRef = useRef<Record<string, number>>({});
   const prevComidosPerPizza = useRef<Record<string, number>>({});
   const prevCocinandoData = useRef<Record<string, boolean>>({});
   const firstLoadRef = useRef(true);
@@ -216,7 +218,6 @@ export default function VitoPizzaApp() {
       logAccess();
   }, [nombreInvitado]);
 
-  // HELPER PARA MENSAJE BIENVENIDA TRADUCIDO
   const getWelcomeMessage = () => {
       let msg = translatedWelcome || config.mensaje_bienvenida;
       if (!msg) return null;
@@ -228,14 +229,10 @@ export default function VitoPizzaApp() {
       return msg;
   };
 
-  // --- NOTIFICACIONES ACTUALIZADO ---
   const sendNotification = async (title: string, body: string) => {
-    // Intenta usar el Service Worker si está disponible (Android PWA)
     if ('serviceWorker' in navigator && navigator.serviceWorker.ready) {
         try {
             const registration = await navigator.serviceWorker.ready;
-            
-            // CORRECCION AQUI: Casting 'as any' para evitar el error de TypeScript con 'vibrate'
             registration.showNotification(title, {
                 body: body,
                 icon: '/icon.png',
@@ -247,8 +244,6 @@ export default function VitoPizzaApp() {
             console.log("Fallo SW notification, intentando standard");
         }
     }
-    
-    // Fallback a API estándar (Desktop)
     if (Notification.permission === 'granted') {
         new Notification(title, { body, icon: '/icon.png' });
     }
@@ -285,7 +280,6 @@ export default function VitoPizzaApp() {
   };
 
   useEffect(() => {
-    // --- REGISTRAR SERVICE WORKER ---
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('/sw.js')
             .then(registration => {
@@ -475,34 +469,42 @@ export default function VitoPizzaApp() {
              res[pz.id] = { pendientes: p, comidos: c };
              if (p > 0) penInfo[pz.id] = p;
              
-             // --- LÓGICA DE NOTIFICACIONES CORREGIDA ---
-             // Solo ejecutamos si NO es la primera carga para evitar notificaciones al entrar
+             // --- LÓGICA DE NOTIFICACIONES CORREGIDA (ESTÁ LISTA) ---
              if (!firstLoadRef.current) { 
                  const estabaCocinando = prevCocinandoData.current[pz.id] || false;
                  
-                 // 1. Pizza entra al horno (False -> True)
+                 // 1. Entra al horno (OK)
                  if (!estabaCocinando && pz.cocinando && penInfo[pz.id]) {
                      mostrarMensaje(`¡${penInfo[pz.id]} de ${pz.nombre} al horno!`, 'alerta'); 
                      sendNotification("¡Al Horno!", `Tu ${pz.nombre} está cocinándose.`); 
                  }
                  
-                 // 2. Pizza sale del horno (True -> False) = LISTA
-                 if (estabaCocinando && !pz.cocinando && penInfo[pz.id]) {
-                     mostrarMensaje(`¡${penInfo[pz.id]} de ${pz.nombre} LISTA!`, 'exito'); 
+                 // 2. Sale del horno (OK - FIX)
+                 // Si dejó de cocinarse Y antes tenía pendientes, significa que salió y se entregó.
+                 // Usamos prevPendingPerPizzaRef para recordar si tenía pedidos antes de que desaparecieran.
+                 const teniaPendientes = (prevPendingPerPizzaRef.current[pz.id] || 0) > 0;
+                 
+                 if (estabaCocinando && !pz.cocinando && teniaPendientes) {
+                     mostrarMensaje(`¡Tu ${pz.nombre} ESTÁ LISTA!`, 'exito'); 
                      sendNotification("¡Pizza Lista!", `¡Tu ${pz.nombre} ya salió del horno! A comer.`);
                  }
              } 
              
-             // Actualizamos referencia para la próxima comparación
+             // Actualizamos referencias
              prevCocinandoData.current[pz.id] = pz.cocinando;
              prevComidosPerPizza.current[pz.id] = c;
+             prevPendingPerPizzaRef.current[pz.id] = p; // Guardamos pendientes actuales para la próxima
         });
         
         setMiHistorial(res);
         
-        // Marcamos que ya pasó la carga inicial
         if (firstLoadRef.current) { 
-            dPiz.forEach(pz => { prevCocinandoData.current[pz.id] = pz.cocinando; }); 
+            dPiz.forEach(pz => { 
+                prevCocinandoData.current[pz.id] = pz.cocinando;
+                // Inicializar ref de pendientes
+                const pend = dPed.filter(p => p.pizza_id === pz.id && p.invitado_nombre.toLowerCase() === nombreInvitado.toLowerCase().trim() && p.estado !== 'entregado').reduce((acc, x) => acc + x.cantidad_porciones, 0);
+                prevPendingPerPizzaRef.current[pz.id] = pend;
+            }); 
             firstLoadRef.current = false; 
         }
       }
@@ -663,15 +665,18 @@ export default function VitoPizzaApp() {
 
           if (toNotify.length > 0) {
               const item = toNotify[0];
+              // CORRECCIÓN: Buscamos en 'enrichedPizzas' si existe, si no, fallback a 'pizzas'
               const pz = enrichedPizzas.find(z => z.id === item.pizzaId) || pizzas.find(z => z.id === item.pizzaId);
               
               if (pz) {
                   const delay = config.tiempo_recordatorio_minutos || 10;
+                  // Usamos displayName si existe, sino nombre
                   const nameToShow = pz.displayName || pz.nombre;
                   sendNotification(t.rateQuestion + " " + nameToShow + "?", `${t.ateTimeAgo} ${delay} ${t.minAgo}`);
                   setLateRatingPizza(pz);
                   setShowLateRatingModal(true);
               }
+              // Actualizar LS con los pendientes
               localStorage.setItem('vito-review-queue', JSON.stringify(remaining));
           }
       }, 10000); // Revisar cada 10s
