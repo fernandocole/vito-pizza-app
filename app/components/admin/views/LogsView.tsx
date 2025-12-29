@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Smartphone, Monitor, Globe, MapPin, Clock, ShieldAlert, Edit2, Check, X } from 'lucide-react';
+import { Smartphone, Monitor, Globe, MapPin, Clock, ShieldAlert, Edit2, Check, X, RefreshCw } from 'lucide-react';
 
-export const LogsView = ({ base, logs, isDarkMode, currentTheme, updateLogName }: any) => {
+export const LogsView = ({ base, logs, isDarkMode, currentTheme, updateLogName, onRefresh }: any) => {
     
     // Estado local para la edición
     const [editingId, setEditingId] = useState<string | null>(null);
     const [tempName, setTempName] = useState('');
+    const [isRefreshing, setIsRefreshing] = useState(false);
 
     const formatDate = (dateStr: string) => {
         const d = new Date(dateStr);
@@ -27,6 +28,13 @@ export const LogsView = ({ base, logs, isDarkMode, currentTheme, updateLogName }
         setEditingId(null);
     };
 
+    const handleManualRefresh = async () => {
+        if (!onRefresh) return;
+        setIsRefreshing(true);
+        await onRefresh();
+        setTimeout(() => setIsRefreshing(false), 800); // Pequeño delay visual para que se vea el giro
+    };
+
     return (
         <div className="space-y-4 animate-in fade-in">
             <div className={`p-4 rounded-3xl border ${base.card} flex justify-between items-center`}>
@@ -39,6 +47,15 @@ export const LogsView = ({ base, logs, isDarkMode, currentTheme, updateLogName }
                         <p className={`text-xs ${base.subtext} mt-1`}>Total visitas hoy: {logs.length}</p>
                     </div>
                 </div>
+                
+                {/* BOTON DE REFRESCO MANUAL */}
+                <button 
+                    onClick={handleManualRefresh}
+                    className={`p-3 rounded-xl border transition-all active:scale-95 ${base.buttonSec} ${isRefreshing ? 'animate-spin' : ''}`}
+                    title="Actualizar lista"
+                >
+                    <RefreshCw size={20}/>
+                </button>
             </div>
 
             <div className="space-y-2">

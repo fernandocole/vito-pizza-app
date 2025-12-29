@@ -171,7 +171,6 @@ export default function VitoPizzaApp() {
               localStorage.setItem('vito-session-id', sessionId);
           }
 
-          // Obtener datos del navegador
           const userAgent = navigator.userAgent;
           let deviceType = "Desktop";
           if (/Mobi|Android/i.test(userAgent)) deviceType = "Mobile";
@@ -181,7 +180,6 @@ export default function VitoPizzaApp() {
           else if (userAgent.indexOf("Safari") > -1) browserName = "Safari";
           else if (userAgent.indexOf("Firefox") > -1) browserName = "Firefox";
 
-          // Intentar obtener IP (opcional, puede fallar por adblockers)
           let ipData = { ip: null, city: null, country_name: null };
           try {
               const res = await fetch('https://ipapi.co/json/');
@@ -190,7 +188,6 @@ export default function VitoPizzaApp() {
               console.log("IP fetch failed");
           }
 
-          // Verificar si ya logueamos esta sesión hoy
           const { data: existingLog } = await supabase
               .from('access_logs')
               .select('id')
@@ -199,7 +196,6 @@ export default function VitoPizzaApp() {
               .single();
 
           if (!existingLog) {
-              // Insertar nuevo log
               await supabase.from('access_logs').insert([{
                   session_id: sessionId,
                   device: deviceType,
@@ -210,7 +206,6 @@ export default function VitoPizzaApp() {
                   invitado_nombre: nombreInvitado || null
               }]);
           } else {
-              // Si ya existe y ahora tenemos nombre, actualizar
               if (nombreInvitado) {
                   await supabase.from('access_logs')
                       .update({ invitado_nombre: nombreInvitado })
@@ -218,14 +213,11 @@ export default function VitoPizzaApp() {
               }
           }
       };
-
-      // Ejecutar solo una vez al montar o cuando cambia el nombre
       logAccess();
   }, [nombreInvitado]);
 
   // HELPER PARA MENSAJE BIENVENIDA TRADUCIDO
   const getWelcomeMessage = () => {
-      // Usamos el traducido si existe, sino el de config, sino un fallback
       let msg = translatedWelcome || config.mensaje_bienvenida;
       if (!msg) return null;
 
@@ -236,19 +228,29 @@ export default function VitoPizzaApp() {
       return msg;
   };
 
+  // --- NOTIFICACIONES ACTUALIZADO ---
   const sendNotification = async (title: string, body: string) => {
-    if (Notification.permission === 'granted') {
+    // Intenta usar el Service Worker si está disponible (Android PWA)
+    if ('serviceWorker' in navigator && navigator.serviceWorker.ready) {
         try {
-            const reg = await navigator.serviceWorker.getRegistration();
-            if (reg) {
-                reg.showNotification(title, { body, icon: '/icon.png', badge: '/icon.png' });
-            } else {
-                new Notification(title, { body, icon: '/icon.png' });
-            }
+            const registration = await navigator.serviceWorker.ready;
+            
+            // CORRECCION AQUI: Casting 'as any' para evitar el error de TypeScript con 'vibrate'
+            registration.showNotification(title, {
+                body: body,
+                icon: '/icon.png',
+                badge: '/icon.png',
+                vibrate: [200, 100, 200]
+            } as any);
+            return;
         } catch (e) {
-            console.error("Error enviando notificación", e);
-            try { new Notification(title, { body, icon: '/icon.png' }); } catch(err) {}
+            console.log("Fallo SW notification, intentando standard");
         }
+    }
+    
+    // Fallback a API estándar (Desktop)
+    if (Notification.permission === 'granted') {
+        new Notification(title, { body, icon: '/icon.png' });
     }
   };
 
@@ -283,6 +285,17 @@ export default function VitoPizzaApp() {
   };
 
   useEffect(() => {
+    // --- REGISTRAR SERVICE WORKER ---
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js')
+            .then(registration => {
+                console.log('SW registrado:', registration);
+            })
+            .catch(error => {
+                console.log('SW error:', error);
+            });
+    }
+
     const hasSeenOnboarding = localStorage.getItem('vito-onboarding-seen');
     if (!hasSeenOnboarding) setShowOnboarding(true);
 
@@ -368,22 +381,7 @@ export default function VitoPizzaApp() {
   
   const changeFilter = (f: any) => { setFilter(f); localStorage.setItem('vito-filter', f); };
   const verifyAccess = (i: string, c: string) => { if (!c || c === '' || i === c) { setAccessGranted(true); if(c !== '') localStorage.setItem('vito-guest-pass-val', i); } else { setAccessGranted(false); } };
-  
-  // Modificado para actualizar logs cuando cambia el nombre
-  const handleNameChange = (val: string) => { 
-      setNombreInvitado(val); 
-      localStorage.setItem('vito-guest-name', val); 
-      
-      const user = invitadosLista.find(u => u.nombre.toLowerCase() === val.toLowerCase()); 
-      if (user && user.bloqueado) { 
-          setUsuarioBloqueado(true); 
-          setMotivoBloqueo(user.motivo_bloqueo || ''); 
-      } else { 
-          setUsuarioBloqueado(false); 
-          setMotivoBloqueo(''); 
-      } 
-  };
-
+  const handleNameChange = (val: string) => { setNombreInvitado(val); localStorage.setItem('vito-guest-name', val); const user = invitadosLista.find(u => u.nombre.toLowerCase() === val.toLowerCase()); if (user && user.bloqueado) { setUsuarioBloqueado(true); setMotivoBloqueo(user.motivo_bloqueo || ''); } else { setUsuarioBloqueado(false); setMotivoBloqueo(''); } };
   const changeTheme = (t: typeof THEMES[0]) => { setCurrentTheme(t); localStorage.setItem('vito-guest-theme', t.name); setShowThemeSelector(false); };
   
   const rotarIdioma = () => { 
@@ -406,14 +404,8 @@ export default function VitoPizzaApp() {
   };
 
   useEffect(() => {
-      // Traducir Pizzas y Mensaje de Bienvenida al cambiar idioma
-      if (lang === 'es') {
-          setTranslatedWelcome('');
-          return;
-      }
-
+      if (lang === 'es' || pizzas.length === 0) return;
       const translateAll = async () => {
-          // 1. Traducir Pizzas (existente)
           const newTrans = { ...autoTranslations };
           let hasChanges = false;
           for (const p of pizzas) {
@@ -427,23 +419,19 @@ export default function VitoPizzaApp() {
           }
           if (hasChanges) setAutoTranslations(newTrans);
 
-          // 2. Traducir Mensaje de Bienvenida (MEJORADO PARA MULTILINEA)
           if (config.mensaje_bienvenida) {
-              // A. Enmascarar variables y saltos de línea
               let safeMsg = config.mensaje_bienvenida
-                  .replace(/\n/g, ' XX_BR_XX ') // Proteger saltos de línea
+                  .replace(/\n/g, ' XX_BR_XX ') 
                   .replace(/\[nombre\]/gi, 'XX_NAME_XX')
                   .replace(/\[fecha\]/gi, 'XX_DATE_XX')
                   .replace(/\[hora\]/gi, 'XX_TIME_XX')
                   .replace(/\[pizzas\]/gi, 'XX_COUNT_XX');
 
-              // B. Traducir texto seguro
               let tMsg = await translateText(safeMsg, lang);
 
-              // C. Restaurar variables y saltos
               tMsg = tMsg
                   .replace(/XX_BR_XX/gi, '\n')
-                  .replace(/XX _ BR _ XX/gi, '\n') // Fix espacios de google
+                  .replace(/XX _ BR _ XX/gi, '\n') 
                   .replace(/XX_NAME_XX/gi, '[nombre]')
                   .replace(/XX _ NAME _ XX/gi, '[nombre]') 
                   .replace(/XX_DATE_XX/gi, '[fecha]')
@@ -504,256 +492,59 @@ export default function VitoPizzaApp() {
 
   useEffect(() => { fetchDatos(); const c = supabase.channel('app-realtime').on('postgres_changes', { event: '*', schema: 'public' }, () => fetchDatos()).subscribe(); return () => { supabase.removeChannel(c); }; }, [fetchDatos]);
 
-  const activeCategories: string[] = useMemo(() => {
-      try {
-          const parsed = JSON.parse(config.categoria_activa);
-          if (parsed === 'Todas' || (Array.isArray(parsed) && parsed.length === 0)) return []; 
-          return Array.isArray(parsed) ? parsed : ['General'];
-      } catch { return ['General']; }
-  }, [config.categoria_activa]);
+  // ... (El resto de la lógica se mantiene igual)
+  const activeCategories: string[] = useMemo(() => { try { const parsed = JSON.parse(config.categoria_activa); if (parsed === 'Todas' || (Array.isArray(parsed) && parsed.length === 0)) return []; return Array.isArray(parsed) ? parsed : ['General']; } catch { return ['General']; } }, [config.categoria_activa]);
 
   const enrichedPizzas = useMemo(() => {
       const globalAvg = allRatings.length > 0 ? (allRatings.reduce((a, r) => a + r.rating, 0) / allRatings.length) : 0;
-      
       return pizzas.map(pizza => {
           const totalStock = (pizza.stock || 0) * (pizza.porciones_individuales || config.porciones_por_pizza);
           const used = pedidos.filter(p => p.pizza_id === pizza.id).reduce((a, c) => a + c.cantidad_porciones, 0);
           const stockRestante = Math.max(0, totalStock - used);
           const pen = pedidos.filter(p => p.pizza_id === pizza.id && p.estado !== 'entregado').reduce((a, c) => a + c.cantidad_porciones, 0);
           const target = pizza.porciones_individuales || config.porciones_por_pizza;
-          
           const rats = allRatings.filter(r => r.pizza_id === pizza.id);
           const avg = rats.length > 0 ? (rats.reduce((a, b) => a + b.rating, 0) / rats.length).toFixed(1) : null;
           const sortR = rats.length > 0 ? (rats.reduce((a, b) => a + b.rating, 0) / rats.length) : globalAvg;
           const countRating = rats.length;
-
           let displayName = pizza.nombre;
           let displayDesc = pizza.descripcion;
           if (lang !== 'es' && autoTranslations[pizza.id] && autoTranslations[pizza.id][lang]) {
               displayName = autoTranslations[pizza.id][lang].name;
               displayDesc = autoTranslations[pizza.id][lang].desc;
           }
-
-          return { 
-              ...pizza, 
-              displayName, 
-              displayDesc,
-              stockRestante, 
-              target, 
-              ocupadasActual: pen % target, 
-              faltanParaCompletar: target - (pen % target), 
-              avgRating: avg, 
-              countRating: countRating, 
-              sortRating: sortR, 
-              totalPendientes: pen 
-          };
+          return { ...pizza, displayName, displayDesc, stockRestante, target, ocupadasActual: pen % target, faltanParaCompletar: target - (pen % target), avgRating: avg, countRating: countRating, sortRating: sortR, totalPendientes: pen };
       });
   }, [pizzas, pedidos, config, allRatings, lang, autoTranslations]);
 
   useEffect(() => {
     if (enrichedPizzas.length === 0) return;
-
     let lista = [...enrichedPizzas];
-    
-    // Filtrar por categoría activa
-    if (activeCategories.length > 0 && !activeCategories.includes('Todas')) {
-        lista = lista.filter(p => activeCategories.includes(p.categoria || 'General'));
-    }
-
-    if (filter !== 'all') {
-        lista = lista.filter(p => {
-            if (filter === 'top') return p.avgRating && parseFloat(p.avgRating) >= 4.5;
-            if (filter === 'to_rate') return miHistorial[p.id]?.comidos > 0 && !misValoraciones.includes(p.id);
-            if (filter === 'ordered') return (miHistorial[p.id]?.pendientes > 0 || miHistorial[p.id]?.comidos > 0);
-            if (filter === 'new') return (!miHistorial[p.id]?.pendientes && !miHistorial[p.id]?.comidos);
-            if (filter === 'stock') return p.stockRestante > 0;
-            return true;
-        });
-    }
-
-    lista.sort((a, b) => {
-        const aReady = !a.cocinando && a.totalPendientes >= a.target;
-        const bReady = !b.cocinando && b.totalPendientes >= b.target;
-        if (aReady && !bReady) return -1;
-        if (!aReady && bReady) return 1;
-
-        if (a.cocinando && !b.cocinando) return -1;
-        if (!a.cocinando && b.cocinando) return 1;
-
-        const aStock = a.stockRestante > 0;
-        const bStock = b.stockRestante > 0;
-        if (aStock && !bStock) return -1;
-        if (!aStock && bStock) return 1;
-
-        if (orden === 'ranking') return b.sortRating - a.sortRating;
-        if (orden === 'nombre') return a.displayName.localeCompare(b.displayName);
-
-        const aActive = a.ocupadasActual;
-        const bActive = b.ocupadasActual;
-        if (aActive !== bActive) return bActive - aActive; 
-
-        return a.displayName.localeCompare(b.displayName); 
-    });
-
+    if (activeCategories.length > 0 && !activeCategories.includes('Todas')) { lista = lista.filter(p => activeCategories.includes(p.categoria || 'General')); }
+    if (filter !== 'all') { lista = lista.filter(p => { if (filter === 'top') return p.avgRating && parseFloat(p.avgRating) >= 4.5; if (filter === 'to_rate') return miHistorial[p.id]?.comidos > 0 && !misValoraciones.includes(p.id); if (filter === 'ordered') return (miHistorial[p.id]?.pendientes > 0 || miHistorial[p.id]?.comidos > 0); if (filter === 'new') return (!miHistorial[p.id]?.pendientes && !miHistorial[p.id]?.comidos); if (filter === 'stock') return p.stockRestante > 0; return true; }); }
+    lista.sort((a, b) => { const aReady = !a.cocinando && a.totalPendientes >= a.target; const bReady = !b.cocinando && b.totalPendientes >= b.target; if (aReady && !bReady) return -1; if (!aReady && bReady) return 1; if (a.cocinando && !b.cocinando) return -1; if (!a.cocinando && b.cocinando) return 1; const aStock = a.stockRestante > 0; const bStock = b.stockRestante > 0; if (aStock && !bStock) return -1; if (!aStock && bStock) return 1; if (orden === 'ranking') return b.sortRating - a.sortRating; if (orden === 'nombre') return a.displayName.localeCompare(b.displayName); const aActive = a.ocupadasActual; const bActive = b.ocupadasActual; if (aActive !== bActive) return bActive - aActive; return a.displayName.localeCompare(b.displayName); });
     setOrderedIds(lista.map(p => p.id));
-  }, [
-      orden, 
-      filter, 
-      pizzas.length, 
-      JSON.stringify(pizzas.map(p => ({ id: p.id, cocinando: p.cocinando, stock: p.stock }))),
-      JSON.stringify(activeCategories)
-  ]);
+  }, [orden, filter, pizzas.length, JSON.stringify(pizzas.map(p => ({ id: p.id, cocinando: p.cocinando, stock: p.stock }))), JSON.stringify(activeCategories)]);
 
   // --- LÓGICA DE RECORDATORIO REFACTORIZADA (ROBUSTA ANTE RECARGAS) ---
   useEffect(() => {
       if(!nombreInvitado || !pizzas.length) return;
-
       const storedQueue = localStorage.getItem('vito-review-queue');
       let queue: { id: string, pizzaId: string, triggerAt: number }[] = storedQueue ? JSON.parse(storedQueue) : [];
       let queueChanged = false;
-
       const delivered = pedidos.filter(p => p.invitado_nombre === nombreInvitado && p.estado === 'entregado');
-
-      delivered.forEach(p => {
-          if (misValoraciones.includes(p.pizza_id)) return;
-          if (queue.find(q => q.id === p.id)) return;
-          if (processedOrderIds.current.has(p.id)) return;
-
-          processedOrderIds.current.add(p.id);
-          
-          if (!firstLoadRef.current) {
-              const delayMins = config.tiempo_recordatorio_minutos || 10;
-              const triggerTime = Date.now() + (delayMins * 60000);
-              
-              queue.push({ id: p.id, pizzaId: p.pizza_id, triggerAt: triggerTime });
-              queueChanged = true;
-          }
-      });
-
-      if (queueChanged) {
-          localStorage.setItem('vito-review-queue', JSON.stringify(queue));
-      }
-
-      const checker = setInterval(() => {
-          const currentQueueStr = localStorage.getItem('vito-review-queue');
-          if (!currentQueueStr) return;
-          
-          let currentQueue = JSON.parse(currentQueueStr);
-          const now = Date.now();
-          const toNotify: any[] = [];
-          const remaining: any[] = [];
-
-          currentQueue.forEach((item: any) => {
-              if (misValoraciones.includes(item.pizzaId)) return;
-
-              if (now >= item.triggerAt) {
-                  toNotify.push(item);
-              } else {
-                  remaining.push(item);
-              }
-          });
-
-          if (toNotify.length > 0) {
-              const item = toNotify[0];
-              // CORRECCIÓN: Buscamos en 'enrichedPizzas' si existe, si no, fallback a 'pizzas'
-              const pz = enrichedPizzas.find(z => z.id === item.pizzaId) || pizzas.find(z => z.id === item.pizzaId);
-              
-              if (pz) {
-                  const delay = config.tiempo_recordatorio_minutos || 10;
-                  // Usamos displayName si existe, sino nombre
-                  const nameToShow = pz.displayName || pz.nombre;
-                  sendNotification(t.rateQuestion + " " + nameToShow + "?", `${t.ateTimeAgo} ${delay} ${t.minAgo}`);
-                  setLateRatingPizza(pz);
-                  setShowLateRatingModal(true);
-              }
-              // Actualizar LS con los pendientes
-              localStorage.setItem('vito-review-queue', JSON.stringify(remaining));
-          }
-      }, 10000); // Revisar cada 10s
-
+      delivered.forEach(p => { if (misValoraciones.includes(p.pizza_id)) return; if (queue.find(q => q.id === p.id)) return; if (processedOrderIds.current.has(p.id)) return; processedOrderIds.current.add(p.id); if (!firstLoadRef.current) { const delayMins = config.tiempo_recordatorio_minutos || 10; const triggerTime = Date.now() + (delayMins * 60000); queue.push({ id: p.id, pizzaId: p.pizza_id, triggerAt: triggerTime }); queueChanged = true; } });
+      if (queueChanged) { localStorage.setItem('vito-review-queue', JSON.stringify(queue)); }
+      const checker = setInterval(() => { const currentQueueStr = localStorage.getItem('vito-review-queue'); if (!currentQueueStr) return; let currentQueue = JSON.parse(currentQueueStr); const now = Date.now(); const toNotify: any[] = []; const remaining: any[] = []; currentQueue.forEach((item: any) => { if (misValoraciones.includes(item.pizzaId)) return; if (now >= item.triggerAt) { toNotify.push(item); } else { remaining.push(item); } }); if (toNotify.length > 0) { const item = toNotify[0]; const pz = enrichedPizzas.find(z => z.id === item.pizzaId) || pizzas.find(z => z.id === item.pizzaId); if (pz) { const delay = config.tiempo_recordatorio_minutos || 10; const nameToShow = pz.displayName || pz.nombre; sendNotification(t.rateQuestion + " " + nameToShow + "?", `${t.ateTimeAgo} ${delay} ${t.minAgo}`); setLateRatingPizza(pz); setShowLateRatingModal(true); } localStorage.setItem('vito-review-queue', JSON.stringify(remaining)); } }, 10000); 
       return () => clearInterval(checker);
   }, [pedidos, nombreInvitado, pizzas, enrichedPizzas, misValoraciones, config]);
 
-  const summaryData = useMemo(() => {
-      if(!summarySheet) return [];
-      
-      return enrichedPizzas.filter(p => {
-          const h = miHistorial[p.id];
-          if(!h) return false;
-          if(summarySheet === 'wait') return h.pendientes > 0 && !p.cocinando;
-          if(summarySheet === 'oven') return h.pendientes > 0 && p.cocinando;
-          if(summarySheet === 'ready') return h.comidos > 0; 
-          if(summarySheet === 'total') return h.pendientes > 0;
-          return false;
-      }).map(p => {
-          const h = miHistorial[p.id];
-          let count = 0;
-          if(summarySheet === 'wait') count = h.pendientes;
-          else if(summarySheet === 'oven') count = h.pendientes;
-          else if(summarySheet === 'ready') count = h.comidos;
-          else count = h.pendientes; 
-
-          return { ...p, count };
-      });
-  }, [summarySheet, enrichedPizzas, miHistorial]); 
-
-  const mySummary = useMemo(() => {
-      let t = 0, w = 0, o = 0, r = 0;
-      pizzas.forEach(p => {
-          const h = miHistorial[p.id];
-          if(h) {
-              const pen = h.pendientes;
-              if (pen > 0) { if (p.cocinando) o += pen; else w += pen; }
-              r += h.comidos; t += pen;
-          }
-      });
-      return { total: t, wait: w, oven: o, ready: r };
-  }, [miHistorial, pizzas]);
-
-  const currentBannerText = useMemo(() => {
-      if (cargando) return t.loading;
-      const msgs = [`${invitadosActivos} ${t.status}`];
-      const pData = pizzas.map(p => {
-          const vals = allRatings.filter(v => v.pizza_id === p.id);
-          const avg = vals.length > 0 ? vals.reduce((a, b) => a + b.rating, 0) / vals.length : 0;
-          const totS = (p.stock || 0) * (p.porciones_individuales || config.porciones_por_pizza);
-          const us = pedidos.filter(ped => ped.pizza_id === p.id).reduce((a, c) => a + c.cantidad_porciones, 0);
-          
-          let dName = p.nombre;
-          if (lang !== 'es' && autoTranslations[p.id] && autoTranslations[p.id][lang]) {
-              dName = autoTranslations[p.id][lang].name;
-          }
-
-          return { ...p, displayName: dName, stock: Math.max(0, totS - us), avg, count: vals.length };
-      });
-      pData.forEach(p => { if (p.stock === 0) msgs.push(`${p.displayName}: ${t.soldOut} 😭`); else if (p.stock <= 5) msgs.push(`${t.only} ${p.stock} ${t.of} ${p.displayName}! 🏃`); });
-      const best = [...pData].sort((a,b) => b.avg - a.avg)[0];
-      if (best && best.avg >= 4.5 && best.count > 1) msgs.push(`${t.topRated} ${best.displayName} (${best.avg.toFixed(1)}★)`);
-      const pop = pData.filter(p => p.avg > 4.7 && p.count > 2);
-      pop.forEach(p => msgs.push(`${t.hotPick} ${p.displayName}!`));
-      return msgs[bannerIndex % msgs.length];
-  }, [invitadosActivos, pizzas, pedidos, bannerIndex, cargando, t, config, allRatings, lang, autoTranslations]);
+  const summaryData = useMemo(() => { if(!summarySheet) return []; return enrichedPizzas.filter(p => { const h = miHistorial[p.id]; if(!h) return false; if(summarySheet === 'wait') return h.pendientes > 0 && !p.cocinando; if(summarySheet === 'oven') return h.pendientes > 0 && p.cocinando; if(summarySheet === 'ready') return h.comidos > 0; if(summarySheet === 'total') return h.pendientes > 0; return false; }).map(p => { const h = miHistorial[p.id]; let count = 0; if(summarySheet === 'wait') count = h.pendientes; else if(summarySheet === 'oven') count = h.pendientes; else if(summarySheet === 'ready') count = h.comidos; else count = h.pendientes; return { ...p, count }; }); }, [summarySheet, enrichedPizzas, miHistorial]); 
+  const mySummary = useMemo(() => { let t = 0, w = 0, o = 0, r = 0; pizzas.forEach(p => { const h = miHistorial[p.id]; if(h) { const pen = h.pendientes; if (pen > 0) { if (p.cocinando) o += pen; else w += pen; } r += h.comidos; t += pen; } }); return { total: t, wait: w, oven: o, ready: r }; }, [miHistorial, pizzas]);
+  const currentBannerText = useMemo(() => { if (cargando) return t.loading; const msgs = [`${invitadosActivos} ${t.status}`]; const pData = pizzas.map(p => { const vals = allRatings.filter(v => v.pizza_id === p.id); const avg = vals.length > 0 ? vals.reduce((a, b) => a + b.rating, 0) / vals.length : 0; const totS = (p.stock || 0) * (p.porciones_individuales || config.porciones_por_pizza); const us = pedidos.filter(ped => ped.pizza_id === p.id).reduce((a, c) => a + c.cantidad_porciones, 0); let dName = p.nombre; if (lang !== 'es' && autoTranslations[p.id] && autoTranslations[p.id][lang]) { dName = autoTranslations[p.id][lang].name; } return { ...p, displayName: dName, stock: Math.max(0, totS - us), avg, count: vals.length }; }); pData.forEach(p => { if (p.stock === 0) msgs.push(`${p.displayName}: ${t.soldOut} 😭`); else if (p.stock <= 5) msgs.push(`${t.only} ${p.stock} ${t.of} ${p.displayName}! 🏃`); }); const best = [...pData].sort((a,b) => b.avg - a.avg)[0]; if (best && best.avg >= 4.5 && best.count > 1) msgs.push(`${t.topRated} ${best.displayName} (${best.avg.toFixed(1)}★)`); const pop = pData.filter(p => p.avg > 4.7 && p.count > 2); pop.forEach(p => msgs.push(`${t.hotPick} ${p.displayName}!`)); return msgs[bannerIndex % msgs.length]; }, [invitadosActivos, pizzas, pedidos, bannerIndex, cargando, t, config, allRatings, lang, autoTranslations]);
 
   const openRating = (p: any) => { setPizzaToRate(p); setRatingValue(0); setCommentValue(''); setShowRatingModal(true); };
-  
-  // AL ENVIAR RATING: Limpiamos también de la cola de recordatorios
-  const submitRating = async () => { 
-      if (ratingValue === 0) return; 
-      await supabase.from('valoraciones').insert([{ pizza_id: pizzaToRate.id, invitado_nombre: nombreInvitado, rating: ratingValue, comentario: commentValue }]); 
-      setMisValoraciones(prev => [...prev, pizzaToRate.id]); 
-      
-      // Limpiar de la cola de recordatorios si estaba ahí
-      const storedQueue = localStorage.getItem('vito-review-queue');
-      if (storedQueue) {
-          const queue = JSON.parse(storedQueue);
-          const newQueue = queue.filter((item: any) => item.pizzaId !== pizzaToRate.id);
-          localStorage.setItem('vito-review-queue', JSON.stringify(newQueue));
-      }
-
-      setShowRatingModal(false); 
-      setShowLateRatingModal(false); 
-      fetchDatos(); 
-  };
+  const submitRating = async () => { if (ratingValue === 0) return; await supabase.from('valoraciones').insert([{ pizza_id: pizzaToRate.id, invitado_nombre: nombreInvitado, rating: ratingValue, comentario: commentValue }]); setMisValoraciones(prev => [...prev, pizzaToRate.id]); const storedQueue = localStorage.getItem('vito-review-queue'); if (storedQueue) { const queue = JSON.parse(storedQueue); const newQueue = queue.filter((item: any) => item.pizzaId !== pizzaToRate.id); localStorage.setItem('vito-review-queue', JSON.stringify(newQueue)); } setShowRatingModal(false); setShowLateRatingModal(false); fetchDatos(); };
 
   async function modificarPedido(p: any, acc: 'sumar' | 'restar') {
     if (!nombreInvitado.trim()) { alert(t.errorName); return; }
@@ -894,10 +685,10 @@ export default function VitoPizzaApp() {
             </div>
         )}
 
-        {/* Rating Modal (TITULO CORREGIDO PARA MOSTRAR SIEMPRE) */}
+        {/* Rating Modal */}
         {showRatingModal && (<div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in"><div className={`${base.card} p-6 rounded-3xl w-full max-w-sm relative shadow-2xl border`}><button onClick={() => setShowRatingModal(false)} className={`absolute top-4 right-4 ${base.subtext} hover:${base.text}`}><X /></button><h3 className={`text-xl font-bold mb-1 ${base.text}`}>{t.rateTitle} {pizzaToRate?.displayName || pizzaToRate?.nombre}</h3><div className="flex justify-center gap-2 mb-6 mt-4">{[1, 2, 3, 4, 5].map(star => (<button key={star} onClick={() => setRatingValue(star)} className="transition-transform hover:scale-110"><Star size={32} fill={star <= ratingValue ? "#eab308" : "transparent"} className={star <= ratingValue ? "text-yellow-500" : "text-neutral-600"} /></button>))}</div><textarea className={`w-full p-3 rounded-xl border outline-none mb-4 resize-none h-24 ${base.input} ${isDarkMode ? 'border-neutral-700 bg-black/50' : 'border-gray-200 bg-gray-50'}`} placeholder="..." value={commentValue} onChange={e => setCommentValue(e.target.value)} /><button onClick={submitRating} disabled={ratingValue === 0} className={`w-full py-3 rounded-xl font-bold shadow-lg ${ratingValue > 0 ? `${currentTheme.color} text-white` : 'bg-neutral-800 text-neutral-500'}`}>{t.sendReview}</button></div></div>)}
 
-        {/* Late Rating Toast (Z-INDEX AUMENTADO y TITULO CORREGIDO) */}
+        {/* Late Rating Toast */}
         {showLateRatingModal && lateRatingPizza && (
             <div className="fixed top-24 left-4 right-4 z-[100] animate-bounce-in">
                 <div className={`${base.card} p-4 rounded-2xl shadow-2xl border border-yellow-500/50 flex items-center justify-between gap-3`}>

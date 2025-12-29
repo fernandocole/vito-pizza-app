@@ -159,11 +159,11 @@ export default function AdminPage() {
     const savedCompact = localStorage.getItem('vito-compact');
     if (savedCompact) setIsCompact(savedCompact === 'true');
 
-    // --- DB REALTIME REFORZADO ---
+    // --- DB REALTIME ---
     if (autenticado) {
       cargarDatos();
       const channel = supabase.channel('admin-realtime')
-        .on('postgres_changes', { event: '*', schema: 'public' }, () => cargarDatos()) // Escucha general
+        .on('postgres_changes', { event: '*', schema: 'public' }, () => cargarDatos()) 
         .subscribe();
       
       return () => { supabase.removeChannel(channel); };
@@ -174,28 +174,23 @@ export default function AdminPage() {
   useEffect(() => {
     if (!autenticado) return;
 
-    // 1. Crear canal único para presencia
     const presenceChannel = supabase.channel('online-users', {
         config: {
             presence: {
-                key: 'admin', // Clave única para el admin
+                key: 'admin', 
             },
         },
     });
     
-    // 2. Definir manejador de eventos
     presenceChannel
         .on('presence', { event: 'sync' }, () => {
             const state = presenceChannel.presenceState();
-            // Aplanar todos los estados
             const allPresences = Object.values(state).flat() as any[];
-            // Filtrar solo los guests
             const count = allPresences.filter((p: any) => p.role === 'guest').length;
             setOnlineUsers(count);
         })
         .subscribe(async (status) => {
             if (status === 'SUBSCRIBED') {
-                // El admin también se trackea para que Supabase sepa que está vivo
                 await presenceChannel.track({
                     online_at: new Date().toISOString(),
                     role: 'admin'
@@ -203,7 +198,6 @@ export default function AdminPage() {
             }
         });
 
-    // 3. Limpieza al desmontar
     return () => {
         supabase.removeChannel(presenceChannel);
     };
@@ -221,6 +215,21 @@ export default function AdminPage() {
     if (data && data.password_admin === password) { setAutenticado(true); setConfig(data); cargarDatos(); } else { alert('Incorrecto'); }
   };
 
+  // --- FUNCIÓN OPTIMIZADA: REFRESCAR SOLO LOGS ---
+  const refreshLogsOnly = async () => {
+      // Simplificado: Trae los últimos 100 logs sin importar la fecha (para evitar errores de zona horaria)
+      const { data } = await supabase
+          .from('access_logs')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(100);
+          
+      if (data) {
+          setLogs(data);
+          console.log("Logs actualizados:", data.length);
+      }
+  };
+
   const cargarDatos = async () => {
     const now = new Date(); if (now.getHours() < 6) now.setDate(now.getDate() - 1); now.setHours(6, 0, 0, 0); const iso = now.toISOString();
     
@@ -233,7 +242,7 @@ export default function AdminPage() {
         supabase.from('lista_invitados').select('*').order('nombre'),
         supabase.from('configuracion_dia').select('*').single(),
         supabase.from('valoraciones').select('*').gte('created_at', iso).order('created_at', { ascending: false }),
-        supabase.from('access_logs').select('*').gte('created_at', iso).order('created_at', { ascending: false }) // FETCH LOGS
+        supabase.from('access_logs').select('*').order('created_at', { ascending: false }).limit(100) // FETCH LOGS SIMPLIFICADO
     ]);
 
     if(piz.data) setPizzas(piz.data);
@@ -261,7 +270,7 @@ export default function AdminPage() {
           invitado_nombre: newName,
           is_manual_edit: true
       }).eq('id', id);
-      cargarDatos(); // Recargar para ver cambios
+      refreshLogsOnly(); // Usar la función rápida para refrescar
   };
 
   const compressImage = async (file: File): Promise<Blob> => {
@@ -676,7 +685,7 @@ export default function AdminPage() {
             {view === 'ranking' && <RankingView base={base} delAllVal={delAllVal} ranking={ranking} delValPizza={delValPizza} />}
             {view === 'usuarios' && <UsersView base={base} newGuestName={newGuestName} setNewGuestName={setNewGuestName} addU={addU} allUsersList={allUsersList} resetU={resetU} toggleB={toggleB} eliminarUsuario={eliminarUsuario} tempMotivos={tempMotivos} setTempMotivos={setTempMotivos} guardarMotivo={guardarMotivo} currentTheme={currentTheme} />}
             {view === 'config' && <ConfigView base={base} config={config} setConfig={setConfig} isDarkMode={isDarkMode} resetAllOrders={resetAllOrders} newPass={newPass} setNewPass={setNewPass} confirmPass={confirmPass} setConfirmPass={setConfirmPass} changePass={changePass} currentTheme={currentTheme} />}
-            {view === 'logs' && <LogsView base={base} logs={logs} isDarkMode={isDarkMode} currentTheme={currentTheme} updateLogName={updateLogName} />}
+            {view === 'logs' && <LogsView base={base} logs={logs} isDarkMode={isDarkMode} currentTheme={currentTheme} updateLogName={updateLogName} onRefresh={refreshLogsOnly} />}
         </main>
       </div>
 
