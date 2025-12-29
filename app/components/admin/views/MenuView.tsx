@@ -1,5 +1,6 @@
-import { CheckSquare, Square, Plus, ImageIcon, UploadCloud, X, Calculator, Save, Eye, EyeOff, Trash2, Pizza, Sandwich, Utensils } from 'lucide-react';
+import { CheckSquare, Square, Plus, ImageIcon, UploadCloud, X, Calculator, Save, Eye, EyeOff, Trash2, Pizza, Utensils } from 'lucide-react';
 import { TimeControl } from '../../ui/TimeControl';
+import { BurgerIcon } from '../../ui/BurgerIcon'; 
 
 export const MenuView = ({
     base, config, setConfig, activeCategories, uniqueCategories, toggleCategory, currentTheme,
@@ -15,7 +16,6 @@ export const MenuView = ({
 
     return (
         <div className="space-y-6">
-            {/* CATEGORIAS FILTER */}
             <div className={`${base.card} p-5 rounded-3xl border flex flex-col gap-3 shadow-sm`}>
                 <label className={`text-xs font-bold uppercase tracking-wider opacity-60 ${base.subtext}`}>CATEGORIAS A MOSTRAR:</label>
                 <div className="flex flex-wrap gap-2">
@@ -37,17 +37,15 @@ export const MenuView = ({
                 </div>
             </div>
 
-            {/* CREAR NUEVO ITEM */}
             <div className={`p-5 rounded-3xl border shadow-sm relative overflow-hidden group ${base.card}`}>
                 <div className="flex justify-between items-start mb-4">
                     <h3 className={`font-bold flex items-center gap-2 text-xl ${base.subtext}`}><Plus size={24}/> Nuevo Item</h3>
                     
-                    {/* SELECTOR TIPO NUEVO */}
                     <div className="flex bg-neutral-100 dark:bg-black/30 rounded-xl p-1 border border-neutral-200 dark:border-white/10">
                         <button 
                             onClick={() => { 
                                 setNewPizzaType('pizza'); 
-                                setNewPizzaPortions(8); 
+                                setNewPizzaPortions(4); // CAMBIO A 4
                                 setNewPizzaCat('Pizzas'); 
                             }}
                             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${newPizzaType === 'pizza' ? 'bg-white dark:bg-neutral-800 shadow text-black dark:text-white' : 'text-gray-400 hover:text-gray-600'}`}
@@ -62,13 +60,13 @@ export const MenuView = ({
                             }}
                             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${newPizzaType === 'burger' ? 'bg-white dark:bg-neutral-800 shadow text-black dark:text-white' : 'text-gray-400 hover:text-gray-600'}`}
                         >
-                            <Sandwich size={14}/>
+                            <BurgerIcon className="w-4 h-4"/>
                         </button>
                         <button 
                             onClick={() => { 
                                 setNewPizzaType('other'); 
                                 setNewPizzaPortions(1); 
-                                setNewPizzaCat(''); // Limpiar para que escriban
+                                setNewPizzaCat(''); 
                             }}
                             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${newPizzaType === 'other' ? 'bg-white dark:bg-neutral-800 shadow text-black dark:text-white' : 'text-gray-400 hover:text-gray-600'}`}
                         >
@@ -91,7 +89,6 @@ export const MenuView = ({
                         <textarea className={`flex-1 p-0 bg-transparent text-sm leading-relaxed outline-none resize-none h-24 placeholder-opacity-40 ${isDarkMode ? 'placeholder-white' : 'placeholder-black'}`} placeholder="Descripción..." value={newPizzaDesc} onChange={(e: any) => setNewPizzaDesc(e.target.value)} />
                     </div>
 
-                    {/* INGREDIENTES SELECTOR */}
                     <div className={`${base.innerCard} p-3 rounded-2xl`}>
                         <div className="flex flex-wrap gap-2 mb-3">
                              {newPizzaIngredients.map((ing: any, i: number) => (
@@ -110,9 +107,7 @@ export const MenuView = ({
                         </div>
                     </div>
 
-                    {/* GRID DE DATOS NUEVO ITEM */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-2">
-                        {/* CATEGORIA EDITABLE */}
                         <div className={`${base.innerCard} p-3 rounded-2xl flex flex-col items-center justify-center text-center`}>
                             <span className="text-[10px] uppercase font-bold opacity-50 tracking-wider mb-1">Categoria</span>
                             <input 
@@ -125,7 +120,6 @@ export const MenuView = ({
                             <datalist id="categories">{uniqueCategories.map((c: string) => <option key={c} value={c}/>)}</datalist>
                         </div>
                         
-                        {/* PORCIONES: Habilitado si es other o pizza */}
                         <div className={`${base.innerCard} p-3 rounded-2xl flex flex-col items-center justify-center text-center ${newPizzaType === 'burger' ? 'opacity-50' : ''}`}>
                             <span className="text-[10px] uppercase font-bold opacity-50 tracking-wider mb-1">Porciones</span>
                             <input 
@@ -149,7 +143,6 @@ export const MenuView = ({
                 </div>
             </div>
             
-            {/* LISTA DE PIZZAS EXISTENTES */}
             <div className="space-y-4">
                 {pizzas.map((p: any) => {
                 const isEdited = !!edits[p.id];
@@ -157,18 +150,14 @@ export const MenuView = ({
                 const isNewRecipe = !!edits[p.id]?.local_recipe;
                 const currentRecipe = isNewRecipe ? edits[p.id].local_recipe : recetas.filter((r: any) => r.pizza_id === p.id).map((r: any) => ({...r, nombre: ingredients.find((i: any) => i.id === r.ingrediente_id)?.nombre || '?'}));
                 const dynamicStock = calcularStockDinamico(currentRecipe, ingredients);
-
-                // Helper para determinar el tipo actual (para el estilo de los botones)
                 const currentType = display.tipo || 'pizza';
 
                 return (
                 <div key={p.id} className={`p-5 rounded-3xl border flex flex-col gap-4 relative overflow-hidden transition-all ${base.card} ${isEdited ? 'border-yellow-500/50' : ''}`}>
-                    {/* HEADER */}
                     <div className="flex justify-between items-start">
                         <div className="flex items-center gap-2 w-full">
-                            {/* INDICADOR DE TIPO EN HEADER */}
                             {currentType === 'burger' ? (
-                                <Sandwich size={20} className="text-orange-500 flex-shrink-0" />
+                                <BurgerIcon className="text-orange-500 w-5 h-5 flex-shrink-0" />
                             ) : currentType === 'other' ? (
                                 <Utensils size={20} className="text-blue-500 flex-shrink-0" />
                             ) : (
@@ -188,7 +177,6 @@ export const MenuView = ({
                         </div>
                     </div>
 
-                    {/* BODY */}
                     <div className="flex gap-4">
                         <label className="cursor-pointer relative w-20 h-20 rounded-xl overflow-hidden bg-neutral-900 group flex-shrink-0 shadow-inner">
                             {display.imagen_url ? <img src={display.imagen_url} className="w-full h-full object-cover"/> : <div className="flex items-center justify-center h-full text-neutral-600"><ImageIcon size={20}/></div>}
@@ -198,7 +186,6 @@ export const MenuView = ({
                         <textarea value={display.descripcion || ''} onChange={(e: any) => updateP(p.id, 'descripcion', e.target.value)} className={`flex-1 p-0 bg-transparent text-sm leading-relaxed outline-none resize-none h-20 opacity-80 placeholder-opacity-30 ${isDarkMode ? 'placeholder-white' : 'placeholder-black'}`} placeholder="Descripción..." />
                     </div>
                     
-                    {/* RECETAS EN EDICION */}
                     <div className={`${base.innerCard} p-3 rounded-2xl`}>
                         <div className="flex justify-between items-center mb-2">
                             <p className="text-[10px] font-bold uppercase opacity-50 tracking-wider">Receta</p>
@@ -228,10 +215,7 @@ export const MenuView = ({
                         </div>
                     </div>
 
-                    {/* GRID STATS EDICION */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        
-                        {/* SELECTOR DE TIPO (REEMPLAZA CATEGORIA MANUAL) */}
                         <div className={`${base.innerCard} p-2 rounded-2xl flex flex-col items-center justify-center text-center`}>
                             <span className="text-[9px] uppercase font-bold opacity-50 tracking-wider mb-1">Tipo & Cat.</span>
                             <div className="flex gap-1 bg-black/10 dark:bg-white/5 p-1 rounded-lg mb-1">
@@ -239,7 +223,7 @@ export const MenuView = ({
                                     onClick={() => {
                                         updateP(p.id, 'tipo', 'pizza');
                                         updateP(p.id, 'categoria', 'Pizzas'); 
-                                        updateP(p.id, 'porciones_individuales', 8);
+                                        updateP(p.id, 'porciones_individuales', 4); // CAMBIO A 4
                                     }}
                                     className={`p-1.5 rounded-md transition-all ${currentType === 'pizza' ? 'bg-white dark:bg-neutral-700 text-red-500 shadow' : 'text-gray-400 hover:text-gray-500'}`}
                                     title="Pizza"
@@ -255,12 +239,11 @@ export const MenuView = ({
                                     className={`p-1.5 rounded-md transition-all ${currentType === 'burger' ? 'bg-white dark:bg-neutral-700 text-orange-500 shadow' : 'text-gray-400 hover:text-gray-500'}`}
                                     title="Burger"
                                 >
-                                    <Sandwich size={16}/>
+                                    <BurgerIcon className="w-4 h-4"/>
                                 </button>
                                 <button 
                                     onClick={() => {
                                         updateP(p.id, 'tipo', 'other');
-                                        // No forzamos categoría vacía aquí para no borrar la actual si ya tiene una
                                     }}
                                     className={`p-1.5 rounded-md transition-all ${currentType === 'other' ? 'bg-white dark:bg-neutral-700 text-blue-500 shadow' : 'text-gray-400 hover:text-gray-500'}`}
                                     title="Otro"
@@ -268,7 +251,6 @@ export const MenuView = ({
                                     <Utensils size={16}/>
                                 </button>
                             </div>
-                            {/* INPUT CATEGORIA EDITABLE (Solo si es 'other' o quieres editar) */}
                             <input 
                                 list="categories" 
                                 value={display.categoria || ''} 
@@ -278,7 +260,6 @@ export const MenuView = ({
                             />
                         </div>
                         
-                        {/* Porciones Deshabilitado si es Burger */}
                         <div className={`${base.innerCard} p-2 rounded-2xl flex flex-col items-center justify-center text-center ${currentType === 'burger' ? 'opacity-50' : ''}`}>
                             <span className="text-[9px] uppercase font-bold opacity-50 tracking-wider mb-1">Porciones</span>
                             <input 

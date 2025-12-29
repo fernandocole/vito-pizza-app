@@ -4,7 +4,6 @@ export const BottomSheet = ({
     summarySheet, setSummarySheet, base, isDarkMode, currentTheme, mySummary, t, summaryData, modificarPedido 
 }: any) => {
     
-    // Si no está abierto, mostramos la barra compacta
     if (!summarySheet) {
         return (
             <div className={`fixed bottom-4 left-4 right-4 z-50 rounded-full p-3 shadow-2xl ${base.bar}`}>
@@ -43,24 +42,23 @@ export const BottomSheet = ({
         );
     }
 
-    // Si está abierto, mostramos el Sheet completo
     return (
         <>
             <div className="fixed inset-0 z-40" onClick={() => setSummarySheet(null)}></div>
             <div className={`fixed bottom-4 left-4 right-4 z-50 rounded-3xl p-5 shadow-2xl border animate-in slide-in-from-bottom-4 duration-300 flex flex-col max-h-[60vh] ${base.bar}`} onClick={e => e.stopPropagation()}>
                 <div className="flex justify-between items-center mb-4">
                     <h3 className={`text-lg font-bold flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-black'}`}>
-                        {summarySheet === 'total' && <span>Ya pediste</span>}
-                        {summarySheet === 'wait' && <span className={`flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-black'}`}><Clock size={20}/> En Espera</span>}
-                        {summarySheet === 'oven' && <span className={`flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-black'}`}><Flame size={20}/> En Horno</span>}
-                        {summarySheet === 'ready' && <span className={`flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-black'}`}><ChefHat size={20}/> Listas</span>}
+                        {summarySheet === 'total' && <span>{t.summaryTotalTitle}</span>}
+                        {summarySheet === 'wait' && <span className={`flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-black'}`}><Clock size={20}/> {t.summaryWaitTitle}</span>}
+                        {summarySheet === 'oven' && <span className={`flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-black'}`}><Flame size={20}/> {t.summaryOvenTitle}</span>}
+                        {summarySheet === 'ready' && <span className={`flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-black'}`}><ChefHat size={20}/> {t.summaryReadyTitle}</span>}
                     </h3>
                     <button onClick={() => setSummarySheet(null)} className={`p-1.5 rounded-full hover:bg-black/10 transition-colors ${isDarkMode ? 'text-white' : 'text-black'}`}><X size={20}/></button>
                 </div>
                 
                 <div className="overflow-y-auto no-scrollbar space-y-2 pr-1">
                     {summaryData.length === 0 ? (
-                        <p className={`text-center py-4 text-xs opacity-60 ${isDarkMode ? 'text-white' : 'text-black'}`}>Nada por aquí...</p>
+                        <p className={`text-center py-4 text-xs opacity-60 ${isDarkMode ? 'text-white' : 'text-black'}`}>...</p>
                     ) : (
                         summaryData.map((p: any) => (
                             <div key={p.id} className={`flex items-center justify-between p-2 rounded-xl ${isDarkMode ? 'bg-white/10' : 'bg-gray-100/80'} border border-transparent`}>

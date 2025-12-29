@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { 
   Users, LogOut, LayoutDashboard, List, ChefHat, BarChart3, ShoppingBag, Settings, 
-  Palette, Sun, Moon, ArrowUpNarrowWide, ArrowDownAZ, Maximize2, Minimize2
+  Palette, Sun, Moon, ArrowUpNarrowWide, ArrowDownAZ, Maximize2, Minimize2, ShieldAlert
 } from 'lucide-react';
 
 // Imports de Vistas
@@ -15,6 +15,7 @@ import { MenuView } from '../components/admin/views/MenuView';
 import { RankingView } from '../components/admin/views/RankingView';
 import { UsersView } from '../components/admin/views/UsersView';
 import { ConfigView } from '../components/admin/views/ConfigView';
+import { LogsView } from '../components/admin/views/LogsView';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -56,7 +57,7 @@ const THEMES = [
 export default function AdminPage() {
   const [autenticado, setAutenticado] = useState(false);
   const [password, setPassword] = useState('');
-  const [view, setView] = useState<'cocina' | 'pedidos' | 'menu' | 'ingredientes' | 'usuarios' | 'config' | 'ranking'>('cocina');
+  const [view, setView] = useState<'cocina' | 'pedidos' | 'menu' | 'ingredientes' | 'usuarios' | 'config' | 'ranking' | 'logs'>('cocina');
     
   // DATOS
   const [pedidos, setPedidos] = useState<any[]>([]); 
@@ -64,6 +65,7 @@ export default function AdminPage() {
   const [ingredientes, setIngredientes] = useState<any[]>([]);
   const [recetas, setRecetas] = useState<any[]>([]);
   const [reservedState, setReservedState] = useState<Record<string, number>>({});
+  const [logs, setLogs] = useState<any[]>([]);
     
   // ESTADO LOCAL
   const [edits, setEdits] = useState<Record<string, any>>({});
@@ -80,8 +82,8 @@ export default function AdminPage() {
   const [newPizzaImg, setNewPizzaImg] = useState('');
   const [newPizzaTime, setNewPizzaTime] = useState(90);
   const [newPizzaCat, setNewPizzaCat] = useState(''); 
-  const [newPizzaPortions, setNewPizzaPortions] = useState(8);
-  const [newPizzaType, setNewPizzaType] = useState<'pizza' | 'burger' | 'other'>('pizza'); // Agregado 'other'
+  const [newPizzaPortions, setNewPizzaPortions] = useState(4); 
+  const [newPizzaType, setNewPizzaType] = useState<'pizza' | 'burger' | 'other'>('pizza');
   const [uploading, setUploading] = useState(false);
     
   // NUEVA RECETAS
@@ -147,6 +149,7 @@ export default function AdminPage() {
   };
 
   useEffect(() => {
+    // --- LOAD PREFERENCES ---
     const savedTheme = localStorage.getItem('vito-theme');
     if (savedTheme) setCurrentTheme(THEMES.find(t => t.name === savedTheme) || THEMES[0]);
     const savedMode = localStorage.getItem('vito-dark-mode');
@@ -155,19 +158,44 @@ export default function AdminPage() {
     if (savedOrden) setOrden(savedOrden as any);
     const savedCompact = localStorage.getItem('vito-compact');
     if (savedCompact) setIsCompact(savedCompact === 'true');
+
+    // --- DB REALTIME REFORZADO ---
+    if (autenticado) {
+      cargarDatos();
+      const channel = supabase.channel('admin-realtime')
+        .on('postgres_changes', { event: '*', schema: 'public' }, () => cargarDatos()) // Escucha general
+        .subscribe();
+      
+      return () => { supabase.removeChannel(channel); };
+    }
+  }, [autenticado]);
+
+  // --- SEPARATE EFFECT FOR ONLINE USERS (PRESENCE) ---
+  useEffect(() => {
+    if (!autenticado) return;
+
+    // 1. Crear canal único para presencia
+    const presenceChannel = supabase.channel('online-users', {
+        config: {
+            presence: {
+                key: 'admin', // Clave única para el admin
+            },
+        },
+    });
     
-    // --- REAL-TIME PRESENCE LOGIC ---
-    const presenceChannel = supabase.channel('online-users');
-    
+    // 2. Definir manejador de eventos
     presenceChannel
         .on('presence', { event: 'sync' }, () => {
             const state = presenceChannel.presenceState();
-            const allPresences = Object.values(state).flat();
+            // Aplanar todos los estados
+            const allPresences = Object.values(state).flat() as any[];
+            // Filtrar solo los guests
             const count = allPresences.filter((p: any) => p.role === 'guest').length;
             setOnlineUsers(count);
         })
         .subscribe(async (status) => {
             if (status === 'SUBSCRIBED') {
+                // El admin también se trackea para que Supabase sepa que está vivo
                 await presenceChannel.track({
                     online_at: new Date().toISOString(),
                     role: 'admin'
@@ -175,11 +203,10 @@ export default function AdminPage() {
             }
         });
 
-    if (autenticado) {
-      cargarDatos();
-      const channel = supabase.channel('admin-realtime').on('postgres_changes', { event: '*', schema: 'public' }, () => cargarDatos()).subscribe();
-      return () => { supabase.removeChannel(channel); supabase.removeChannel(presenceChannel); };
-    }
+    // 3. Limpieza al desmontar
+    return () => {
+        supabase.removeChannel(presenceChannel);
+    };
   }, [autenticado]);
 
   const toggleDarkMode = () => { setIsDarkMode(!isDarkMode); localStorage.setItem('vito-dark-mode', String(!isDarkMode)); };
@@ -197,14 +224,16 @@ export default function AdminPage() {
   const cargarDatos = async () => {
     const now = new Date(); if (now.getHours() < 6) now.setDate(now.getDate() - 1); now.setHours(6, 0, 0, 0); const iso = now.toISOString();
     
-    const [piz, ing, rec, ped, inv, conf, val] = await Promise.all([
+    // Carga paralela
+    const [piz, ing, rec, ped, inv, conf, val, logsData] = await Promise.all([
         supabase.from('menu_pizzas').select('*').order('created_at', { ascending: true }),
         supabase.from('ingredientes').select('*').order('nombre'),
         supabase.from('recetas').select('*'),
         supabase.from('pedidos').select('*').gte('created_at', iso).order('created_at', { ascending: true }),
         supabase.from('lista_invitados').select('*').order('nombre'),
         supabase.from('configuracion_dia').select('*').single(),
-        supabase.from('valoraciones').select('*').gte('created_at', iso).order('created_at', { ascending: false })
+        supabase.from('valoraciones').select('*').gte('created_at', iso).order('created_at', { ascending: false }),
+        supabase.from('access_logs').select('*').gte('created_at', iso).order('created_at', { ascending: false }) // FETCH LOGS
     ]);
 
     if(piz.data) setPizzas(piz.data);
@@ -219,10 +248,20 @@ export default function AdminPage() {
     if(inv.data) setInvitadosDB(inv.data);
     if(conf.data) setConfig(conf.data);
     if(val.data) setValoraciones(val.data);
+    if(logsData.data) setLogs(logsData.data);
     
     if(piz.data && ing.data && rec.data && ped.data) {
         actualizarStockGlobal();
     }
+  };
+
+  // --- UPDATE LOG NAME FUNCTION ---
+  const updateLogName = async (id: string, newName: string) => {
+      await supabase.from('access_logs').update({ 
+          invitado_nombre: newName,
+          is_manual_edit: true
+      }).eq('id', id);
+      cargarDatos(); // Recargar para ver cambios
   };
 
   const compressImage = async (file: File): Promise<Blob> => {
@@ -360,7 +399,6 @@ export default function AdminPage() {
   };
 
   const toggleCocinando = async (p: any) => { 
-      // LOGICA UPDATE: Si es burger o 'other', no importa si no está "completa", se puede cocinar igual
       if(p.tipo === 'pizza' && !p.cocinando && p.totalPendientes < p.target) { alert("Falta para 1 entera"); return; } 
       
       const newState = !p.cocinando;
@@ -404,7 +442,6 @@ export default function AdminPage() {
   const activeCategories: string[] = useMemo(() => { try { const parsed = JSON.parse(config.categoria_activa); if (parsed === 'Todas' || (Array.isArray(parsed) && parsed.length === 0)) return []; return Array.isArray(parsed) ? parsed : ['General']; } catch { return ['General']; } }, [config.categoria_activa]);
 
   const metricas = useMemo(() => {
-      // 1. Aplicar filtro de categorías también a cocina
       let lista = pizzas.filter(p => p.activa);
       
       if (activeCategories.length > 0 && !activeCategories.includes('Todas')) {
@@ -428,15 +465,8 @@ export default function AdminPage() {
       });
   }, [pizzas, pedidos, config, orden, activeCategories]);
 
-  // Categories & Stats - CORREGIDO: Limpieza de espacios en blanco
-  const uniqueCategories = useMemo(() => { 
-      const cats = new Set<string>(); 
-      pizzas.forEach(p => { 
-          if(p.categoria) cats.add(p.categoria.trim()); // Trim crucial para evitar duplicados
-      }); 
-      return Array.from(cats).sort(); 
-  }, [pizzas]);
-
+  // Categories & Stats
+  const uniqueCategories = useMemo(() => { const cats = new Set<string>(); pizzas.forEach(p => { if(p.categoria) cats.add(p.categoria.trim()); }); return Array.from(cats).sort(); }, [pizzas]);
   const toggleCategory = async (cat: string) => { const current = new Set(activeCategories); if (current.has(cat)) current.delete(cat); else current.add(cat); const newArr = Array.from(current); setConfig({...config, categoria_activa: JSON.stringify(newArr)}); await supabase.from('configuracion_dia').update({ categoria_activa: JSON.stringify(newArr) }).eq('id', config.id); };
 
   const stats = useMemo(() => {
@@ -506,31 +536,16 @@ export default function AdminPage() {
       await actualizarStockGlobal(); 
   };
   
-  // FUNCION DE BORRADO DEFINITIVA (Con confirmación de borrado en cascada)
   const delP = async (id: string) => { 
       if(!confirm('¿Estás seguro de BORRAR este ítem?')) return;
-      
-      // 1. Intentar borrar recetas (seguro)
       await supabase.from('recetas').delete().eq('pizza_id', id);
-
-      // 2. Intentar borrar el ítem
       const { error } = await supabase.from('menu_pizzas').delete().eq('id', id);
-      
       if (error) {
-          // Si hay error, es probable que sea por integridad referencial (historial)
-          // 3. Preguntar si se quiere forzar el borrado eliminando todo el historial
           if (confirm("⛔ Este ítem tiene historial (pedidos/valoraciones).\n\n¿Quieres ELIMINAR TODO EL HISTORIAL asociado a este ítem para borrarlo definitivamente?\n\n(Esta acción no se puede deshacer)")) {
-               // Borrar historial
                await supabase.from('pedidos').delete().eq('pizza_id', id);
                await supabase.from('valoraciones').delete().eq('pizza_id', id);
-               
-               // Reintentar borrado del ítem
                const { error: err2 } = await supabase.from('menu_pizzas').delete().eq('id', id);
-               if(err2) {
-                   alert("Error al borrar definitivamente: " + err2.message);
-               } else {
-                   cargarDatos();
-               }
+               if(err2) alert("Error al borrar definitivamente: " + err2.message); else cargarDatos();
           }
       } else {
           cargarDatos();
@@ -541,7 +556,7 @@ export default function AdminPage() {
   const addU = async () => { if(!newGuestName) return; const { error } = await supabase.from('lista_invitados').insert([{ nombre: newGuestName }]); if(error) alert('Error'); else { setNewGuestName(''); cargarDatos(); } };
   const toggleB = async (u: any) => { let uid = u.id; if(!uid) { const { data } = await supabase.from('lista_invitados').insert([{ nombre: u.nombre }]).select().single(); if(data) uid = data.id; else return; } await supabase.from('lista_invitados').update({ bloqueado: !u.bloqueado }).eq('id', uid); cargarDatos(); };
   const guardarMotivo = async (nombre: string, u: any) => { const motivo = tempMotivos[nombre]; if (motivo === undefined) return; let uid = u?.id; if (!uid) { const { data, error } = await supabase.from('lista_invitados').insert([{ nombre: nombre, motivo_bloqueo: motivo, bloqueado: true }]).select().single(); if (error || !data) { alert("Error al guardar usuario."); return; } } else { await supabase.from('lista_invitados').update({ motivo_bloqueo: motivo }).eq('id', uid); } alert("Motivo guardado"); cargarDatos(); };
-  const resetU = async (nom: string) => { if(!confirm(`¿Reset pedidos de ${nom}?`)) return; const userExists = invitadosDB.some(u => u.nombre.toLowerCase() === nom.toLowerCase()); if (!userExists) { await supabase.from('lista_invitados').insert([{ nombre: nom, origen: 'guest' }]); } const ids = pedidos.filter(p => p.invitado_nombre.toLowerCase() === nom.toLowerCase()).map(p => p.id); if(ids.length) await supabase.from('pedidos').delete().in('id', ids); cargarDatos(); };
+  const resetU = async (nom: string) => { if(!confirm(`¿Reset pedidos de ${nom}?`)) return; const ids = pedidos.filter(p => p.invitado_nombre.toLowerCase() === nom.toLowerCase()).map(p => p.id); if(ids.length) await supabase.from('pedidos').delete().in('id', ids); cargarDatos(); };
   const resetAllOrders = async () => { const promptText = prompt('Escribe "BORRAR TODO" para confirmar'); if (promptText?.toUpperCase() !== "BORRAR TODO") return; const { error } = await supabase.from('pedidos').delete().neq('id', '00000000-0000-0000-0000-000000000000'); if(error) alert("Error: " + error.message); else { alert("Pedidos eliminados."); cargarDatos(); } };
   const delVal = async (id: string) => { if(confirm("¿Borrar reseña?")) { await supabase.from('valoraciones').delete().eq('id', id); cargarDatos(); } };
   const delValPizza = async (pid: string) => { if(confirm("¿Borrar reseñas de este item?")) { await supabase.from('valoraciones').delete().eq('pizza_id', pid); cargarDatos(); } };
@@ -661,6 +676,7 @@ export default function AdminPage() {
             {view === 'ranking' && <RankingView base={base} delAllVal={delAllVal} ranking={ranking} delValPizza={delValPizza} />}
             {view === 'usuarios' && <UsersView base={base} newGuestName={newGuestName} setNewGuestName={setNewGuestName} addU={addU} allUsersList={allUsersList} resetU={resetU} toggleB={toggleB} eliminarUsuario={eliminarUsuario} tempMotivos={tempMotivos} setTempMotivos={setTempMotivos} guardarMotivo={guardarMotivo} currentTheme={currentTheme} />}
             {view === 'config' && <ConfigView base={base} config={config} setConfig={setConfig} isDarkMode={isDarkMode} resetAllOrders={resetAllOrders} newPass={newPass} setNewPass={setNewPass} confirmPass={confirmPass} setConfirmPass={setConfirmPass} changePass={changePass} currentTheme={currentTheme} />}
+            {view === 'logs' && <LogsView base={base} logs={logs} isDarkMode={isDarkMode} currentTheme={currentTheme} updateLogName={updateLogName} />}
         </main>
       </div>
 
@@ -671,6 +687,7 @@ export default function AdminPage() {
           <button onClick={() => setView('ranking')} className={`flex flex-col items-center gap-1 ${view === 'ranking' ? currentTheme.text : base.subtext}`}><BarChart3 size={20} /><span className="text-[8px] uppercase font-bold">Rank</span></button>
           <button onClick={() => setView('usuarios')} className={`flex flex-col items-center gap-1 ${view === 'usuarios' ? currentTheme.text : base.subtext}`}><Users size={20} /><span className="text-[8px] uppercase font-bold">Usuarios</span></button>
           <button onClick={() => setView('ingredientes')} className={`flex flex-col items-center gap-1 ${view === 'ingredientes' ? currentTheme.text : base.subtext}`}><ShoppingBag size={20} /><span className="text-[8px] uppercase font-bold">Invent.</span></button>
+          <button onClick={() => setView('logs')} className={`flex flex-col items-center gap-1 ${view === 'logs' ? currentTheme.text : base.subtext}`}><ShieldAlert size={20} /><span className="text-[8px] uppercase font-bold">Logs</span></button>
           <button onClick={() => setView('config')} className={`flex flex-col items-center gap-1 ${view === 'config' ? currentTheme.text : base.subtext}`}><Settings size={20} /><span className="text-[8px] uppercase font-bold">Ajustes</span></button>
       </div>
     </div>

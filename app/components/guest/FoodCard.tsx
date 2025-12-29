@@ -1,25 +1,22 @@
-import { Maximize2, Star, Minus, Plus, Pizza, Sandwich, Utensils } from 'lucide-react';
+import { Maximize2, Star, Minus, Plus, Pizza, Utensils } from 'lucide-react';
 import { CookingTimer } from '../ui/CookingTimer';
+import { BurgerIcon } from '../ui/BurgerIcon'; // Importamos el nuevo icono
 
 export const FoodCard = ({ 
     pizza, base, isCompact, isDarkMode, currentTheme, zoomLevel, t, DESC_SIZES, STOCK_SIZES,
     setImageToView, miHistorial, misValoraciones, openRating, modificarPedido 
 }: any) => {
-    // Helper para verificar historial de esta pizza
     const hist = miHistorial[pizza.id];
     const pendientes = hist?.pendientes || 0;
     const comidos = hist?.comidos || 0;
     
-    // Determinar tipo
     const isBurger = pizza.tipo === 'burger';
     const isOther = pizza.tipo === 'other';
-    // Si es Burger u Otro, se trata como unidad (no se comparte en porciones con otros)
     const isUnit = isBurger || isOther;
 
     return (
         <div className={`${base.card} ${isCompact ? 'rounded-3xl' : 'rounded-[36px]'} border ${pizza.stockRestante === 0 ? 'border-neutral-200 dark:border-neutral-800' : pizza.cocinando ? 'border-red-600/30' : ''} shadow-lg relative overflow-hidden group ${isCompact ? 'p-3' : 'p-5'}`}>
             
-            {/* Imagen Grande */}
             {!isCompact && pizza.imagen_url && (
                 <div className="mb-4 w-full h-40 rounded-2xl overflow-hidden relative cursor-pointer" onClick={() => setImageToView(pizza.imagen_url)}>
                     <img src={pizza.imagen_url} alt={pizza.displayName} className="w-full h-full object-cover transition-transform hover:scale-105" />
@@ -30,19 +27,12 @@ export const FoodCard = ({
             <div className="flex justify-between items-start mb-2">
                 <div className="flex-1">
                     <div className="flex flex-wrap items-center gap-2 mb-1">
-                        {/* Avatar en Compacto */}
                         {isCompact && pizza.imagen_url && (
                             <img src={pizza.imagen_url} onClick={(e)=>{e.stopPropagation(); setImageToView(pizza.imagen_url)}} className="w-10 h-10 rounded-full object-cover border border-white/20 cursor-pointer hover:scale-110 transition-transform"/>
                         )}
 
-                        {/* ICONO IDENTIFICADOR */}
-                        {isBurger ? (
-                            <Sandwich size={isCompact ? 16 : 20} className="text-orange-500" />
-                        ) : isOther ? (
-                            <Utensils size={isCompact ? 16 : 20} className="text-blue-500" />
-                        ) : (
-                            <Pizza size={isCompact ? 16 : 20} className="text-red-500" />
-                        )}
+                        {/* USO DEL NUEVO ICONO */}
+                        {isBurger ? <BurgerIcon className={`text-orange-500 ${isCompact ? 'w-4 h-4' : 'w-5 h-5'}`} /> : isOther ? <Utensils size={isCompact ? 16 : 20} className="text-blue-500" /> : <Pizza size={isCompact ? 16 : 20} className="text-red-500" />}
 
                         <h2 className={`font-bold ${isCompact ? 'text-lg' : 'text-2xl'} ${pizza.stockRestante === 0 ? 'text-gray-400 dark:text-neutral-600' : base.text}`}>{pizza.displayName}</h2>
                         
@@ -59,23 +49,21 @@ export const FoodCard = ({
                     </div>
                     {!isCompact && (<p className={`leading-relaxed max-w-[200px] ${base.subtext} ${DESC_SIZES[zoomLevel]}`}>{pizza.displayDesc}</p>)}
                     
-                    {/* TEXTO DE STOCK DIFERENCIADO */}
                     <p className={`font-mono mt-1 ${pizza.stockRestante === 0 ? 'text-red-500 font-bold' : base.subtext} ${STOCK_SIZES[zoomLevel]}`}>
                         {pizza.stockRestante === 0 ? t.soldOut : (
                             isUnit 
-                            ? `Stock: ${pizza.stockRestante} u.` 
+                            ? `${t.stockLabel} ${pizza.stockRestante} ${t.units}` 
                             : `${t.ingredientsFor} ${pizza.stockRestante} ${t.portionsMore}`
                         )}
                     </p>
                 </div>
                 
                 <div className="flex flex-col items-end gap-1 ml-2">
-                    {pendientes > 0 && (<span className={`text-[10px] font-bold px-2 py-0.5 rounded border whitespace-nowrap ${isDarkMode ? 'bg-white/10 border-white/20 text-white' : 'bg-neutral-800 border-neutral-800 text-white'}`}>PEDISTE: {pendientes}</span>)}
-                    {comidos > 0 && (<span className={`text-[10px] font-bold px-2 py-0.5 rounded border whitespace-nowrap ${isDarkMode ? 'bg-white/10 border-white/20 text-white' : 'bg-neutral-800 border-neutral-800 text-white'}`}>COMISTE: {comidos}</span>)}
+                    {pendientes > 0 && (<span className={`text-[10px] font-bold px-2 py-0.5 rounded border whitespace-nowrap ${isDarkMode ? 'bg-white/10 border-white/20 text-white' : 'bg-neutral-800 border-neutral-800 text-white'}`}>{t.youOrdered} {pendientes}</span>)}
+                    {comidos > 0 && (<span className={`text-[10px] font-bold px-2 py-0.5 rounded border whitespace-nowrap ${isDarkMode ? 'bg-white/10 border-white/20 text-white' : 'bg-neutral-800 border-neutral-800 text-white'}`}>{t.youAte} {comidos}</span>)}
                 </div>
             </div>
 
-            {/* BARRA DE PROGRESO (SOLO PARA PIZZAS) */}
             {!isUnit && (
                 <div className={`rounded-2xl border ${isCompact ? 'p-2 mb-2 mt-1' : 'p-3 mb-5 mt-4'} ${base.progressBg}`}>
                     <div className={`flex justify-between text-[10px] font-bold uppercase tracking-wider mb-2 ${base.subtext}`}>
@@ -90,10 +78,8 @@ export const FoodCard = ({
                 </div>
             )}
             
-            {/* Espaciador si es Unit para alinear botones */}
             {isUnit && <div className="mb-4"></div>}
 
-            {/* BOTONES */}
             <div className="flex gap-3">
                 {pendientes > 0 && (
                     <button onClick={() => modificarPedido(pizza, 'restar')} className={`rounded-2xl flex items-center justify-center border active:scale-95 transition ${base.buttonSec} ${isCompact ? 'w-12 h-10' : 'w-16 h-14'}`}>

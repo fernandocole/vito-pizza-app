@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { 
-  User, ArrowRight, Lock, AlertCircle, X, PartyPopper, Star 
+  User, ArrowRight, Lock, AlertCircle, X, PartyPopper, Star, Clock 
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -18,7 +18,6 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// --- CONSTANTES ---
 const THEMES = [
   { name: 'Carbone', color: 'bg-neutral-600', gradient: 'from-neutral-700 to-neutral-900', border: 'border-neutral-600/40', text: 'text-neutral-400' },
   { name: 'Turquesa', color: 'bg-cyan-600', gradient: 'from-cyan-600 to-teal-900', border: 'border-cyan-600/40', text: 'text-cyan-400' },
@@ -40,7 +39,6 @@ export default function VitoPizzaApp() {
   // @ts-ignore
   const t = dictionary[lang];
 
-  // Estados de Acceso
   const [loadingConfig, setLoadingConfig] = useState(true); 
   const [accessGranted, setAccessGranted] = useState(false);
   const [guestPassInput, setGuestPassInput] = useState('');
@@ -63,24 +61,22 @@ export default function VitoPizzaApp() {
   const [orderedIds, setOrderedIds] = useState<string[]>([]);
   const [summarySheet, setSummarySheet] = useState<'total' | 'wait' | 'oven' | 'ready' | null>(null);
 
-  // LATE RATING PROMPT
+  const [orderToConfirm, setOrderToConfirm] = useState<any>(null);
+
   const [showLateRatingModal, setShowLateRatingModal] = useState(false);
   const [lateRatingPizza, setLateRatingPizza] = useState<any>(null);
   const processedOrderIds = useRef<Set<string>>(new Set());
   
-  // ZOOM LEVELS
   const [zoomLevel, setZoomLevel] = useState(0);
   const DESC_SIZES = ['text-xs', 'text-sm', 'text-base', 'text-lg', 'text-xl'];
   const STOCK_SIZES = ['text-[10px]', 'text-xs', 'text-sm', 'text-base', 'text-lg'];
 
-  // DEFAULT SETTINGS
   const [isDarkMode, setIsDarkMode] = useState(false); 
   const [currentTheme, setCurrentTheme] = useState(THEMES[1]);
   const [showThemeSelector, setShowThemeSelector] = useState(false);
 
   const [bannerIndex, setBannerIndex] = useState(0);
 
-  // PWA & ONBOARDING & ONLINE USERS
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isInstallable, setIsInstallable] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -93,8 +89,9 @@ export default function VitoPizzaApp() {
   const [commentValue, setCommentValue] = useState('');
   const [misValoraciones, setMisValoraciones] = useState<string[]>([]);
   const [autoTranslations, setAutoTranslations] = useState<Record<string, Record<string, { name: string, desc: string }>>>({});
+  
+  const [translatedWelcome, setTranslatedWelcome] = useState<string>('');
 
-  // ESTILOS BASE
   const base = isDarkMode ? {
       bg: "bg-neutral-950",
       text: "text-white",
@@ -135,6 +132,12 @@ export default function VitoPizzaApp() {
       }
   };
 
+  const formatTime = (seconds: number) => {
+      const m = Math.floor(seconds / 60);
+      const s = seconds % 60;
+      return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
   const [config, setConfig] = useState<{
       porciones_por_pizza: number;
       total_invitados: number;
@@ -159,10 +162,73 @@ export default function VitoPizzaApp() {
   const prevCocinandoData = useRef<Record<string, boolean>>({});
   const firstLoadRef = useRef(true);
 
-  // HELPER PARA MENSAJE BIENVENIDA
+  // --- LOGICA DE REGISTRO DE ACCESOS ---
+  useEffect(() => {
+      const logAccess = async () => {
+          let sessionId = localStorage.getItem('vito-session-id');
+          if (!sessionId) {
+              sessionId = crypto.randomUUID();
+              localStorage.setItem('vito-session-id', sessionId);
+          }
+
+          // Obtener datos del navegador
+          const userAgent = navigator.userAgent;
+          let deviceType = "Desktop";
+          if (/Mobi|Android/i.test(userAgent)) deviceType = "Mobile";
+          
+          let browserName = "Unknown";
+          if (userAgent.indexOf("Chrome") > -1) browserName = "Chrome";
+          else if (userAgent.indexOf("Safari") > -1) browserName = "Safari";
+          else if (userAgent.indexOf("Firefox") > -1) browserName = "Firefox";
+
+          // Intentar obtener IP (opcional, puede fallar por adblockers)
+          let ipData = { ip: null, city: null, country_name: null };
+          try {
+              const res = await fetch('https://ipapi.co/json/');
+              if (res.ok) ipData = await res.json();
+          } catch (e) {
+              console.log("IP fetch failed");
+          }
+
+          // Verificar si ya logueamos esta sesión hoy
+          const { data: existingLog } = await supabase
+              .from('access_logs')
+              .select('id')
+              .eq('session_id', sessionId)
+              .gt('created_at', new Date(new Date().setHours(0,0,0,0)).toISOString())
+              .single();
+
+          if (!existingLog) {
+              // Insertar nuevo log
+              await supabase.from('access_logs').insert([{
+                  session_id: sessionId,
+                  device: deviceType,
+                  browser: browserName,
+                  ip: ipData.ip,
+                  ciudad: ipData.city,
+                  pais: ipData.country_name,
+                  invitado_nombre: nombreInvitado || null
+              }]);
+          } else {
+              // Si ya existe y ahora tenemos nombre, actualizar
+              if (nombreInvitado) {
+                  await supabase.from('access_logs')
+                      .update({ invitado_nombre: nombreInvitado })
+                      .eq('id', existingLog.id);
+              }
+          }
+      };
+
+      // Ejecutar solo una vez al montar o cuando cambia el nombre
+      logAccess();
+  }, [nombreInvitado]);
+
+  // HELPER PARA MENSAJE BIENVENIDA TRADUCIDO
   const getWelcomeMessage = () => {
-      if (!config.mensaje_bienvenida) return null;
-      let msg = config.mensaje_bienvenida;
+      // Usamos el traducido si existe, sino el de config, sino un fallback
+      let msg = translatedWelcome || config.mensaje_bienvenida;
+      if (!msg) return null;
+
       msg = msg.replace(/\[nombre\]/gi, nombreInvitado || 'Invitado');
       msg = msg.replace(/\[fecha\]/gi, new Date().toLocaleDateString());
       msg = msg.replace(/\[hora\]/gi, new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
@@ -302,7 +368,22 @@ export default function VitoPizzaApp() {
   
   const changeFilter = (f: any) => { setFilter(f); localStorage.setItem('vito-filter', f); };
   const verifyAccess = (i: string, c: string) => { if (!c || c === '' || i === c) { setAccessGranted(true); if(c !== '') localStorage.setItem('vito-guest-pass-val', i); } else { setAccessGranted(false); } };
-  const handleNameChange = (val: string) => { setNombreInvitado(val); localStorage.setItem('vito-guest-name', val); const user = invitadosLista.find(u => u.nombre.toLowerCase() === val.toLowerCase()); if (user && user.bloqueado) { setUsuarioBloqueado(true); setMotivoBloqueo(user.motivo_bloqueo || ''); } else { setUsuarioBloqueado(false); setMotivoBloqueo(''); } };
+  
+  // Modificado para actualizar logs cuando cambia el nombre
+  const handleNameChange = (val: string) => { 
+      setNombreInvitado(val); 
+      localStorage.setItem('vito-guest-name', val); 
+      
+      const user = invitadosLista.find(u => u.nombre.toLowerCase() === val.toLowerCase()); 
+      if (user && user.bloqueado) { 
+          setUsuarioBloqueado(true); 
+          setMotivoBloqueo(user.motivo_bloqueo || ''); 
+      } else { 
+          setUsuarioBloqueado(false); 
+          setMotivoBloqueo(''); 
+      } 
+  };
+
   const changeTheme = (t: typeof THEMES[0]) => { setCurrentTheme(t); localStorage.setItem('vito-guest-theme', t.name); setShowThemeSelector(false); };
   
   const rotarIdioma = () => { 
@@ -325,8 +406,14 @@ export default function VitoPizzaApp() {
   };
 
   useEffect(() => {
-      if (lang === 'es' || pizzas.length === 0) return;
+      // Traducir Pizzas y Mensaje de Bienvenida al cambiar idioma
+      if (lang === 'es') {
+          setTranslatedWelcome('');
+          return;
+      }
+
       const translateAll = async () => {
+          // 1. Traducir Pizzas (existente)
           const newTrans = { ...autoTranslations };
           let hasChanges = false;
           for (const p of pizzas) {
@@ -339,9 +426,38 @@ export default function VitoPizzaApp() {
               }
           }
           if (hasChanges) setAutoTranslations(newTrans);
+
+          // 2. Traducir Mensaje de Bienvenida (MEJORADO PARA MULTILINEA)
+          if (config.mensaje_bienvenida) {
+              // A. Enmascarar variables y saltos de línea
+              let safeMsg = config.mensaje_bienvenida
+                  .replace(/\n/g, ' XX_BR_XX ') // Proteger saltos de línea
+                  .replace(/\[nombre\]/gi, 'XX_NAME_XX')
+                  .replace(/\[fecha\]/gi, 'XX_DATE_XX')
+                  .replace(/\[hora\]/gi, 'XX_TIME_XX')
+                  .replace(/\[pizzas\]/gi, 'XX_COUNT_XX');
+
+              // B. Traducir texto seguro
+              let tMsg = await translateText(safeMsg, lang);
+
+              // C. Restaurar variables y saltos
+              tMsg = tMsg
+                  .replace(/XX_BR_XX/gi, '\n')
+                  .replace(/XX _ BR _ XX/gi, '\n') // Fix espacios de google
+                  .replace(/XX_NAME_XX/gi, '[nombre]')
+                  .replace(/XX _ NAME _ XX/gi, '[nombre]') 
+                  .replace(/XX_DATE_XX/gi, '[fecha]')
+                  .replace(/XX _ DATE _ XX/gi, '[fecha]')
+                  .replace(/XX_TIME_XX/gi, '[hora]')
+                  .replace(/XX _ TIME _ XX/gi, '[hora]')
+                  .replace(/XX_COUNT_XX/gi, '[pizzas]')
+                  .replace(/XX _ COUNT _ XX/gi, '[pizzas]');
+
+              setTranslatedWelcome(tMsg);
+          }
       };
       translateAll();
-  }, [lang, pizzas, autoTranslations]);
+  }, [lang, pizzas, autoTranslations, config.mensaje_bienvenida]);
 
   const fetchDatos = useCallback(async () => {
     const now = new Date(); const corte = new Date(now); if (now.getHours() < 6) corte.setDate(corte.getDate() - 1); corte.setHours(6, 0, 0, 0); const iso = corte.toISOString();
@@ -492,31 +608,19 @@ export default function VitoPizzaApp() {
   useEffect(() => {
       if(!nombreInvitado || !pizzas.length) return;
 
-      // 1. Obtener la cola actual de LocalStorage
       const storedQueue = localStorage.getItem('vito-review-queue');
       let queue: { id: string, pizzaId: string, triggerAt: number }[] = storedQueue ? JSON.parse(storedQueue) : [];
       let queueChanged = false;
 
-      // 2. Buscar pedidos entregados para el usuario actual
       const delivered = pedidos.filter(p => p.invitado_nombre === nombreInvitado && p.estado === 'entregado');
 
-      // 3. Procesar nuevos pedidos entregados que NO estén en la cola ni hayan sido valorados
       delivered.forEach(p => {
-          // Si ya lo valoró, ignorar
           if (misValoraciones.includes(p.pizza_id)) return;
-
-          // Si ya está en la cola, ignorar
           if (queue.find(q => q.id === p.id)) return;
-
-          // Si ya fue procesado en esta sesión (para evitar duplicados por re-renders), ignorar
           if (processedOrderIds.current.has(p.id)) return;
 
-          // NUEVO PEDIDO DETECTADO: Agregar a la cola y marcar como procesado
           processedOrderIds.current.add(p.id);
           
-          // Si es "First Load", no podemos saber cuándo se entregó exactamente sin 'updated_at'.
-          // Asumimos que si carga la página y ve entregados viejos, NO debe notificar (para no spamear).
-          // Solo notificamos transiciones "en vivo" o si ya estaba en la cola de una sesión anterior.
           if (!firstLoadRef.current) {
               const delayMins = config.tiempo_recordatorio_minutos || 10;
               const triggerTime = Date.now() + (delayMins * 60000);
@@ -530,7 +634,6 @@ export default function VitoPizzaApp() {
           localStorage.setItem('vito-review-queue', JSON.stringify(queue));
       }
 
-      // 4. Intervalo para revisar la cola cada 10 segundos
       const checker = setInterval(() => {
           const currentQueueStr = localStorage.getItem('vito-review-queue');
           if (!currentQueueStr) return;
@@ -541,7 +644,6 @@ export default function VitoPizzaApp() {
           const remaining: any[] = [];
 
           currentQueue.forEach((item: any) => {
-              // Si ya lo valoró mientras esperaba, sacarlo
               if (misValoraciones.includes(item.pizzaId)) return;
 
               if (now >= item.triggerAt) {
@@ -552,12 +654,15 @@ export default function VitoPizzaApp() {
           });
 
           if (toNotify.length > 0) {
-              // Mostrar notificación del primero (para no saturar)
               const item = toNotify[0];
-              const pz = pizzas.find(z => z.id === item.pizzaId);
+              // CORRECCIÓN: Buscamos en 'enrichedPizzas' si existe, si no, fallback a 'pizzas'
+              const pz = enrichedPizzas.find(z => z.id === item.pizzaId) || pizzas.find(z => z.id === item.pizzaId);
+              
               if (pz) {
                   const delay = config.tiempo_recordatorio_minutos || 10;
-                  sendNotification("¿Qué tal estuvo?", `Hace ${delay} min comiste ${pz.nombre}. ¿Te gustaría calificarla?`);
+                  // Usamos displayName si existe, sino nombre
+                  const nameToShow = pz.displayName || pz.nombre;
+                  sendNotification(t.rateQuestion + " " + nameToShow + "?", `${t.ateTimeAgo} ${delay} ${t.minAgo}`);
                   setLateRatingPizza(pz);
                   setShowLateRatingModal(true);
               }
@@ -567,7 +672,7 @@ export default function VitoPizzaApp() {
       }, 10000); // Revisar cada 10s
 
       return () => clearInterval(checker);
-  }, [pedidos, nombreInvitado, pizzas, misValoraciones, config]);
+  }, [pedidos, nombreInvitado, pizzas, enrichedPizzas, misValoraciones, config]);
 
   const summaryData = useMemo(() => {
       if(!summarySheet) return [];
@@ -653,8 +758,9 @@ export default function VitoPizzaApp() {
   async function modificarPedido(p: any, acc: 'sumar' | 'restar') {
     if (!nombreInvitado.trim()) { alert(t.errorName); return; }
     if (usuarioBloqueado) { alert(`${t.blocked}: ${motivoBloqueo || ''}`); return; }
-    if (acc === 'sumar') { if (p.stockRestante <= 0) { alert("Sin stock :("); return; } const { error } = await supabase.from('pedidos').insert([{ invitado_nombre: nombreInvitado, pizza_id: p.id, cantidad_porciones: 1, estado: 'pendiente' }]); if (!error) mostrarMensaje(`${t.successOrder} ${p.displayName}!`, 'exito'); } else { if (p.cocinando && p.totalPendientes <= p.target) {} const { data } = await supabase.from('pedidos').select('id').eq('pizza_id', p.id).ilike('invitado_nombre', nombreInvitado.trim()).eq('estado', 'pendiente').order('created_at', { ascending: false }).limit(1).single(); if (data) { await supabase.from('pedidos').delete().eq('id', data.id); mostrarMensaje(`${t.successCancel} ${p.displayName}`, 'info'); } }
+    if (acc === 'sumar') { if (p.stockRestante <= 0) { alert("Sin stock :("); return; } setOrderToConfirm(p); } else { if (p.cocinando && p.totalPendientes <= p.target) {} const { data } = await supabase.from('pedidos').select('id').eq('pizza_id', p.id).ilike('invitado_nombre', nombreInvitado.trim()).eq('estado', 'pendiente').order('created_at', { ascending: false }).limit(1).single(); if (data) { await supabase.from('pedidos').delete().eq('id', data.id); mostrarMensaje(`${t.successCancel} ${p.displayName}`, 'info'); } }
   }
+  const proceedWithOrder = async () => { if(!orderToConfirm) return; const { error } = await supabase.from('pedidos').insert([{ invitado_nombre: nombreInvitado, pizza_id: orderToConfirm.id, cantidad_porciones: 1, estado: 'pendiente' }]); if (!error) mostrarMensaje(`${t.successOrder} ${orderToConfirm.displayName}!`, 'exito'); setOrderToConfirm(null); }
   const mostrarMensaje = (txt: string, tipo: 'info' | 'alerta' | 'exito') => { setMensaje({ texto: txt, tipo }); if (tipo !== 'alerta') { setTimeout(() => setMensaje(null), 2500); } }
 
   if (loadingConfig) { return (<div className={`min-h-screen flex items-center justify-center p-4 ${base.bg}`}><div className={`animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 ${isDarkMode ? 'border-white' : 'border-black'}`}></div></div>); }
@@ -670,7 +776,7 @@ export default function VitoPizzaApp() {
                     <button onClick={() => verifyAccess(guestPassInput, dbPass)} className={`p-4 rounded-xl font-bold ${isDarkMode ? 'bg-white text-black' : 'bg-black text-white'}`}><ArrowRight /></button>
                 </div>
                 <div className={`mt-8 pt-4 border-t border-white/5`}>
-                    <Link href="/admin" className={`text-xs flex items-center justify-center gap-1 ${base.subtext} hover:${base.text}`}><Lock size={12}/> Admin</Link>
+                    <Link href="/admin" className={`text-xs flex items-center justify-center gap-1 ${base.subtext} hover:${base.text}`}><Lock size={12}/> {t.adminLink}</Link>
                 </div>
             </div>
         </div>
@@ -763,15 +869,40 @@ export default function VitoPizzaApp() {
             </div>
         )}
 
-        {/* Rating Modal */}
-        {showRatingModal && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in"><div className={`${base.card} p-6 rounded-3xl w-full max-w-sm relative shadow-2xl border`}><button onClick={() => setShowRatingModal(false)} className={`absolute top-4 right-4 ${base.subtext} hover:${base.text}`}><X /></button><h3 className={`text-xl font-bold mb-1 ${base.text}`}>{t.rateTitle} {pizzaToRate?.displayName}</h3><div className="flex justify-center gap-2 mb-6 mt-4">{[1, 2, 3, 4, 5].map(star => (<button key={star} onClick={() => setRatingValue(star)} className="transition-transform hover:scale-110"><Star size={32} fill={star <= ratingValue ? "#eab308" : "transparent"} className={star <= ratingValue ? "text-yellow-500" : "text-neutral-600"} /></button>))}</div><textarea className={`w-full p-3 rounded-xl border outline-none mb-4 resize-none h-24 ${base.input} ${isDarkMode ? 'border-neutral-700 bg-black/50' : 'border-gray-200 bg-gray-50'}`} placeholder="..." value={commentValue} onChange={e => setCommentValue(e.target.value)} /><button onClick={submitRating} disabled={ratingValue === 0} className={`w-full py-3 rounded-xl font-bold shadow-lg ${ratingValue > 0 ? `${currentTheme.color} text-white` : 'bg-neutral-800 text-neutral-500'}`}>{t.sendReview}</button></div></div>)}
+        {/* MODAL DE CONFIRMACIÓN DE PEDIDO */}
+        {orderToConfirm && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-md animate-in fade-in zoom-in duration-300">
+                <div className={`${base.card} w-full max-w-sm rounded-[32px] p-6 shadow-2xl relative border`}>
+                    <h3 className={`text-2xl font-black mb-1 ${base.text}`}>{t.confTitle}</h3>
+                    <p className={`text-lg font-medium mb-4 ${currentTheme.text}`}>{orderToConfirm.displayName}</p>
+                    
+                    <div className="bg-neutral-100 dark:bg-white/5 rounded-2xl p-4 mb-6">
+                        <p className={`text-sm leading-relaxed mb-3 ${base.subtext}`}>
+                            {orderToConfirm.tipo === 'pizza' ? t.confPizzaDesc : t.confUnitDesc}
+                        </p>
+                        <div className="flex items-center gap-2 font-bold text-sm">
+                            <Clock size={18} className={isDarkMode ? 'text-white' : 'text-black'}/>
+                            <span className={base.text}>{t.confTime} {formatTime(orderToConfirm.tiempo_coccion || 60)}</span>
+                        </div>
+                    </div>
 
-        {/* Late Rating Toast (CORREGIDO) */}
+                    <div className="flex gap-3">
+                        <button onClick={() => setOrderToConfirm(null)} className={`flex-1 py-3 rounded-xl font-bold border ${base.subtext}`}>{t.cancelBtn}</button>
+                        <button onClick={proceedWithOrder} className={`flex-1 py-3 rounded-xl font-bold shadow-lg ${currentTheme.color} text-white`}>{t.confBtn}</button>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* Rating Modal (TITULO CORREGIDO PARA MOSTRAR SIEMPRE) */}
+        {showRatingModal && (<div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in"><div className={`${base.card} p-6 rounded-3xl w-full max-w-sm relative shadow-2xl border`}><button onClick={() => setShowRatingModal(false)} className={`absolute top-4 right-4 ${base.subtext} hover:${base.text}`}><X /></button><h3 className={`text-xl font-bold mb-1 ${base.text}`}>{t.rateTitle} {pizzaToRate?.displayName || pizzaToRate?.nombre}</h3><div className="flex justify-center gap-2 mb-6 mt-4">{[1, 2, 3, 4, 5].map(star => (<button key={star} onClick={() => setRatingValue(star)} className="transition-transform hover:scale-110"><Star size={32} fill={star <= ratingValue ? "#eab308" : "transparent"} className={star <= ratingValue ? "text-yellow-500" : "text-neutral-600"} /></button>))}</div><textarea className={`w-full p-3 rounded-xl border outline-none mb-4 resize-none h-24 ${base.input} ${isDarkMode ? 'border-neutral-700 bg-black/50' : 'border-gray-200 bg-gray-50'}`} placeholder="..." value={commentValue} onChange={e => setCommentValue(e.target.value)} /><button onClick={submitRating} disabled={ratingValue === 0} className={`w-full py-3 rounded-xl font-bold shadow-lg ${ratingValue > 0 ? `${currentTheme.color} text-white` : 'bg-neutral-800 text-neutral-500'}`}>{t.sendReview}</button></div></div>)}
+
+        {/* Late Rating Toast (Z-INDEX AUMENTADO y TITULO CORREGIDO) */}
         {showLateRatingModal && lateRatingPizza && (
             <div className="fixed top-24 left-4 right-4 z-[100] animate-bounce-in">
                 <div className={`${base.card} p-4 rounded-2xl shadow-2xl border border-yellow-500/50 flex items-center justify-between gap-3`}>
-                    <div className="flex items-center gap-3"><div className="bg-yellow-500 p-2 rounded-xl text-black"><Star size={20} fill="black"/></div><div><p className={`text-sm font-bold ${base.text}`}>¿Te gustó {lateRatingPizza.nombre}?</p><p className={`text-[10px] ${base.subtext}`}>Comiste hace {config.tiempo_recordatorio_minutos || 10} min...</p></div></div>
-                    <div className="flex gap-2"><button onClick={() => { setShowLateRatingModal(false); }} className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${base.subtext}`}>Ahora no</button><button onClick={() => { setShowLateRatingModal(false); openRating(lateRatingPizza); }} className={`px-3 py-1.5 rounded-lg text-xs font-bold bg-yellow-500 text-black shadow-lg`}>Sí!</button></div>
+                    <div className="flex items-center gap-3"><div className="bg-yellow-500 p-2 rounded-xl text-black"><Star size={20} fill="black"/></div><div><p className={`text-sm font-bold ${base.text}`}>{t.rateQuestion} {lateRatingPizza.displayName || lateRatingPizza.nombre}?</p><p className={`text-[10px] ${base.subtext}`}>{t.ateTimeAgo} {config.tiempo_recordatorio_minutos || 10} {t.minAgo}</p></div></div>
+                    <div className="flex gap-2"><button onClick={() => { setShowLateRatingModal(false); }} className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${base.subtext}`}>{t.notNow}</button><button onClick={() => { setShowLateRatingModal(false); openRating(lateRatingPizza); }} className={`px-3 py-1.5 rounded-lg text-xs font-bold bg-yellow-500 text-black shadow-lg`}>{t.yes}</button></div>
                 </div>
             </div>
         )}
