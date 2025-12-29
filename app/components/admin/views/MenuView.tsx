@@ -1,0 +1,196 @@
+import { CheckSquare, Square, Plus, ImageIcon, UploadCloud, X, Calculator, Save, Eye, EyeOff, Trash2 } from 'lucide-react';
+import { TimeControl } from '../../ui/TimeControl';
+
+export const MenuView = ({
+    base, config, setConfig, activeCategories, uniqueCategories, toggleCategory, currentTheme,
+    addP, uploading, newPizzaName, setNewPizzaName, isDarkMode, handleImageUpload, newPizzaImg,
+    newPizzaDesc, setNewPizzaDesc, newPizzaIngredients, removeFromNewPizzaRecipe, newPizzaSelectedIng,
+    setNewPizzaSelectedIng, ingredients, newPizzaRecipeQty, setNewPizzaRecipeQty, addToNewPizzaRecipe,
+    newPizzaCat, setNewPizzaCat, newPizzaPortions, setNewPizzaPortions, stockEstimadoNueva, newPizzaTime,
+    setNewPizzaTime, pizzas, edits, recetas, updateP, savePizzaChanges, cancelChanges, delP,
+    tempRecipeIng, setTempRecipeIng, tempRecipeQty, setTempRecipeQty, addToExistingPizza, removeFromExistingPizza,
+    reservedState, calcularStockDinamico, updateLocalRecipe 
+}: any) => {
+
+    return (
+        <div className="space-y-6">
+            {/* CATEGORIAS FILTER */}
+            <div className={`${base.card} p-5 rounded-3xl border flex flex-col gap-3 shadow-sm`}>
+                <label className={`text-xs font-bold uppercase tracking-wider opacity-60 ${base.subtext}`}>CATEGORIAS A MOSTRAR:</label>
+                <div className="flex flex-wrap gap-2">
+                     <button onClick={async () => {
+                         const isAll = activeCategories.includes('Todas');
+                         const newVal = isAll ? ['General'] : ['Todas'];
+                         setConfig({...config, categoria_activa: JSON.stringify(newVal)});
+                     }} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border transition-all ${activeCategories.includes('Todas') ? 'bg-neutral-800 text-white border-neutral-700' : 'bg-neutral-100 dark:bg-white/5 border-transparent text-gray-500'}`}>
+                         {activeCategories.includes('Todas') ? <CheckSquare size={14}/> : <Square size={14}/>} Todas
+                     </button>
+                     {uniqueCategories.map((cat: string) => {
+                         const isActive = activeCategories.includes(cat);
+                         return (
+                             <button key={cat} onClick={() => toggleCategory(cat)} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border transition-all ${isActive ? 'bg-neutral-800 text-white border-neutral-700' : 'bg-neutral-100 dark:bg-white/5 border-transparent text-gray-500'}`}>
+                                 {isActive ? <CheckSquare size={14}/> : <Square size={14}/>} {cat}
+                             </button>
+                         )
+                     })}
+                </div>
+            </div>
+
+            {/* CREAR NUEVO ITEM */}
+            <div className={`p-5 rounded-3xl border shadow-sm relative overflow-hidden group ${base.card}`}>
+                <div className="flex justify-between items-start mb-4">
+                    <h3 className={`font-bold flex items-center gap-2 text-xl ${base.subtext}`}><Plus size={24}/> Nuevo Item</h3>
+                    <button onClick={addP} disabled={uploading} className={`${currentTheme.color} text-white font-bold px-6 py-2 rounded-xl shadow-lg active:scale-95 transition-all text-sm`}>CREAR</button>
+                </div>
+                
+                <div className="flex flex-col gap-4">
+                    <input className={`w-full text-2xl font-bold bg-transparent outline-none placeholder-opacity-30 ${isDarkMode ? 'placeholder-white' : 'placeholder-black'}`} placeholder="Nombre del plato..." value={newPizzaName} onChange={(e: any) => setNewPizzaName(e.target.value)} />
+                    
+                    <div className="flex gap-4">
+                        <label className={`flex-shrink-0 cursor-pointer w-24 h-24 rounded-2xl overflow-hidden border-2 border-dashed ${base.uploadBox} flex items-center justify-center transition-colors group relative`}>
+                            {newPizzaImg ? <img src={newPizzaImg} className="w-full h-full object-cover"/> : <ImageIcon size={24} className="opacity-30"/>}
+                            <div className="absolute inset-0 bg-black/50 hidden group-hover:flex items-center justify-center text-white"><UploadCloud size={20}/></div>
+                            <input type="file" accept="image/*" className="hidden" onChange={(e: any) => handleImageUpload(e)} disabled={uploading}/>
+                        </label>
+                        <textarea className={`flex-1 p-0 bg-transparent text-sm leading-relaxed outline-none resize-none h-24 placeholder-opacity-40 ${isDarkMode ? 'placeholder-white' : 'placeholder-black'}`} placeholder="Descripción..." value={newPizzaDesc} onChange={(e: any) => setNewPizzaDesc(e.target.value)} />
+                    </div>
+
+                    {/* INGREDIENTES SELECTOR */}
+                    <div className={`${base.innerCard} p-3 rounded-2xl`}>
+                        <div className="flex flex-wrap gap-2 mb-3">
+                             {newPizzaIngredients.map((ing: any, i: number) => (
+                                 <span key={i} className="text-xs bg-white shadow-sm dark:bg-white/10 px-3 py-1.5 rounded-lg flex items-center gap-2 font-bold text-black dark:text-white">
+                                     {ing.nombre} <span className="opacity-50 text-[10px]">{ing.cantidad}</span> <button onClick={() => removeFromNewPizzaRecipe(i)}><X size={12}/></button>
+                                 </span>
+                             ))}
+                        </div>
+                        <div className="flex gap-2">
+                            <select className={`flex-1 p-2 text-sm rounded-xl font-bold outline-none bg-white dark:bg-black/20 text-black dark:text-white`} value={newPizzaSelectedIng} onChange={(e: any) => setNewPizzaSelectedIng(e.target.value)}>
+                                <option value="">+ Ingrediente</option>
+                                {ingredients.map((i: any) => <option key={i.id} value={`${i.id}|${i.nombre}`}>{i.nombre} (Disp: {i.cantidad_disponible})</option>)}
+                            </select>
+                            <input type="number" className={`w-20 p-2 text-sm rounded-xl text-center font-bold outline-none bg-white dark:bg-black/20 text-black dark:text-white`} value={newPizzaRecipeQty} onChange={(e: any) => setNewPizzaRecipeQty(Number(e.target.value) || '')} placeholder="Cant" />
+                            <button onClick={addToNewPizzaRecipe} className="bg-neutral-800 dark:bg-white text-white dark:text-black px-4 rounded-xl text-sm font-bold shadow-sm">OK</button>
+                        </div>
+                    </div>
+
+                    {/* GRID DE DATOS */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-2">
+                        <div className={`${base.innerCard} p-3 rounded-2xl flex flex-col items-center justify-center text-center`}>
+                            <span className="text-[10px] uppercase font-bold opacity-50 tracking-wider mb-1">Categoria</span>
+                            <input list="categories" className="w-full text-center font-bold bg-transparent outline-none text-sm" value={newPizzaCat} onChange={(e: any) => setNewPizzaCat(e.target.value)} />
+                            <datalist id="categories">{uniqueCategories.map((c: string) => <option key={c} value={c}/>)}</datalist>
+                        </div>
+                        <div className={`${base.innerCard} p-3 rounded-2xl flex flex-col items-center justify-center text-center`}>
+                            <span className="text-[10px] uppercase font-bold opacity-50 tracking-wider mb-1">Porciones</span>
+                            <input type="number" className="w-full text-center font-bold bg-transparent outline-none text-sm" value={newPizzaPortions} onChange={(e: any) => setNewPizzaPortions(Number(e.target.value))} />
+                        </div>
+                        <div className={`${base.innerCard} p-3 rounded-2xl flex flex-col items-center justify-center text-center`}>
+                            <span className="text-[10px] uppercase font-bold opacity-50 tracking-wider mb-1">Stock Est.</span>
+                            <span className="text-xl font-bold">{stockEstimadoNueva}</span>
+                        </div>
+                        <div className={`${base.innerCard} p-3 rounded-2xl flex flex-col items-center justify-center text-center`}>
+                            <span className="text-[10px] uppercase font-bold opacity-50 tracking-wider mb-1">Timer</span>
+                            <TimeControl value={newPizzaTime} onChange={setNewPizzaTime} isDarkMode={isDarkMode}/>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            {/* LISTA DE PIZZAS EXISTENTES */}
+            <div className="space-y-4">
+                {pizzas.map((p: any) => {
+                const isEdited = !!edits[p.id];
+                const display = { ...p, ...edits[p.id] }; 
+                const isNewRecipe = !!edits[p.id]?.local_recipe;
+                const currentRecipe = isNewRecipe ? edits[p.id].local_recipe : recetas.filter((r: any) => r.pizza_id === p.id).map((r: any) => ({...r, nombre: ingredients.find((i: any) => i.id === r.ingrediente_id)?.nombre || '?'}));
+                const dynamicStock = calcularStockDinamico(currentRecipe, ingredients);
+
+                return (
+                <div key={p.id} className={`p-5 rounded-3xl border flex flex-col gap-4 relative overflow-hidden transition-all ${base.card} ${isEdited ? 'border-yellow-500/50' : ''}`}>
+                    {/* HEADER */}
+                    <div className="flex justify-between items-start">
+                        <input value={display.nombre} onChange={(e: any) => updateP(p.id, 'nombre', e.target.value)} className="bg-transparent font-bold text-2xl outline-none w-full border-b border-transparent focus:border-white/20 pb-1" />
+                        <div className="flex gap-2 ml-4">
+                            {isEdited && (
+                                <>
+                                    <button onClick={() => savePizzaChanges(p.id)} className="p-2 bg-yellow-500 text-black rounded-xl animate-pulse shadow-lg hover:scale-105 transition-transform"><Save size={18}/></button>
+                                    <button onClick={() => cancelChanges(p.id)} className="p-2 bg-red-500 text-white rounded-xl shadow-lg hover:scale-105 transition-transform"><X size={18}/></button>
+                                </>
+                            )}
+                            <button onClick={() => updateP(p.id, 'activa', !p.activa)} className={`p-2 rounded-xl transition-colors ${p.activa ? 'bg-white/10 hover:bg-white/20' : 'bg-black/50 text-neutral-500'}`}>{p.activa ? <Eye size={18}/> : <EyeOff size={18}/>}</button>
+                            <button onClick={() => delP(p.id)} className="p-2 text-red-500 hover:bg-red-500/10 rounded-xl transition-colors"><Trash2 size={18}/></button>
+                        </div>
+                    </div>
+
+                    {/* BODY */}
+                    <div className="flex gap-4">
+                        <label className="cursor-pointer relative w-20 h-20 rounded-xl overflow-hidden bg-neutral-900 group flex-shrink-0 shadow-inner">
+                            {display.imagen_url ? <img src={display.imagen_url} className="w-full h-full object-cover"/> : <div className="flex items-center justify-center h-full text-neutral-600"><ImageIcon size={20}/></div>}
+                            <div className="absolute inset-0 bg-black/50 hidden group-hover:flex items-center justify-center text-white"><UploadCloud size={16}/></div>
+                            <input type="file" accept="image/*" className="hidden" onChange={(e: any) => handleImageUpload(e, p.id)}/>
+                        </label>
+                        <textarea value={display.descripcion || ''} onChange={(e: any) => updateP(p.id, 'descripcion', e.target.value)} className={`flex-1 p-0 bg-transparent text-sm leading-relaxed outline-none resize-none h-20 opacity-80 placeholder-opacity-30 ${isDarkMode ? 'placeholder-white' : 'placeholder-black'}`} placeholder="Descripción..." />
+                    </div>
+                    
+                    {/* RECETAS EN EDICION */}
+                    <div className={`${base.innerCard} p-3 rounded-2xl`}>
+                        <div className="flex justify-between items-center mb-2">
+                            <p className="text-[10px] font-bold uppercase opacity-50 tracking-wider">Receta</p>
+                            <span className="text-[10px] font-bold bg-black/20 px-2 py-0.5 rounded-full">{currentRecipe.length} Ingredientes</span>
+                        </div>
+                        <div className="flex flex-wrap gap-2 mb-3">
+                            {currentRecipe.map((r: any, idx: number) => (
+                                <span key={idx} className="text-xs bg-white dark:bg-white/10 px-2 py-1 rounded-lg flex items-center gap-1 border border-black/5 dark:border-white/5 font-medium text-black dark:text-white">
+                                    {r.nombre}: {r.cantidad_requerida}
+                                    <button onClick={() => removeFromExistingPizza(p.id, idx, currentRecipe)} className="text-red-400 hover:text-red-300 ml-1"><X size={12}/></button>
+                                </span>
+                            ))}
+                        </div>
+                        <div className="flex gap-2">
+                            <select className={`flex-1 p-1.5 text-xs rounded-lg font-bold outline-none bg-white dark:bg-black/20 text-black dark:text-white`} value={tempRecipeIng[p.id] || ''} onChange={(e: any) => setTempRecipeIng({...tempRecipeIng, [p.id]: e.target.value})}>
+                                <option value="">+ Ingrediente</option>
+                                {ingredients.map((i: any) => <option key={i.id} value={`${i.id}|${i.nombre}`}>{i.nombre} (Disp: {Math.max(0, i.cantidad_disponible - (reservedState[i.id] || 0))})</option>)}
+                            </select>
+                            <input type="number" placeholder="Cant" className={`w-16 p-1.5 text-xs rounded-lg text-center font-bold outline-none bg-white dark:bg-black/20 text-black dark:text-white`} value={tempRecipeQty[p.id] || ''} onChange={(e: any) => setTempRecipeQty({...tempRecipeQty, [p.id]: Number(e.target.value) || ''})} />
+                            <button onClick={() => {
+                                if(!tempRecipeIng[p.id]) return;
+                                const [ingId, name] = tempRecipeIng[p.id].split('|');
+                                addToExistingPizza(p.id, ingId, name, tempRecipeQty[p.id] || 0, currentRecipe);
+                                setTempRecipeIng({...tempRecipeIng, [p.id]: ''}); 
+                                setTempRecipeQty({...tempRecipeQty, [p.id]: ''});
+                            }} className="bg-neutral-800 dark:bg-white text-white dark:text-black px-3 rounded-lg text-xs font-bold">OK</button>
+                        </div>
+                    </div>
+
+                    {/* GRID STATS */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div className={`${base.innerCard} p-2 rounded-2xl flex flex-col items-center justify-center text-center`}>
+                            <span className="text-[9px] uppercase font-bold opacity-50 tracking-wider mb-1">Categoria</span>
+                            <input list="categories" value={display.categoria || ''} onChange={(e: any) => updateP(p.id, 'categoria', e.target.value)} className={`w-full text-center bg-transparent outline-none text-sm font-bold`} />
+                        </div>
+                        <div className={`${base.innerCard} p-2 rounded-2xl flex flex-col items-center justify-center text-center`}>
+                            <span className="text-[9px] uppercase font-bold opacity-50 tracking-wider mb-1">Porciones</span>
+                            <input type="number" value={display.porciones_individuales || ''} onChange={(e: any) => updateP(p.id, 'porciones_individuales', e.target.value ? parseInt(e.target.value) : null)} className={`w-full text-center bg-transparent outline-none text-sm font-bold`} />
+                        </div>
+                        
+                        <div className={`${base.innerCard} p-2 rounded-2xl flex flex-col items-center justify-center relative overflow-hidden text-center`}>
+                            <span className="text-[9px] uppercase font-bold opacity-50 tracking-wider mb-1">Stock</span>
+                            {currentRecipe.length > 0 ? (
+                                <div className="flex items-center gap-1 font-bold text-xl"><Calculator size={14} className="opacity-30"/> {dynamicStock}</div>
+                            ) : (
+                                <input type="number" value={display.stock || 0} onChange={(e: any) => updateP(p.id, 'stock', parseInt(e.target.value))} className={`w-full text-center bg-transparent outline-none text-sm font-bold`} />
+                            )}
+                        </div>
+
+                        <div className={`${base.innerCard} p-2 rounded-2xl flex flex-col items-center justify-center text-center`}>
+                            <span className="text-[9px] uppercase font-bold opacity-50 tracking-wider mb-1">Timer</span>
+                            <TimeControl value={display.tiempo_coccion || 60} onChange={(val: number) => updateP(p.id, 'tiempo_coccion', val)} isDarkMode={isDarkMode} />
+                        </div>
+                    </div>
+                </div>
+                );})}
+            </div>
+        </div>
+    );
+};
