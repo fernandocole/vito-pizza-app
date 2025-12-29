@@ -1,6 +1,5 @@
-import { Maximize2, Star, Minus, Plus } from 'lucide-react';
-// CORRECCIÓN: Un solo nivel hacia arriba (../) para salir de "guest" a "components" y entrar a "ui"
-import { CookingTimer } from '../ui/CookingTimer'; 
+import { Maximize2, Star, Minus, Plus, Pizza, Sandwich, Utensils } from 'lucide-react';
+import { CookingTimer } from '../ui/CookingTimer';
 
 export const FoodCard = ({ 
     pizza, base, isCompact, isDarkMode, currentTheme, zoomLevel, t, DESC_SIZES, STOCK_SIZES,
@@ -10,6 +9,12 @@ export const FoodCard = ({
     const hist = miHistorial[pizza.id];
     const pendientes = hist?.pendientes || 0;
     const comidos = hist?.comidos || 0;
+    
+    // Determinar tipo
+    const isBurger = pizza.tipo === 'burger';
+    const isOther = pizza.tipo === 'other';
+    // Si es Burger u Otro, se trata como unidad (no se comparte en porciones con otros)
+    const isUnit = isBurger || isOther;
 
     return (
         <div className={`${base.card} ${isCompact ? 'rounded-3xl' : 'rounded-[36px]'} border ${pizza.stockRestante === 0 ? 'border-neutral-200 dark:border-neutral-800' : pizza.cocinando ? 'border-red-600/30' : ''} shadow-lg relative overflow-hidden group ${isCompact ? 'p-3' : 'p-5'}`}>
@@ -30,6 +35,15 @@ export const FoodCard = ({
                             <img src={pizza.imagen_url} onClick={(e)=>{e.stopPropagation(); setImageToView(pizza.imagen_url)}} className="w-10 h-10 rounded-full object-cover border border-white/20 cursor-pointer hover:scale-110 transition-transform"/>
                         )}
 
+                        {/* ICONO IDENTIFICADOR */}
+                        {isBurger ? (
+                            <Sandwich size={isCompact ? 16 : 20} className="text-orange-500" />
+                        ) : isOther ? (
+                            <Utensils size={isCompact ? 16 : 20} className="text-blue-500" />
+                        ) : (
+                            <Pizza size={isCompact ? 16 : 20} className="text-red-500" />
+                        )}
+
                         <h2 className={`font-bold ${isCompact ? 'text-lg' : 'text-2xl'} ${pizza.stockRestante === 0 ? 'text-gray-400 dark:text-neutral-600' : base.text}`}>{pizza.displayName}</h2>
                         
                         <div className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs ${base.badge}`}>
@@ -44,7 +58,15 @@ export const FoodCard = ({
                         {pizza.cocinando && pizza.cocinando_inicio && <CookingTimer start={pizza.cocinando_inicio} duration={pizza.tiempo_coccion || 60} small={true}/>}
                     </div>
                     {!isCompact && (<p className={`leading-relaxed max-w-[200px] ${base.subtext} ${DESC_SIZES[zoomLevel]}`}>{pizza.displayDesc}</p>)}
-                    <p className={`font-mono mt-1 ${pizza.stockRestante === 0 ? 'text-red-500 font-bold' : base.subtext} ${STOCK_SIZES[zoomLevel]}`}>{pizza.stockRestante === 0 ? t.soldOut : `${t.ingredientsFor} ${pizza.stockRestante} ${t.portionsMore}`}</p>
+                    
+                    {/* TEXTO DE STOCK DIFERENCIADO */}
+                    <p className={`font-mono mt-1 ${pizza.stockRestante === 0 ? 'text-red-500 font-bold' : base.subtext} ${STOCK_SIZES[zoomLevel]}`}>
+                        {pizza.stockRestante === 0 ? t.soldOut : (
+                            isUnit 
+                            ? `Stock: ${pizza.stockRestante} u.` 
+                            : `${t.ingredientsFor} ${pizza.stockRestante} ${t.portionsMore}`
+                        )}
+                    </p>
                 </div>
                 
                 <div className="flex flex-col items-end gap-1 ml-2">
@@ -53,18 +75,23 @@ export const FoodCard = ({
                 </div>
             </div>
 
-            {/* BARRA DE PROGRESO */}
-            <div className={`rounded-2xl border ${isCompact ? 'p-2 mb-2 mt-1' : 'p-3 mb-5 mt-4'} ${base.progressBg}`}>
-                <div className={`flex justify-between text-[10px] font-bold uppercase tracking-wider mb-2 ${base.subtext}`}>
-                    <span>{pizza.faltanParaCompletar === pizza.target ? t.newPizza : t.progress}</span>
-                    <span className={pizza.faltanParaCompletar === 0 ? currentTheme.text : base.subtext}>{pizza.faltanParaCompletar > 0 ? `${t.missing} ${pizza.faltanParaCompletar}` : t.completed}</span>
+            {/* BARRA DE PROGRESO (SOLO PARA PIZZAS) */}
+            {!isUnit && (
+                <div className={`rounded-2xl border ${isCompact ? 'p-2 mb-2 mt-1' : 'p-3 mb-5 mt-4'} ${base.progressBg}`}>
+                    <div className={`flex justify-between text-[10px] font-bold uppercase tracking-wider mb-2 ${base.subtext}`}>
+                        <span>{pizza.faltanParaCompletar === pizza.target ? t.newPizza : t.progress}</span>
+                        <span className={pizza.faltanParaCompletar === 0 ? currentTheme.text : base.subtext}>{pizza.faltanParaCompletar > 0 ? `${t.missing} ${pizza.faltanParaCompletar}` : t.completed}</span>
+                    </div>
+                    <div className={`rounded-full overflow-hidden flex border ${isCompact ? 'h-1.5' : 'h-2'} ${base.progressTrack}`}>
+                        {[...Array(pizza.target)].map((_, i) => (
+                            <div key={i} className={`flex-1 border-r last:border-0 ${isDarkMode ? 'border-black/50' : 'border-white/50'} ${i < pizza.ocupadasActual ? `bg-gradient-to-r ${currentTheme.name === 'Carbone' ? 'from-white to-neutral-300' : currentTheme.gradient}` : 'bg-transparent'}`}></div>
+                        ))}
+                    </div>
                 </div>
-                <div className={`rounded-full overflow-hidden flex border ${isCompact ? 'h-1.5' : 'h-2'} ${base.progressTrack}`}>
-                    {[...Array(pizza.target)].map((_, i) => (
-                        <div key={i} className={`flex-1 border-r last:border-0 ${isDarkMode ? 'border-black/50' : 'border-white/50'} ${i < pizza.ocupadasActual ? `bg-gradient-to-r ${currentTheme.name === 'Carbone' ? 'from-white to-neutral-300' : currentTheme.gradient}` : 'bg-transparent'}`}></div>
-                    ))}
-                </div>
-            </div>
+            )}
+            
+            {/* Espaciador si es Unit para alinear botones */}
+            {isUnit && <div className="mb-4"></div>}
 
             {/* BOTONES */}
             <div className="flex gap-3">

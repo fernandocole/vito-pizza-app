@@ -7,8 +7,7 @@ import {
   Palette, Sun, Moon, ArrowUpNarrowWide, ArrowDownAZ, Maximize2, Minimize2
 } from 'lucide-react';
 
-// --- IMPORTS CORREGIDOS PARA LA RUTA /app/admin/ ---
-// Salimos de "admin" (..) y entramos en "components/admin/views"
+// Imports de Vistas
 import { KitchenView } from '../components/admin/views/KitchenView';
 import { OrdersView } from '../components/admin/views/OrdersView';
 import { InventoryView } from '../components/admin/views/InventoryView';
@@ -82,6 +81,7 @@ export default function AdminPage() {
   const [newPizzaTime, setNewPizzaTime] = useState(90);
   const [newPizzaCat, setNewPizzaCat] = useState(''); 
   const [newPizzaPortions, setNewPizzaPortions] = useState(8);
+  const [newPizzaType, setNewPizzaType] = useState<'pizza' | 'burger' | 'other'>('pizza'); // Agregado 'other'
   const [uploading, setUploading] = useState(false);
     
   // NUEVA RECETAS
@@ -197,7 +197,6 @@ export default function AdminPage() {
   const cargarDatos = async () => {
     const now = new Date(); if (now.getHours() < 6) now.setDate(now.getDate() - 1); now.setHours(6, 0, 0, 0); const iso = now.toISOString();
     
-    // Carga paralela
     const [piz, ing, rec, ped, inv, conf, val] = await Promise.all([
         supabase.from('menu_pizzas').select('*').order('created_at', { ascending: true }),
         supabase.from('ingredientes').select('*').order('nombre'),
@@ -361,7 +360,9 @@ export default function AdminPage() {
   };
 
   const toggleCocinando = async (p: any) => { 
-      if(!p.cocinando && p.totalPendientes < p.target) { alert("Falta para 1 entera"); return; } 
+      // LOGICA UPDATE: Si es burger o 'other', no importa si no está "completa", se puede cocinar igual
+      if(p.tipo === 'pizza' && !p.cocinando && p.totalPendientes < p.target) { alert("Falta para 1 entera"); return; } 
+      
       const newState = !p.cocinando;
       const startTime = newState ? new Date().toISOString() : null;
 
@@ -427,8 +428,15 @@ export default function AdminPage() {
       });
   }, [pizzas, pedidos, config, orden, activeCategories]);
 
-  // Categories & Stats
-  const uniqueCategories = useMemo(() => { const cats = new Set<string>(); pizzas.forEach(p => { if(p.categoria) cats.add(p.categoria); }); return Array.from(cats); }, [pizzas]);
+  // Categories & Stats - CORREGIDO: Limpieza de espacios en blanco
+  const uniqueCategories = useMemo(() => { 
+      const cats = new Set<string>(); 
+      pizzas.forEach(p => { 
+          if(p.categoria) cats.add(p.categoria.trim()); // Trim crucial para evitar duplicados
+      }); 
+      return Array.from(cats).sort(); 
+  }, [pizzas]);
+
   const toggleCategory = async (cat: string) => { const current = new Set(activeCategories); if (current.has(cat)) current.delete(cat); else current.add(cat); const newArr = Array.from(current); setConfig({...config, categoria_activa: JSON.stringify(newArr)}); await supabase.from('configuracion_dia').update({ categoria_activa: JSON.stringify(newArr) }).eq('id', config.id); };
 
   const stats = useMemo(() => {
@@ -484,7 +492,7 @@ export default function AdminPage() {
   
   const addP = async () => { 
       if(!newPizzaName) return; 
-      const { data: pizzaData } = await supabase.from('menu_pizzas').insert([{ nombre: newPizzaName, descripcion: newPizzaDesc, stock: 0, imagen_url: newPizzaImg, tiempo_coccion: newPizzaTime, categoria: newPizzaCat, activa: true, porciones_individuales: newPizzaPortions }]).select().single();
+      const { data: pizzaData } = await supabase.from('menu_pizzas').insert([{ nombre: newPizzaName, descripcion: newPizzaDesc, stock: 0, imagen_url: newPizzaImg, tiempo_coccion: newPizzaTime, categoria: newPizzaCat, activa: true, porciones_individuales: newPizzaPortions, tipo: newPizzaType }]).select().single();
       
       if(pizzaData && newPizzaIngredients.length > 0) {
           const rows = newPizzaIngredients.map(r => ({
@@ -498,7 +506,37 @@ export default function AdminPage() {
       await actualizarStockGlobal(); 
   };
   
-  const delP = async (id: string) => { if(confirm('¿Borrar?')) await supabase.from('menu_pizzas').delete().eq('id', id); cargarDatos(); };
+  // FUNCION DE BORRADO DEFINITIVA (Con confirmación de borrado en cascada)
+  const delP = async (id: string) => { 
+      if(!confirm('¿Estás seguro de BORRAR este ítem?')) return;
+      
+      // 1. Intentar borrar recetas (seguro)
+      await supabase.from('recetas').delete().eq('pizza_id', id);
+
+      // 2. Intentar borrar el ítem
+      const { error } = await supabase.from('menu_pizzas').delete().eq('id', id);
+      
+      if (error) {
+          // Si hay error, es probable que sea por integridad referencial (historial)
+          // 3. Preguntar si se quiere forzar el borrado eliminando todo el historial
+          if (confirm("⛔ Este ítem tiene historial (pedidos/valoraciones).\n\n¿Quieres ELIMINAR TODO EL HISTORIAL asociado a este ítem para borrarlo definitivamente?\n\n(Esta acción no se puede deshacer)")) {
+               // Borrar historial
+               await supabase.from('pedidos').delete().eq('pizza_id', id);
+               await supabase.from('valoraciones').delete().eq('pizza_id', id);
+               
+               // Reintentar borrado del ítem
+               const { error: err2 } = await supabase.from('menu_pizzas').delete().eq('id', id);
+               if(err2) {
+                   alert("Error al borrar definitivamente: " + err2.message);
+               } else {
+                   cargarDatos();
+               }
+          }
+      } else {
+          cargarDatos();
+      }
+  };
+
   const changePass = async () => { if(!newPass) return; await supabase.from('configuracion_dia').update({password_admin: newPass}).eq('id', config.id); alert('OK'); setNewPass(''); };
   const addU = async () => { if(!newGuestName) return; const { error } = await supabase.from('lista_invitados').insert([{ nombre: newGuestName }]); if(error) alert('Error'); else { setNewGuestName(''); cargarDatos(); } };
   const toggleB = async (u: any) => { let uid = u.id; if(!uid) { const { data } = await supabase.from('lista_invitados').insert([{ nombre: u.nombre }]).select().single(); if(data) uid = data.id; else return; } await supabase.from('lista_invitados').update({ bloqueado: !u.bloqueado }).eq('id', uid); cargarDatos(); };
@@ -619,7 +657,7 @@ export default function AdminPage() {
             {view === 'cocina' && <KitchenView metricas={metricas} base={base} isCompact={isCompact} isDarkMode={isDarkMode} currentTheme={currentTheme} toggleCocinando={toggleCocinando} entregar={entregar} />}
             {view === 'pedidos' && <OrdersView pedidosAgrupados={pedidosAgrupados} base={base} isDarkMode={isDarkMode} eliminarPedidosGusto={eliminarPedidosGusto} />}
             {view === 'ingredientes' && <InventoryView base={base} currentTheme={currentTheme} ingredients={ingredientes} newIngName={newIngName} setNewIngName={setNewIngName} newIngQty={newIngQty} setNewIngQty={setNewIngQty} newIngUnit={newIngUnit} setNewIngUnit={setNewIngUnit} addIng={addIng} editingIngId={editingIngId} editIngForm={editIngForm} setEditIngForm={setEditIngForm} saveEditIng={saveEditIng} cancelEditIng={cancelEditIng} delIng={delIng} startEditIng={startEditIng} reservedState={reservedState} />}
-            {view === 'menu' && <MenuView base={base} config={config} setConfig={setConfig} activeCategories={activeCategories} uniqueCategories={uniqueCategories} toggleCategory={toggleCategory} currentTheme={currentTheme} addP={addP} uploading={uploading} newPizzaName={newPizzaName} setNewPizzaName={setNewPizzaName} isDarkMode={isDarkMode} handleImageUpload={handleImageUpload} newPizzaImg={newPizzaImg} newPizzaDesc={newPizzaDesc} setNewPizzaDesc={setNewPizzaDesc} newPizzaIngredients={newPizzaIngredients} removeFromNewPizzaRecipe={removeFromNewPizzaRecipe} newPizzaSelectedIng={newPizzaSelectedIng} setNewPizzaSelectedIng={setNewPizzaSelectedIng} ingredients={ingredientes} newPizzaRecipeQty={newPizzaRecipeQty} setNewPizzaRecipeQty={setNewPizzaRecipeQty} addToNewPizzaRecipe={addToNewPizzaRecipe} newPizzaCat={newPizzaCat} setNewPizzaCat={setNewPizzaCat} newPizzaPortions={newPizzaPortions} setNewPizzaPortions={setNewPizzaPortions} stockEstimadoNueva={stockEstimadoNueva} newPizzaTime={newPizzaTime} setNewPizzaTime={setNewPizzaTime} pizzas={pizzas} edits={edits} recetas={recetas} updateP={updateP} savePizzaChanges={savePizzaChanges} cancelChanges={cancelChanges} delP={delP} tempRecipeIng={tempRecipeIng} setTempRecipeIng={setTempRecipeIng} tempRecipeQty={tempRecipeQty} setTempRecipeQty={setTempRecipeQty} addToExistingPizza={addToExistingPizza} removeFromExistingPizza={removeFromExistingPizza} reservedState={reservedState} calcularStockDinamico={calcularStockDinamico} updateLocalRecipe={updateLocalRecipe} />}
+            {view === 'menu' && <MenuView base={base} config={config} setConfig={setConfig} activeCategories={activeCategories} uniqueCategories={uniqueCategories} toggleCategory={toggleCategory} currentTheme={currentTheme} addP={addP} uploading={uploading} newPizzaName={newPizzaName} setNewPizzaName={setNewPizzaName} isDarkMode={isDarkMode} handleImageUpload={handleImageUpload} newPizzaImg={newPizzaImg} newPizzaDesc={newPizzaDesc} setNewPizzaDesc={setNewPizzaDesc} newPizzaIngredients={newPizzaIngredients} removeFromNewPizzaRecipe={removeFromNewPizzaRecipe} newPizzaSelectedIng={newPizzaSelectedIng} setNewPizzaSelectedIng={setNewPizzaSelectedIng} ingredients={ingredientes} newPizzaRecipeQty={newPizzaRecipeQty} setNewPizzaRecipeQty={setNewPizzaRecipeQty} addToNewPizzaRecipe={addToNewPizzaRecipe} newPizzaCat={newPizzaCat} setNewPizzaCat={setNewPizzaCat} newPizzaPortions={newPizzaPortions} setNewPizzaPortions={setNewPizzaPortions} stockEstimadoNueva={stockEstimadoNueva} newPizzaTime={newPizzaTime} setNewPizzaTime={setNewPizzaTime} pizzas={pizzas} edits={edits} recetas={recetas} updateP={updateP} savePizzaChanges={savePizzaChanges} cancelChanges={cancelChanges} delP={delP} tempRecipeIng={tempRecipeIng} setTempRecipeIng={setTempRecipeIng} tempRecipeQty={tempRecipeQty} setTempRecipeQty={setTempRecipeQty} addToExistingPizza={addToExistingPizza} removeFromExistingPizza={removeFromExistingPizza} reservedState={reservedState} calcularStockDinamico={calcularStockDinamico} updateLocalRecipe={updateLocalRecipe} newPizzaType={newPizzaType} setNewPizzaType={setNewPizzaType} />}
             {view === 'ranking' && <RankingView base={base} delAllVal={delAllVal} ranking={ranking} delValPizza={delValPizza} />}
             {view === 'usuarios' && <UsersView base={base} newGuestName={newGuestName} setNewGuestName={setNewGuestName} addU={addU} allUsersList={allUsersList} resetU={resetU} toggleB={toggleB} eliminarUsuario={eliminarUsuario} tempMotivos={tempMotivos} setTempMotivos={setTempMotivos} guardarMotivo={guardarMotivo} currentTheme={currentTheme} />}
             {view === 'config' && <ConfigView base={base} config={config} setConfig={setConfig} isDarkMode={isDarkMode} resetAllOrders={resetAllOrders} newPass={newPass} setNewPass={setNewPass} confirmPass={confirmPass} setConfirmPass={setConfirmPass} changePass={changePass} currentTheme={currentTheme} />}

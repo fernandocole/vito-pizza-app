@@ -37,7 +37,7 @@ type MensajeTipo = { texto: string, tipo: 'info' | 'alerta' | 'exito' };
 
 export default function VitoPizzaApp() {
   const [lang, setLang] = useState<LangType>('es');
-  // @ts-ignore - Ignoramos error de tipado temporal en diccionario
+  // @ts-ignore
   const t = dictionary[lang];
 
   // Estados de Acceso
@@ -60,10 +60,7 @@ export default function VitoPizzaApp() {
   const [isCompact, setIsCompact] = useState(false);
   const [imageToView, setImageToView] = useState<string | null>(null);
   
-  // ESTADO PARA ORDEN CONGELADO (Para no saltar al dar click)
   const [orderedIds, setOrderedIds] = useState<string[]>([]);
-  
-  // ESTADO PARA SHEET INFERIOR
   const [summarySheet, setSummarySheet] = useState<'total' | 'wait' | 'oven' | 'ready' | null>(null);
 
   // LATE RATING PROMPT
@@ -491,31 +488,86 @@ export default function VitoPizzaApp() {
       JSON.stringify(activeCategories)
   ]);
 
+  // --- LÓGICA DE RECORDATORIO REFACTORIZADA (ROBUSTA ANTE RECARGAS) ---
   useEffect(() => {
-      if(!nombreInvitado) return;
-      
-      const delivered = pedidos.filter(p => p.invitado_nombre === nombreInvitado && p.estado === 'entregado');
-      
-      if (firstLoadRef.current) {
-          delivered.forEach(p => processedOrderIds.current.add(p.id));
-          return;
-      }
+      if(!nombreInvitado || !pizzas.length) return;
 
+      // 1. Obtener la cola actual de LocalStorage
+      const storedQueue = localStorage.getItem('vito-review-queue');
+      let queue: { id: string, pizzaId: string, triggerAt: number }[] = storedQueue ? JSON.parse(storedQueue) : [];
+      let queueChanged = false;
+
+      // 2. Buscar pedidos entregados para el usuario actual
+      const delivered = pedidos.filter(p => p.invitado_nombre === nombreInvitado && p.estado === 'entregado');
+
+      // 3. Procesar nuevos pedidos entregados que NO estén en la cola ni hayan sido valorados
       delivered.forEach(p => {
-          if (!processedOrderIds.current.has(p.id)) {
-              processedOrderIds.current.add(p.id);
-              const delay = (config.tiempo_recordatorio_minutos || 10) * 60000;
-              setTimeout(() => {
-                  const pz = pizzas.find(z => z.id === p.pizza_id);
-                  if(pz) {
-                      sendNotification("¿Qué tal estuvo?", `Hace ${config.tiempo_recordatorio_minutos || 10} min comiste ${pz.nombre}. ¿Te gustaría calificarla?`);
-                      setLateRatingPizza(pz);
-                      setShowLateRatingModal(true);
-                  }
-              }, delay); 
+          // Si ya lo valoró, ignorar
+          if (misValoraciones.includes(p.pizza_id)) return;
+
+          // Si ya está en la cola, ignorar
+          if (queue.find(q => q.id === p.id)) return;
+
+          // Si ya fue procesado en esta sesión (para evitar duplicados por re-renders), ignorar
+          if (processedOrderIds.current.has(p.id)) return;
+
+          // NUEVO PEDIDO DETECTADO: Agregar a la cola y marcar como procesado
+          processedOrderIds.current.add(p.id);
+          
+          // Si es "First Load", no podemos saber cuándo se entregó exactamente sin 'updated_at'.
+          // Asumimos que si carga la página y ve entregados viejos, NO debe notificar (para no spamear).
+          // Solo notificamos transiciones "en vivo" o si ya estaba en la cola de una sesión anterior.
+          if (!firstLoadRef.current) {
+              const delayMins = config.tiempo_recordatorio_minutos || 10;
+              const triggerTime = Date.now() + (delayMins * 60000);
+              
+              queue.push({ id: p.id, pizzaId: p.pizza_id, triggerAt: triggerTime });
+              queueChanged = true;
           }
       });
-  }, [pedidos, nombreInvitado, pizzas]);
+
+      if (queueChanged) {
+          localStorage.setItem('vito-review-queue', JSON.stringify(queue));
+      }
+
+      // 4. Intervalo para revisar la cola cada 10 segundos
+      const checker = setInterval(() => {
+          const currentQueueStr = localStorage.getItem('vito-review-queue');
+          if (!currentQueueStr) return;
+          
+          let currentQueue = JSON.parse(currentQueueStr);
+          const now = Date.now();
+          const toNotify: any[] = [];
+          const remaining: any[] = [];
+
+          currentQueue.forEach((item: any) => {
+              // Si ya lo valoró mientras esperaba, sacarlo
+              if (misValoraciones.includes(item.pizzaId)) return;
+
+              if (now >= item.triggerAt) {
+                  toNotify.push(item);
+              } else {
+                  remaining.push(item);
+              }
+          });
+
+          if (toNotify.length > 0) {
+              // Mostrar notificación del primero (para no saturar)
+              const item = toNotify[0];
+              const pz = pizzas.find(z => z.id === item.pizzaId);
+              if (pz) {
+                  const delay = config.tiempo_recordatorio_minutos || 10;
+                  sendNotification("¿Qué tal estuvo?", `Hace ${delay} min comiste ${pz.nombre}. ¿Te gustaría calificarla?`);
+                  setLateRatingPizza(pz);
+                  setShowLateRatingModal(true);
+              }
+              // Actualizar LS con los pendientes
+              localStorage.setItem('vito-review-queue', JSON.stringify(remaining));
+          }
+      }, 10000); // Revisar cada 10s
+
+      return () => clearInterval(checker);
+  }, [pedidos, nombreInvitado, pizzas, misValoraciones, config]);
 
   const summaryData = useMemo(() => {
       if(!summarySheet) return [];
@@ -578,7 +630,26 @@ export default function VitoPizzaApp() {
   }, [invitadosActivos, pizzas, pedidos, bannerIndex, cargando, t, config, allRatings, lang, autoTranslations]);
 
   const openRating = (p: any) => { setPizzaToRate(p); setRatingValue(0); setCommentValue(''); setShowRatingModal(true); };
-  const submitRating = async () => { if (ratingValue === 0) return; await supabase.from('valoraciones').insert([{ pizza_id: pizzaToRate.id, invitado_nombre: nombreInvitado, rating: ratingValue, comentario: commentValue }]); setMisValoraciones(prev => [...prev, pizzaToRate.id]); setShowRatingModal(false); setShowLateRatingModal(false); fetchDatos(); };
+  
+  // AL ENVIAR RATING: Limpiamos también de la cola de recordatorios
+  const submitRating = async () => { 
+      if (ratingValue === 0) return; 
+      await supabase.from('valoraciones').insert([{ pizza_id: pizzaToRate.id, invitado_nombre: nombreInvitado, rating: ratingValue, comentario: commentValue }]); 
+      setMisValoraciones(prev => [...prev, pizzaToRate.id]); 
+      
+      // Limpiar de la cola de recordatorios si estaba ahí
+      const storedQueue = localStorage.getItem('vito-review-queue');
+      if (storedQueue) {
+          const queue = JSON.parse(storedQueue);
+          const newQueue = queue.filter((item: any) => item.pizzaId !== pizzaToRate.id);
+          localStorage.setItem('vito-review-queue', JSON.stringify(newQueue));
+      }
+
+      setShowRatingModal(false); 
+      setShowLateRatingModal(false); 
+      fetchDatos(); 
+  };
+
   async function modificarPedido(p: any, acc: 'sumar' | 'restar') {
     if (!nombreInvitado.trim()) { alert(t.errorName); return; }
     if (usuarioBloqueado) { alert(`${t.blocked}: ${motivoBloqueo || ''}`); return; }
@@ -683,7 +754,7 @@ export default function VitoPizzaApp() {
              </div>
         </div>
 
-        {mensaje && (<div className={`fixed top-20 left-4 right-4 p-3 rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] z-40 flex flex-col items-center justify-center animate-bounce-in text-center ${mensaje.tipo === 'alerta' ? 'border-4 border-neutral-900 font-bold' : 'border-2 border-neutral-200 font-bold'} bg-white text-black`}><div className="flex items-center gap-2 mb-1 text-sm">{mensaje.tipo === 'alerta' && mensaje.texto.includes('horno') && <PartyPopper size={18} className="text-orange-600" />}{mensaje.texto}</div>{mensaje.tipo === 'alerta' && (<button onClick={() => setMensaje(null)} className="mt-1 bg-neutral-900 text-white px-6 py-1.5 rounded-full text-xs font-bold shadow-lg active:scale-95 hover:bg-black transition-transform">{t.okBtn}</button>)}</div>)}
+        {mensaje && (<div className={`fixed top-20 left-4 right-4 p-3 rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] z-[100] flex flex-col items-center justify-center animate-bounce-in text-center ${mensaje.tipo === 'alerta' ? 'border-4 border-neutral-900 font-bold' : 'border-2 border-neutral-200 font-bold'} bg-white text-black`}><div className="flex items-center gap-2 mb-1 text-sm">{mensaje.tipo === 'alerta' && mensaje.texto.includes('horno') && <PartyPopper size={18} className="text-orange-600" />}{mensaje.texto}</div>{mensaje.tipo === 'alerta' && (<button onClick={() => setMensaje(null)} className="mt-1 bg-neutral-900 text-white px-6 py-1.5 rounded-full text-xs font-bold shadow-lg active:scale-95 hover:bg-black transition-transform">{t.okBtn}</button>)}</div>)}
 
         {imageToView && (
             <div className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center p-4 animate-in fade-in" onClick={() => setImageToView(null)}>
@@ -695,11 +766,11 @@ export default function VitoPizzaApp() {
         {/* Rating Modal */}
         {showRatingModal && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in"><div className={`${base.card} p-6 rounded-3xl w-full max-w-sm relative shadow-2xl border`}><button onClick={() => setShowRatingModal(false)} className={`absolute top-4 right-4 ${base.subtext} hover:${base.text}`}><X /></button><h3 className={`text-xl font-bold mb-1 ${base.text}`}>{t.rateTitle} {pizzaToRate?.displayName}</h3><div className="flex justify-center gap-2 mb-6 mt-4">{[1, 2, 3, 4, 5].map(star => (<button key={star} onClick={() => setRatingValue(star)} className="transition-transform hover:scale-110"><Star size={32} fill={star <= ratingValue ? "#eab308" : "transparent"} className={star <= ratingValue ? "text-yellow-500" : "text-neutral-600"} /></button>))}</div><textarea className={`w-full p-3 rounded-xl border outline-none mb-4 resize-none h-24 ${base.input} ${isDarkMode ? 'border-neutral-700 bg-black/50' : 'border-gray-200 bg-gray-50'}`} placeholder="..." value={commentValue} onChange={e => setCommentValue(e.target.value)} /><button onClick={submitRating} disabled={ratingValue === 0} className={`w-full py-3 rounded-xl font-bold shadow-lg ${ratingValue > 0 ? `${currentTheme.color} text-white` : 'bg-neutral-800 text-neutral-500'}`}>{t.sendReview}</button></div></div>)}
 
-        {/* Late Rating Toast */}
+        {/* Late Rating Toast (CORREGIDO) */}
         {showLateRatingModal && lateRatingPizza && (
-            <div className="fixed top-24 left-4 right-4 z-50 animate-bounce-in">
+            <div className="fixed top-24 left-4 right-4 z-[100] animate-bounce-in">
                 <div className={`${base.card} p-4 rounded-2xl shadow-2xl border border-yellow-500/50 flex items-center justify-between gap-3`}>
-                    <div className="flex items-center gap-3"><div className="bg-yellow-500 p-2 rounded-xl text-black"><Star size={20} fill="black"/></div><div><p className={`text-sm font-bold ${base.text}`}>¿Te gustó {lateRatingPizza.displayName}?</p><p className={`text-[10px] ${base.subtext}`}>Comiste hace 10 min...</p></div></div>
+                    <div className="flex items-center gap-3"><div className="bg-yellow-500 p-2 rounded-xl text-black"><Star size={20} fill="black"/></div><div><p className={`text-sm font-bold ${base.text}`}>¿Te gustó {lateRatingPizza.nombre}?</p><p className={`text-[10px] ${base.subtext}`}>Comiste hace {config.tiempo_recordatorio_minutos || 10} min...</p></div></div>
                     <div className="flex gap-2"><button onClick={() => { setShowLateRatingModal(false); }} className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${base.subtext}`}>Ahora no</button><button onClick={() => { setShowLateRatingModal(false); openRating(lateRatingPizza); }} className={`px-3 py-1.5 rounded-lg text-xs font-bold bg-yellow-500 text-black shadow-lg`}>Sí!</button></div>
                 </div>
             </div>
