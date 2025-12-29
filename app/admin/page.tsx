@@ -245,11 +245,10 @@ export default function AdminPage() {
     presenceChannel
         .on('presence', { event: 'sync' }, () => {
             const state = presenceChannel.presenceState();
-            // Calcular SOLO los invitados
-            const count = Object.values(state).reduce((acc: number, presences: any) => {
-                const isGuest = presences.some((p: any) => p.role === 'guest');
-                return acc + (isGuest ? 1 : 0);
-            }, 0);
+            // Aplanar todos los estados para contar conexiones individuales
+            const allPresences = Object.values(state).flat();
+            // Filtrar solo los guests
+            const count = allPresences.filter((p: any) => p.role === 'guest').length;
             setOnlineUsers(count);
         })
         .subscribe(async (status) => {
@@ -487,11 +486,7 @@ export default function AdminPage() {
       return calcularStockDinamico(newPizzaIngredients, ingredientes);
   }, [newPizzaIngredients, ingredientes]);
 
-  // CATEGORIAS ACTIVAS (Memoizado para usar en filtro cocina y menu)
   const activeCategories: string[] = useMemo(() => { try { const parsed = JSON.parse(config.categoria_activa); if (parsed === 'Todas' || (Array.isArray(parsed) && parsed.length === 0)) return []; return Array.isArray(parsed) ? parsed : ['General']; } catch { return ['General']; } }, [config.categoria_activa]);
-
-  // Categories UNICAS (DEL MENU) - SIN GENERAL FORZADO
-  const uniqueCategories = useMemo(() => { const cats = new Set<string>(); pizzas.forEach(p => { if(p.categoria) cats.add(p.categoria); }); return Array.from(cats); }, [pizzas]);
 
   const metricas = useMemo(() => {
       // 1. Aplicar filtro de categorías también a cocina
@@ -518,6 +513,8 @@ export default function AdminPage() {
       });
   }, [pizzas, pedidos, config, orden, activeCategories]);
 
+  // Categories & Stats
+  const uniqueCategories = useMemo(() => { const cats = new Set<string>(); pizzas.forEach(p => { if(p.categoria) cats.add(p.categoria); }); return Array.from(cats); }, [pizzas]);
   const toggleCategory = async (cat: string) => { const current = new Set(activeCategories); if (current.has(cat)) current.delete(cat); else current.add(cat); const newArr = Array.from(current); setConfig({...config, categoria_activa: JSON.stringify(newArr)}); await supabase.from('configuracion_dia').update({ categoria_activa: JSON.stringify(newArr) }).eq('id', config.id); };
 
   const stats = useMemo(() => {
@@ -1052,6 +1049,7 @@ export default function AdminPage() {
                         <span className="bg-neutral-500/20 px-1.5 py-0.5 rounded font-mono">[pizzas]</span>
                     </div>
                 </div>
+                <div className={`border-b pb-4 ${base.divider}`}><label className={`text-sm font-bold flex items-center gap-2 mb-2 ${base.subtext}`}><Hourglass size={16}/> Minutos Recordatorio Calificación</label><div className="flex gap-2"><input type="number" placeholder="10" value={config.tiempo_recordatorio_minutos || ''} onChange={e => setConfig({...config, tiempo_recordatorio_minutos: parseInt(e.target.value)})} className={`w-full p-3 rounded-xl border outline-none ${base.input}`} /><button onClick={async () => { await supabase.from('configuracion_dia').update({ tiempo_recordatorio_minutos: config.tiempo_recordatorio_minutos }).eq('id', config.id); alert('Guardado'); }} className={`font-bold px-4 rounded-xl ${isDarkMode ? 'bg-white text-black' : 'bg-black text-white'}`}>OK</button></div></div>
                 <div className="flex justify-between items-center"><label className={`text-sm ${base.subtext}`}>Modo Estricto</label><button onClick={async () => { const n = !config.modo_estricto; setConfig({...config, modo_estricto: n}); await supabase.from('configuracion_dia').update({ modo_estricto: n }).eq('id', config.id); }} className={`w-12 h-6 rounded-full transition-colors relative ${config.modo_estricto ? 'bg-green-600' : 'bg-gray-400'}`}><div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all ${config.modo_estricto ? 'left-7' : 'left-1'}`}></div></button></div>
                 <div className="border-t pt-4 border-gray-200 dark:border-neutral-800"><button onClick={resetAllOrders} className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2"><Trash2 size={18}/> RESETEAR TODOS LOS PEDIDOS</button></div>
                 <div className={`border-t pt-4 ${base.divider}`}><label className={`text-sm font-bold flex items-center gap-2 mb-2 ${base.subtext}`}><KeyRound size={16}/> Clave Invitados</label><div className="flex gap-2"><input type="text" placeholder="Ej: pizza2024" value={config.password_invitados || ''} onChange={e => setConfig({...config, password_invitados: e.target.value})} className={`w-full p-3 rounded-xl border outline-none ${base.input}`} /><button onClick={async () => { await supabase.from('configuracion_dia').update({ password_invitados: config.password_invitados }).eq('id', config.id); alert('Guardado'); }} className={`font-bold px-4 rounded-xl ${isDarkMode ? 'bg-white text-black' : 'bg-black text-white'}`}>OK</button></div></div>
