@@ -393,6 +393,7 @@ export default function VitoPizzaApp() {
       total_invitados: number;
       modo_estricto: boolean;
       categoria_activa: string;
+      mensaje_bienvenida?: string;
   }>({ 
       porciones_por_pizza: 4, 
       total_invitados: 10, 
@@ -952,7 +953,14 @@ export default function VitoPizzaApp() {
       <div className={`w-full p-6 pb-6 rounded-b-[40px] bg-gradient-to-br ${currentTheme.gradient} shadow-2xl relative overflow-hidden`}>
          <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mt-20 -mr-20 blur-3xl"></div>
          <div className="relative z-10 pt-16">
-             <div className="mb-6"><h1 className="text-3xl font-bold leading-tight drop-shadow-md text-white">{t.welcomeTitle} <br/> <span className="opacity-80 font-normal text-xl">{t.welcomeSub}</span></h1></div>
+             {/* TITULO EDITABLE */}
+             <div className="mb-6">
+                 {config.mensaje_bienvenida ? (
+                     <h1 className="text-3xl font-bold leading-tight drop-shadow-md text-white whitespace-pre-wrap">{config.mensaje_bienvenida}</h1>
+                 ) : (
+                     <h1 className="text-3xl font-bold leading-tight drop-shadow-md text-white">{t.welcomeTitle} <br/> <span className="opacity-80 font-normal text-xl">{t.welcomeSub}</span></h1>
+                 )}
+             </div>
              <div className="flex items-center gap-3 text-sm font-medium bg-black/30 p-3 rounded-2xl w-max backdrop-blur-md border border-white/10 text-white animate-in fade-in duration-500 mx-auto mb-4"><span className="text-neutral-300 text-xs font-bold">{currentBannerText}</span></div>
              <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar px-2">
                  {['all','stock','top','to_rate','ordered','new'].map(f => (
@@ -994,7 +1002,7 @@ export default function VitoPizzaApp() {
 
         {/* Late Rating Toast */}
         {showLateRatingModal && lateRatingPizza && (
-            <div className="fixed bottom-20 left-4 right-4 z-50 animate-bounce-in">
+            <div className="fixed top-24 left-4 right-4 z-50 animate-bounce-in">
                 <div className={`${base.card} p-4 rounded-2xl shadow-2xl border border-yellow-500/50 flex items-center justify-between gap-3`}>
                     <div className="flex items-center gap-3"><div className="bg-yellow-500 p-2 rounded-xl text-black"><Star size={20} fill="black"/></div><div><p className={`text-sm font-bold ${base.text}`}>¿Te gustó {lateRatingPizza.displayName}?</p><p className={`text-[10px] ${base.subtext}`}>Comiste hace 10 min...</p></div></div>
                     <div className="flex gap-2"><button onClick={() => { setShowLateRatingModal(false); }} className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${base.subtext}`}>Ahora no</button><button onClick={() => { setShowLateRatingModal(false); openRating(lateRatingPizza); }} className={`px-3 py-1.5 rounded-lg text-xs font-bold bg-yellow-500 text-black shadow-lg`}>Sí!</button></div>
