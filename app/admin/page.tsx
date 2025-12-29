@@ -65,7 +65,10 @@ export default function AdminPage() {
   const [autenticado, setAutenticado] = useState(false);
   const [password, setPassword] = useState('');
   const [view, setView] = useState<'cocina' | 'pedidos' | 'menu' | 'ingredientes' | 'usuarios' | 'config' | 'ranking' | 'logs'>('cocina');
-    
+  
+  // ESTADO DE SESIÓN (Default 24hs)
+  const [sessionDuration, setSessionDuration] = useState(24 * 60 * 60 * 1000); 
+
   // DATOS
   const [pedidos, setPedidos] = useState<any[]>([]); 
   const [pizzas, setPizzas] = useState<any[]>([]);
@@ -156,6 +159,24 @@ export default function AdminPage() {
   };
 
   // --- EFECTOS ---
+  
+  // 1. CHEQUEO DE SESION AUTOMATICO
+  useEffect(() => {
+    const session = localStorage.getItem('vito-admin-session');
+    if (session) {
+        try {
+            const parsed = JSON.parse(session);
+            if (Date.now() < parsed.expiry) {
+                setAutenticado(true);
+            } else {
+                localStorage.removeItem('vito-admin-session'); // Expiró
+            }
+        } catch (e) {
+            localStorage.removeItem('vito-admin-session');
+        }
+    }
+  }, []);
+
   useEffect(() => {
     const savedTheme = localStorage.getItem('vito-theme');
     if (savedTheme) setCurrentTheme(THEMES.find(t => t.name === savedTheme) || THEMES[0]);
@@ -217,17 +238,37 @@ export default function AdminPage() {
       return Array.from(cats).sort(); 
   }, [pizzas]);
 
-  // --- FUNCIONES Y ACCIONES (Definidas antes de usarse) ---
+  // --- FUNCIONES Y ACCIONES ---
   const toggleDarkMode = () => { setIsDarkMode(!isDarkMode); localStorage.setItem('vito-dark-mode', String(!isDarkMode)); };
   const toggleOrden = () => { const n = orden === 'estado' ? 'nombre' : 'estado'; setOrden(n); localStorage.setItem('vito-orden', n); };
   const toggleCompact = () => { setIsCompact(!isCompact); localStorage.setItem('vito-compact', String(!isCompact)); };
   const selectTheme = (t: any) => { setCurrentTheme(t); localStorage.setItem('vito-theme', t.name); setShowThemeSelector(false); window.dispatchEvent(new Event('storage')); };
 
+  // --- LOGIN CON PERSISTENCIA ---
   const ingresar = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     let { data } = await supabase.from('configuracion_dia').select('*').single();
     if (!data) { const { data: n } = await supabase.from('configuracion_dia').insert([{ password_admin: 'admin' }]).select().single(); data = n; }
-    if (data && data.password_admin === password) { setAutenticado(true); setConfig(data); cargarDatos(); } else { alert('Incorrecto'); }
+    
+    if (data && data.password_admin === password) { 
+        setAutenticado(true); 
+        setConfig(data); 
+        
+        // GUARDAR SESION
+        const expiry = Date.now() + sessionDuration;
+        localStorage.setItem('vito-admin-session', JSON.stringify({ expiry }));
+        
+        cargarDatos(); 
+    } else { 
+        alert('Incorrecto'); 
+    }
+  };
+
+  // --- LOGOUT ---
+  const salir = () => {
+      localStorage.removeItem('vito-admin-session');
+      setAutenticado(false);
+      window.location.href='/';
   };
 
   const refreshLogsOnly = async () => {
@@ -239,11 +280,13 @@ export default function AdminPage() {
     if ('serviceWorker' in navigator && navigator.serviceWorker.ready) {
         try {
             const registration = await navigator.serviceWorker.ready;
+            // AQUI AGREGAMOS LA URL AL OBJETO DATA
             registration.showNotification(title, {
                 body: body,
                 icon: '/icon.png',
                 badge: '/icon.png',
-                vibrate: [200, 100, 200]
+                vibrate: [200, 100, 200],
+                data: { url: '/admin' } // <--- ESTO REDIRIGE AL ADMIN
             } as any);
             return;
         } catch (e) { console.log("SW notification failed"); }
@@ -430,7 +473,7 @@ export default function AdminPage() {
             {view === 'menu' && <MenuView base={base} config={config} setConfig={setConfig} activeCategories={activeCategories} uniqueCategories={uniqueCategories} toggleCategory={toggleCategory} currentTheme={currentTheme} addP={addP} uploading={uploading} newPizzaName={newPizzaName} setNewPizzaName={setNewPizzaName} isDarkMode={isDarkMode} handleImageUpload={handleImageUpload} newPizzaImg={newPizzaImg} newPizzaDesc={newPizzaDesc} setNewPizzaDesc={setNewPizzaDesc} newPizzaIngredients={newPizzaIngredients} removeFromNewPizzaRecipe={removeFromNewPizzaRecipe} newPizzaSelectedIng={newPizzaSelectedIng} setNewPizzaSelectedIng={setNewPizzaSelectedIng} ingredients={ingredientes} newPizzaRecipeQty={newPizzaRecipeQty} setNewPizzaRecipeQty={setNewPizzaRecipeQty} addToNewPizzaRecipe={addToNewPizzaRecipe} newPizzaCat={newPizzaCat} setNewPizzaCat={setNewPizzaCat} newPizzaPortions={newPizzaPortions} setNewPizzaPortions={setNewPizzaPortions} stockEstimadoNueva={stockEstimadoNueva} newPizzaTime={newPizzaTime} setNewPizzaTime={setNewPizzaTime} pizzas={pizzas} edits={edits} recetas={recetas} updateP={updateP} savePizzaChanges={savePizzaChanges} cancelChanges={cancelChanges} delP={delP} tempRecipeIng={tempRecipeIng} setTempRecipeIng={setTempRecipeIng} tempRecipeQty={tempRecipeQty} setTempRecipeQty={setTempRecipeQty} addToExistingPizza={addToExistingPizza} removeFromExistingPizza={removeFromExistingPizza} reservedState={reservedState} calcularStockDinamico={calcularStockDinamico} updateLocalRecipe={updateLocalRecipe} newPizzaType={newPizzaType} setNewPizzaType={setNewPizzaType} />}
             {view === 'ranking' && <RankingView base={base} delAllVal={delAllVal} ranking={ranking} delValPizza={delValPizza} />}
             {view === 'usuarios' && <UsersView base={base} newGuestName={newGuestName} setNewGuestName={setNewGuestName} addU={addU} allUsersList={allUsersList} resetU={resetU} toggleB={toggleB} eliminarUsuario={eliminarUsuario} tempMotivos={tempMotivos} setTempMotivos={setTempMotivos} guardarMotivo={guardarMotivo} currentTheme={currentTheme} />}
-            {view === 'config' && <ConfigView base={base} config={config} setConfig={setConfig} isDarkMode={isDarkMode} resetAllOrders={resetAllOrders} newPass={newPass} setNewPass={setNewPass} confirmPass={confirmPass} setConfirmPass={setConfirmPass} changePass={changePass} currentTheme={currentTheme} />}
+            {view === 'config' && <ConfigView base={base} config={config} setConfig={setConfig} isDarkMode={isDarkMode} resetAllOrders={resetAllOrders} newPass={newPass} setNewPass={setNewPass} confirmPass={confirmPass} setConfirmPass={setConfirmPass} changePass={changePass} currentTheme={currentTheme} sessionDuration={sessionDuration} setSessionDuration={setSessionDuration} />}
             {view === 'logs' && <LogsView base={base} logs={logs} isDarkMode={isDarkMode} currentTheme={currentTheme} updateLogName={updateLogName} onRefresh={refreshLogsOnly} />}
         </main>
       </div>

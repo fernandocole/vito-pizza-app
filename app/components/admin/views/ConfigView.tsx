@@ -1,80 +1,106 @@
-import { Settings, Users, MessageSquare, Info, Hourglass, Trash2, KeyRound } from 'lucide-react';
+import { Lock, Save, Trash2, Clock, Smartphone, RotateCcw } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+// Inicializamos el cliente de Supabase aquí para este componente
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 export const ConfigView = ({ 
-    base, config, setConfig, isDarkMode, resetAllOrders, newPass, setNewPass, confirmPass, 
-    setConfirmPass, changePass, currentTheme 
+    base, config, setConfig, isDarkMode, resetAllOrders, 
+    newPass, setNewPass, confirmPass, setConfirmPass, changePass, 
+    currentTheme, sessionDuration, setSessionDuration 
 }: any) => {
+
+    const DURATIONS = [
+        { label: '1 Hora', value: 60 * 60 * 1000 },
+        { label: '8 Horas', value: 8 * 60 * 60 * 1000 },
+        { label: '24 Horas', value: 24 * 60 * 60 * 1000 },
+        { label: '3 Días', value: 3 * 24 * 60 * 60 * 1000 },
+        { label: '1 Semana', value: 7 * 24 * 60 * 60 * 1000 },
+        { label: '30 Días', value: 30 * 24 * 60 * 60 * 1000 },
+    ];
+
+    const handleDurationChange = (val: number) => {
+        setSessionDuration(val);
+        // Actualizar también la sesión actual si existe para extenderla
+        const currentSession = localStorage.getItem('vito-admin-session');
+        if (currentSession) {
+            const expiry = Date.now() + val;
+            localStorage.setItem('vito-admin-session', JSON.stringify({ expiry }));
+        }
+    };
+
     return (
-      <div className={`p-6 rounded-3xl border space-y-6 ${base.card}`}>
-        <h3 className={`font-bold mb-4 flex items-center gap-2 ${base.subtext}`}><Settings size={18}/> Ajustes Globales</h3>
-        
-        <div className={`border-b pb-4 ${base.divider}`}>
-            <label className={`text-sm font-bold flex items-center gap-2 mb-2 ${base.subtext}`}><Users size={16}/> Total Comensales (Lista)</label>
-            <div className="flex gap-2">
-                <input type="number" placeholder="10" value={config.total_invitados || ''} onChange={(e: any) => setConfig({...config, total_invitados: parseInt(e.target.value)})} className={`w-full p-3 rounded-xl border outline-none ${base.input}`} />
-                <button onClick={async () => { await supabase.from('configuracion_dia').update({ total_invitados: config.total_invitados }).eq('id', config.id); alert('Guardado'); }} className={`font-bold px-4 rounded-xl ${isDarkMode ? 'bg-white text-black' : 'bg-black text-white'}`}>OK</button>
-            </div>
-        </div>
-
-        <div className={`border-b pb-4 ${base.divider}`}>
-            <label className={`text-sm font-bold flex items-center gap-2 mb-2 ${base.subtext}`}><MessageSquare size={16}/> Mensaje Bienvenida</label>
-            <div className="flex gap-2">
+        <div className="space-y-6 animate-in fade-in pb-20">
+            
+            {/* Mensaje de Bienvenida */}
+            <div className={`p-5 rounded-3xl border ${base.card}`}>
+                <h3 className="font-bold text-lg mb-3 flex items-center gap-2"><Smartphone size={20}/> Mensaje de Bienvenida</h3>
+                <p className={`text-xs mb-3 ${base.subtext}`}>Usa [nombre], [fecha], [hora], [pizzas] como variables.</p>
                 <textarea 
-                    placeholder="Mensaje personalizado..." 
-                    value={config.mensaje_bienvenida || ''} 
-                    onChange={(e: any) => setConfig({...config, mensaje_bienvenida: e.target.value})} 
-                    className={`w-full p-3 rounded-xl border outline-none resize-none h-20 text-sm ${base.input}`} 
+                    className={`w-full p-4 rounded-xl border outline-none min-h-[100px] text-sm ${base.input}`}
+                    value={config.mensaje_bienvenida || ''}
+                    onChange={(e) => setConfig({...config, mensaje_bienvenida: e.target.value})}
+                    placeholder="Ej: Hola [nombre], hoy hay [pizzas] variedades..."
                 />
-                <button onClick={async () => { await supabase.from('configuracion_dia').update({ mensaje_bienvenida: config.mensaje_bienvenida }).eq('id', config.id); alert('Guardado'); }} className={`font-bold px-4 rounded-xl self-end h-20 flex items-center justify-center ${isDarkMode ? 'bg-white text-black' : 'bg-black text-white'}`}>OK</button>
+                <button 
+                    onClick={async () => {
+                        // CORREGIDO: Usamos la instancia local 'supabase' en lugar de 'window.supabase'
+                        await supabase.from('configuracion_dia').update({ mensaje_bienvenida: config.mensaje_bienvenida }).eq('id', config.id);
+                        alert("Mensaje guardado");
+                    }} 
+                    className={`mt-3 w-full py-3 rounded-xl font-bold text-sm ${currentTheme.color} text-white shadow-lg`}
+                >
+                    GUARDAR MENSAJE
+                </button>
             </div>
-            {/* GLOSARIO */}
-            <div className="flex flex-wrap gap-2 mt-2 text-xs opacity-60">
-                <span className="font-bold flex items-center gap-1 w-full"><Info size={12}/> Variables disponibles:</span>
-                <span className="bg-neutral-500/20 px-1.5 py-0.5 rounded font-mono">[nombre]</span>
-                <span className="bg-neutral-500/20 px-1.5 py-0.5 rounded font-mono">[fecha]</span>
-                <span className="bg-neutral-500/20 px-1.5 py-0.5 rounded font-mono">[hora]</span>
-                <span className="bg-neutral-500/20 px-1.5 py-0.5 rounded font-mono">[pizzas]</span>
+
+            {/* SESIÓN Y SEGURIDAD */}
+            <div className={`p-5 rounded-3xl border ${base.card}`}>
+                <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Lock size={20}/> Seguridad & Sesión</h3>
+                
+                {/* Selector de Duración de Sesión */}
+                <div className="mb-6">
+                    <label className={`text-xs font-bold uppercase tracking-wider block mb-2 ${base.subtext}`}>Mantener sesión abierta por:</label>
+                    <div className="grid grid-cols-3 gap-2">
+                        {DURATIONS.map((d) => (
+                            <button
+                                key={d.label}
+                                onClick={() => handleDurationChange(d.value)}
+                                className={`py-2 px-1 rounded-xl text-xs font-bold border transition-all ${sessionDuration === d.value ? `${currentTheme.color} text-white border-transparent` : `${base.buttonSec}`}`}
+                            >
+                                {d.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                <div className={`h-[1px] w-full ${base.divider} my-4`}></div>
+
+                <label className={`text-xs font-bold uppercase tracking-wider block mb-2 ${base.subtext}`}>Cambiar Contraseña Admin</label>
+                <div className="flex flex-col gap-2">
+                    <input type="password" value={newPass} onChange={e => setNewPass(e.target.value)} className={`w-full p-3 rounded-xl border outline-none ${base.input}`} placeholder="Nueva contraseña" />
+                    <input type="password" value={confirmPass} onChange={e => setConfirmPass(e.target.value)} className={`w-full p-3 rounded-xl border outline-none ${base.input}`} placeholder="Confirmar contraseña" />
+                    <button onClick={changePass} disabled={!newPass || newPass !== confirmPass} className={`w-full py-3 rounded-xl font-bold text-sm transition-all ${newPass && newPass === confirmPass ? 'bg-black dark:bg-white text-white dark:text-black' : 'bg-gray-200 dark:bg-gray-800 text-gray-400'}`}>
+                        ACTUALIZAR PASS
+                    </button>
+                </div>
+            </div>
+
+            {/* ZONA DE PELIGRO */}
+            <div className={`p-5 rounded-3xl border border-red-500/20 bg-red-500/5`}>
+                <h3 className="font-bold text-lg mb-4 text-red-500 flex items-center gap-2"><Trash2 size={20}/> Zona de Peligro</h3>
+                
+                <div className="flex items-center justify-between mb-4">
+                     <div className="flex-1">
+                         <h4 className={`font-bold text-sm ${base.text}`}>Resetear Pedidos</h4>
+                         <p className={`text-[10px] ${base.subtext}`}>Borra todos los pedidos pero mantiene el menú.</p>
+                     </div>
+                     <button onClick={resetAllOrders} className="bg-red-500 text-white p-2 rounded-xl"><RotateCcw size={20}/></button>
+                </div>
             </div>
         </div>
-
-        <div className={`border-b pb-4 ${base.divider}`}>
-            <label className={`text-sm font-bold flex items-center gap-2 mb-2 ${base.subtext}`}><Hourglass size={16}/> Minutos Recordatorio Calificación</label>
-            <div className="flex gap-2">
-                <input type="number" placeholder="10" value={config.tiempo_recordatorio_minutos || ''} onChange={(e: any) => setConfig({...config, tiempo_recordatorio_minutos: parseInt(e.target.value)})} className={`w-full p-3 rounded-xl border outline-none ${base.input}`} />
-                <button onClick={async () => { await supabase.from('configuracion_dia').update({ tiempo_recordatorio_minutos: config.tiempo_recordatorio_minutos }).eq('id', config.id); alert('Guardado'); }} className={`font-bold px-4 rounded-xl ${isDarkMode ? 'bg-white text-black' : 'bg-black text-white'}`}>OK</button>
-            </div>
-        </div>
-
-        <div className="flex justify-between items-center">
-            <label className={`text-sm ${base.subtext}`}>Modo Estricto</label>
-            <button onClick={async () => { const n = !config.modo_estricto; setConfig({...config, modo_estricto: n}); await supabase.from('configuracion_dia').update({ modo_estricto: n }).eq('id', config.id); }} className={`w-12 h-6 rounded-full transition-colors relative ${config.modo_estricto ? 'bg-green-600' : 'bg-gray-400'}`}>
-                <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all ${config.modo_estricto ? 'left-7' : 'left-1'}`}></div>
-            </button>
-        </div>
-
-        <div className="border-t pt-4 border-gray-200 dark:border-neutral-800">
-            <button onClick={resetAllOrders} className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2"><Trash2 size={18}/> RESETEAR TODOS LOS PEDIDOS</button>
-        </div>
-
-        <div className={`border-t pt-4 ${base.divider}`}>
-            <label className={`text-sm font-bold flex items-center gap-2 mb-2 ${base.subtext}`}><KeyRound size={16}/> Clave Invitados</label>
-            <div className="flex gap-2">
-                <input type="text" placeholder="Ej: pizza2024" value={config.password_invitados || ''} onChange={(e: any) => setConfig({...config, password_invitados: e.target.value})} className={`w-full p-3 rounded-xl border outline-none ${base.input}`} />
-                <button onClick={async () => { await supabase.from('configuracion_dia').update({ password_invitados: config.password_invitados }).eq('id', config.id); alert('Guardado'); }} className={`font-bold px-4 rounded-xl ${isDarkMode ? 'bg-white text-black' : 'bg-black text-white'}`}>OK</button>
-            </div>
-        </div>
-
-        <div className={`border-t pt-4 ${base.divider}`}>
-            <label className={`text-sm ${base.subtext} mb-2 block`}>Contraseña Admin</label>
-            <div className="flex flex-col gap-3">
-                <input type="password" placeholder="Nueva..." value={newPass} onChange={(e: any) => setNewPass(e.target.value)} className={`w-full p-3 rounded-xl border outline-none ${base.input}`} />
-                <input type="password" placeholder="Confirmar..." value={confirmPass} onChange={(e: any) => setConfirmPass(e.target.value)} className={`w-full p-3 rounded-xl border outline-none ${base.input}`} />
-                <button onClick={changePass} className={`w-full ${currentTheme.color} text-white font-bold py-3 rounded-xl`}>GUARDAR</button>
-            </div>
-        </div>
-      </div>
     );
 };

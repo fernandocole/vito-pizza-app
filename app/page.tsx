@@ -158,7 +158,6 @@ export default function VitoPizzaApp() {
   const [usuarioBloqueado, setUsuarioBloqueado] = useState(false);
   const [motivoBloqueo, setMotivoBloqueo] = useState('');
 
-  // REF NUEVA: Para guardar cuántas porciones pendientes tenía en el render anterior
   const prevPendingPerPizzaRef = useRef<Record<string, number>>({});
   const prevComidosPerPizza = useRef<Record<string, number>>({});
   const prevCocinandoData = useRef<Record<string, boolean>>({});
@@ -229,21 +228,24 @@ export default function VitoPizzaApp() {
       return msg;
   };
 
-  const sendNotification = async (title: string, body: string) => {
+  const sendNotification = async (title: string, body: string, url: string = '/') => {
     if ('serviceWorker' in navigator && navigator.serviceWorker.ready) {
         try {
             const registration = await navigator.serviceWorker.ready;
+            
             registration.showNotification(title, {
                 body: body,
                 icon: '/icon.png',
                 badge: '/icon.png',
-                vibrate: [200, 100, 200]
+                vibrate: [200, 100, 200],
+                data: { url: url } // Pasamos la URL al SW
             } as any);
             return;
         } catch (e) {
             console.log("Fallo SW notification, intentando standard");
         }
     }
+    
     if (Notification.permission === 'granted') {
         new Notification(title, { body, icon: '/icon.png' });
     }
@@ -469,31 +471,33 @@ export default function VitoPizzaApp() {
              res[pz.id] = { pendientes: p, comidos: c };
              if (p > 0) penInfo[pz.id] = p;
              
-             // --- LÓGICA DE NOTIFICACIONES CORREGIDA (ESTÁ LISTA) ---
+             // --- LÓGICA DE NOTIFICACIONES ---
              if (!firstLoadRef.current) { 
                  const estabaCocinando = prevCocinandoData.current[pz.id] || false;
                  
-                 // 1. Entra al horno (OK)
+                 // 1. Entra al horno
                  if (!estabaCocinando && pz.cocinando && penInfo[pz.id]) {
                      mostrarMensaje(`¡${penInfo[pz.id]} de ${pz.nombre} al horno!`, 'alerta'); 
                      sendNotification("¡Al Horno!", `Tu ${pz.nombre} está cocinándose.`); 
                  }
                  
-                 // 2. Sale del horno (OK - FIX)
-                 // Si dejó de cocinarse Y antes tenía pendientes, significa que salió y se entregó.
-                 // Usamos prevPendingPerPizzaRef para recordar si tenía pedidos antes de que desaparecieran.
+                 // 2. Sale del horno (y tenía pendientes)
                  const teniaPendientes = (prevPendingPerPizzaRef.current[pz.id] || 0) > 0;
-                 
                  if (estabaCocinando && !pz.cocinando && teniaPendientes) {
                      mostrarMensaje(`¡Tu ${pz.nombre} ESTÁ LISTA!`, 'exito'); 
-                     sendNotification("¡Pizza Lista!", `¡Tu ${pz.nombre} ya salió del horno! A comer.`);
+                     
+                     // NOTIFICACIÓN CON DEEP LINK PARA CALIFICAR
+                     sendNotification(
+                         "¡Pizza Lista!", 
+                         `¡Tu ${pz.nombre} ya salió del horno! A comer.`, 
+                         `/?rate=${pz.id}` // Link directo a calificar esta pizza
+                     );
                  }
              } 
              
-             // Actualizamos referencias
              prevCocinandoData.current[pz.id] = pz.cocinando;
              prevComidosPerPizza.current[pz.id] = c;
-             prevPendingPerPizzaRef.current[pz.id] = p; // Guardamos pendientes actuales para la próxima
+             prevPendingPerPizzaRef.current[pz.id] = p;
         });
         
         setMiHistorial(res);
@@ -501,7 +505,6 @@ export default function VitoPizzaApp() {
         if (firstLoadRef.current) { 
             dPiz.forEach(pz => { 
                 prevCocinandoData.current[pz.id] = pz.cocinando;
-                // Inicializar ref de pendientes
                 const pend = dPed.filter(p => p.pizza_id === pz.id && p.invitado_nombre.toLowerCase() === nombreInvitado.toLowerCase().trim() && p.estado !== 'entregado').reduce((acc, x) => acc + x.cantidad_porciones, 0);
                 prevPendingPerPizzaRef.current[pz.id] = pend;
             }); 
@@ -614,7 +617,27 @@ export default function VitoPizzaApp() {
       JSON.stringify(activeCategories)
   ]);
 
-  // --- LÓGICA DE RECORDATORIO REFACTORIZADA (ROBUSTA ANTE RECARGAS) ---
+  // --- ESCUCHAR DEEP LINKS (PARAMETRO URL) ---
+  // IMPORTANTE: Este efecto debe ir DESPUÉS de definir enrichedPizzas y openRating
+  useEffect(() => {
+      const params = new URLSearchParams(window.location.search);
+      const rateId = params.get('rate');
+
+      if (rateId && enrichedPizzas.length > 0) {
+          const pizza = enrichedPizzas.find(p => p.id === rateId) || pizzas.find(p => p.id === rateId);
+          if (pizza) {
+              // openRating está definido abajo, por eso lo movemos después. 
+              // PERO como es una función dentro del componente, necesitamos definirla antes de este efecto o usar hoisting.
+              // Para evitar líos de dependencias, definiremos openRating antes.
+              openRating(pizza);
+              
+              const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+              window.history.replaceState({ path: newUrl }, '', newUrl);
+          }
+      }
+  }, [enrichedPizzas]); // Quitamos openRating de dependencias si es estable o usamos useCallback
+
+  // --- LÓGICA DE RECORDATORIO REFACTORIZADA ---
   useEffect(() => {
       if(!nombreInvitado || !pizzas.length) return;
 
@@ -665,21 +688,23 @@ export default function VitoPizzaApp() {
 
           if (toNotify.length > 0) {
               const item = toNotify[0];
-              // CORRECCIÓN: Buscamos en 'enrichedPizzas' si existe, si no, fallback a 'pizzas'
               const pz = enrichedPizzas.find(z => z.id === item.pizzaId) || pizzas.find(z => z.id === item.pizzaId);
               
               if (pz) {
                   const delay = config.tiempo_recordatorio_minutos || 10;
-                  // Usamos displayName si existe, sino nombre
                   const nameToShow = pz.displayName || pz.nombre;
-                  sendNotification(t.rateQuestion + " " + nameToShow + "?", `${t.ateTimeAgo} ${delay} ${t.minAgo}`);
+                  // DEEP LINK AQUI TAMBIEN
+                  sendNotification(
+                      t.rateQuestion + " " + nameToShow + "?", 
+                      `${t.ateTimeAgo} ${delay} ${t.minAgo}`,
+                      `/?rate=${pz.id}`
+                  );
                   setLateRatingPizza(pz);
                   setShowLateRatingModal(true);
               }
-              // Actualizar LS con los pendientes
               localStorage.setItem('vito-review-queue', JSON.stringify(remaining));
           }
-      }, 10000); // Revisar cada 10s
+      }, 10000); 
 
       return () => clearInterval(checker);
   }, [pedidos, nombreInvitado, pizzas, enrichedPizzas, misValoraciones, config]);
@@ -745,48 +770,14 @@ export default function VitoPizzaApp() {
   }, [invitadosActivos, pizzas, pedidos, bannerIndex, cargando, t, config, allRatings, lang, autoTranslations]);
 
   const openRating = (p: any) => { setPizzaToRate(p); setRatingValue(0); setCommentValue(''); setShowRatingModal(true); };
-  
-  const submitRating = async () => { 
-      if (ratingValue === 0) return; 
-      await supabase.from('valoraciones').insert([{ pizza_id: pizzaToRate.id, invitado_nombre: nombreInvitado, rating: ratingValue, comentario: commentValue }]); 
-      setMisValoraciones(prev => [...prev, pizzaToRate.id]); 
-      
-      const storedQueue = localStorage.getItem('vito-review-queue');
-      if (storedQueue) {
-          const queue = JSON.parse(storedQueue);
-          const newQueue = queue.filter((item: any) => item.pizzaId !== pizzaToRate.id);
-          localStorage.setItem('vito-review-queue', JSON.stringify(newQueue));
-      }
-
-      setShowRatingModal(false); 
-      setShowLateRatingModal(false); 
-      fetchDatos(); 
-  };
+  const submitRating = async () => { if (ratingValue === 0) return; await supabase.from('valoraciones').insert([{ pizza_id: pizzaToRate.id, invitado_nombre: nombreInvitado, rating: ratingValue, comentario: commentValue }]); setMisValoraciones(prev => [...prev, pizzaToRate.id]); const storedQueue = localStorage.getItem('vito-review-queue'); if (storedQueue) { const queue = JSON.parse(storedQueue); const newQueue = queue.filter((item: any) => item.pizzaId !== pizzaToRate.id); localStorage.setItem('vito-review-queue', JSON.stringify(newQueue)); } setShowRatingModal(false); setShowLateRatingModal(false); fetchDatos(); };
 
   async function modificarPedido(p: any, acc: 'sumar' | 'restar') {
     if (!nombreInvitado.trim()) { alert(t.errorName); return; }
     if (usuarioBloqueado) { alert(`${t.blocked}: ${motivoBloqueo || ''}`); return; }
-    
-    if (acc === 'sumar') { 
-        if (p.stockRestante <= 0) { alert("Sin stock :("); return; } 
-        setOrderToConfirm(p);
-    } else { 
-        if (p.cocinando && p.totalPendientes <= p.target) {} 
-        const { data } = await supabase.from('pedidos').select('id').eq('pizza_id', p.id).ilike('invitado_nombre', nombreInvitado.trim()).eq('estado', 'pendiente').order('created_at', { ascending: false }).limit(1).single(); 
-        if (data) { 
-            await supabase.from('pedidos').delete().eq('id', data.id); 
-            mostrarMensaje(`${t.successCancel} ${p.displayName}`, 'info'); 
-        } 
-    }
+    if (acc === 'sumar') { if (p.stockRestante <= 0) { alert("Sin stock :("); return; } setOrderToConfirm(p); } else { if (p.cocinando && p.totalPendientes <= p.target) {} const { data } = await supabase.from('pedidos').select('id').eq('pizza_id', p.id).ilike('invitado_nombre', nombreInvitado.trim()).eq('estado', 'pendiente').order('created_at', { ascending: false }).limit(1).single(); if (data) { await supabase.from('pedidos').delete().eq('id', data.id); mostrarMensaje(`${t.successCancel} ${p.displayName}`, 'info'); } }
   }
-
-  const proceedWithOrder = async () => {
-      if(!orderToConfirm) return;
-      const { error } = await supabase.from('pedidos').insert([{ invitado_nombre: nombreInvitado, pizza_id: orderToConfirm.id, cantidad_porciones: 1, estado: 'pendiente' }]); 
-      if (!error) mostrarMensaje(`${t.successOrder} ${orderToConfirm.displayName}!`, 'exito');
-      setOrderToConfirm(null);
-  }
-
+  const proceedWithOrder = async () => { if(!orderToConfirm) return; const { error } = await supabase.from('pedidos').insert([{ invitado_nombre: nombreInvitado, pizza_id: orderToConfirm.id, cantidad_porciones: 1, estado: 'pendiente' }]); if (!error) mostrarMensaje(`${t.successOrder} ${orderToConfirm.displayName}!`, 'exito'); setOrderToConfirm(null); }
   const mostrarMensaje = (txt: string, tipo: 'info' | 'alerta' | 'exito') => { setMensaje({ texto: txt, tipo }); if (tipo !== 'alerta') { setTimeout(() => setMensaje(null), 2500); } }
 
   if (loadingConfig) { return (<div className={`min-h-screen flex items-center justify-center p-4 ${base.bg}`}><div className={`animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 ${isDarkMode ? 'border-white' : 'border-black'}`}></div></div>); }
