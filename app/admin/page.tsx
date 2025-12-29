@@ -153,11 +153,11 @@ export default function AdminPage() {
   const [newPizzaSelectedIng, setNewPizzaSelectedIng] = useState('');
   const [newPizzaRecipeQty, setNewPizzaRecipeQty] = useState<string | number>('');
 
-  // ESTADOS INGREDIENTES
+  // ESTADOS INGREDIENTES (INVENTARIO)
   const [newIngName, setNewIngName] = useState('');
   const [newIngQty, setNewIngQty] = useState<string | number>('');
   const [newIngUnit, setNewIngUnit] = useState('g');
-  const [selectedIngId, setSelectedIngId] = useState('');
+  // Se eliminó selectedIngId porque ahora usamos datalist y nombre directo
    
   // ESTADOS EDICION INGREDIENTE EN LISTA
   const [editingIngId, setEditingIngId] = useState<string | null>(null);
@@ -572,12 +572,8 @@ export default function AdminPage() {
       if(!newIngName) return; 
       const qtyNum = newIngQty === '' ? 0 : Number(newIngQty); 
       
-      let existing = null;
-      if (selectedIngId) {
-          existing = ingredientes.find(i => i.id === selectedIngId);
-      } else {
-          existing = ingredientes.find(i => i.nombre.toLowerCase() === newIngName.toLowerCase());
-      }
+      // BUSCAR POR NOMBRE DIRECTAMENTE
+      const existing = ingredientes.find(i => i.nombre.toLowerCase() === newIngName.toLowerCase());
       
       if (existing) {
           await supabase.from('ingredientes').update({ cantidad_disponible: existing.cantidad_disponible + qtyNum }).eq('id', existing.id);
@@ -585,7 +581,7 @@ export default function AdminPage() {
           await supabase.from('ingredientes').insert([{ nombre: newIngName, cantidad_disponible: qtyNum, unidad: newIngUnit }]); 
       }
       
-      setNewIngName(''); setNewIngQty(''); setSelectedIngId(''); 
+      setNewIngName(''); setNewIngQty(''); 
       await actualizarStockGlobal();
       cargarDatos();
   };
@@ -609,21 +605,6 @@ export default function AdminPage() {
 
   const delIng = async (id: string) => { if(confirm('¿Borrar ingrediente?')) await supabase.from('ingredientes').delete().eq('id', id); await actualizarStockGlobal(); cargarDatos(); };
   
-  const handleSelectIng = (e: any) => {
-      const id = e.target.value;
-      if (id === 'new') {
-          setSelectedIngId('');
-          setNewIngName('');
-      } else {
-          const ing = ingredientes.find(i => i.id === id);
-          if (ing) {
-              setSelectedIngId(ing.id);
-              setNewIngName(ing.nombre);
-              setNewIngUnit(ing.unidad || 'g');
-          }
-      }
-  };
-
   // --- ADD INGREDIENT TO NEW PIZZA (MEMORY) ---
   const addToNewPizzaRecipe = () => {
       if(!newPizzaSelectedIng) return;
@@ -708,22 +689,18 @@ export default function AdminPage() {
                         
                         <div className="flex flex-col gap-3">
                             <div className="flex gap-2">
-                                {/* Selector Híbrido */}
+                                {/* INPUT CON DATALIST (REEMPLAZO SELECTOR HIBRIDO) */}
                                 <div className="flex-1 relative">
-                                    <select 
-                                        className={`absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10`}
-                                        onChange={handleSelectIng}
-                                        value={selectedIngId || 'new'}
-                                    >
-                                        <option value="new">Nuevo (Escribir nombre)</option>
-                                        {ingredientes.map(i => <option key={i.id} value={i.id}>{i.nombre}</option>)}
-                                    </select>
                                     <input 
+                                        list="ingredientes-list"
                                         className={`w-full p-3 rounded-xl border outline-none ${base.input}`} 
-                                        placeholder="Nombre del ingrediente..." 
+                                        placeholder="Nombre del producto..." 
                                         value={newIngName} 
-                                        onChange={e => { setNewIngName(e.target.value); setSelectedIngId(''); }} 
+                                        onChange={e => setNewIngName(e.target.value)} 
                                     />
+                                    <datalist id="ingredientes-list">
+                                        {ingredientes.map(i => <option key={i.id} value={i.nombre} />)}
+                                    </datalist>
                                     <div className="absolute right-3 top-3 pointer-events-none opacity-50"><ChevronDown size={16}/></div>
                                 </div>
                             </div>
@@ -748,7 +725,7 @@ export default function AdminPage() {
                                     <option value="L" className="text-black">L</option>
                                 </select>
                                 <button onClick={addIng} className={`${currentTheme.color} text-white font-bold px-6 rounded-xl shadow-lg active:scale-95 transition-transform flex-1`}>
-                                    {selectedIngId ? 'SUMAR' : 'CREAR'}
+                                    {ingredientes.some(i => i.nombre.toLowerCase() === newIngName.toLowerCase()) ? 'SUMAR' : 'CREAR'}
                                 </button>
                             </div>
                         </div>
