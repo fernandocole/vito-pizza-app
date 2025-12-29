@@ -394,6 +394,7 @@ export default function VitoPizzaApp() {
       modo_estricto: boolean;
       categoria_activa: string;
       mensaje_bienvenida?: string;
+      tiempo_recordatorio_minutos?: number;
   }>({ 
       porciones_por_pizza: 4, 
       total_invitados: 10, 
@@ -766,14 +767,15 @@ export default function VitoPizzaApp() {
           if (!processedOrderIds.current.has(p.id)) {
               processedOrderIds.current.add(p.id);
               // 10 minutos = 600000 ms
+              const delay = (config.tiempo_recordatorio_minutos || 10) * 60000;
               setTimeout(() => {
                   const pz = pizzas.find(z => z.id === p.pizza_id);
                   if(pz) {
-                      sendNotification("¿Qué tal estuvo?", `Hace 10 min comiste ${pz.nombre}. ¿Te gustaría calificarla?`);
+                      sendNotification("¿Qué tal estuvo?", `Hace ${config.tiempo_recordatorio_minutos || 10} min comiste ${pz.nombre}. ¿Te gustaría calificarla?`);
                       setLateRatingPizza(pz);
                       setShowLateRatingModal(true);
                   }
-              }, 600000); 
+              }, delay); 
           }
       });
   }, [pedidos, nombreInvitado, pizzas]);
@@ -787,7 +789,7 @@ export default function VitoPizzaApp() {
           if(summarySheet === 'wait') return h.pendientes > 0 && !p.cocinando;
           if(summarySheet === 'oven') return h.pendientes > 0 && p.cocinando;
           if(summarySheet === 'ready') return h.comidos > 0; 
-          if(summarySheet === 'total') return h.pendientes > 0 || h.comidos > 0;
+          if(summarySheet === 'total') return h.pendientes > 0;
           return false;
       }).map(p => {
           const h = miHistorial[p.id];
@@ -795,7 +797,7 @@ export default function VitoPizzaApp() {
           if(summarySheet === 'wait') count = h.pendientes;
           else if(summarySheet === 'oven') count = h.pendientes;
           else if(summarySheet === 'ready') count = h.comidos;
-          else count = h.pendientes + h.comidos;
+          else count = h.pendientes; // TOTAL solo muestra pendientes
 
           return { ...p, count };
       });
@@ -808,7 +810,7 @@ export default function VitoPizzaApp() {
           if(h) {
               const pen = h.pendientes;
               if (pen > 0) { if (p.cocinando) o += pen; else w += pen; }
-              r += h.comidos; t += (h.comidos + pen);
+              r += h.comidos; t += pen;
           }
       });
       return { total: t, wait: w, oven: o, ready: r };
