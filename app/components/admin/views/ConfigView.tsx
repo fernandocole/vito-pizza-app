@@ -1,4 +1,4 @@
-import { Lock, Save, Trash2, Clock, Smartphone, RotateCcw } from 'lucide-react';
+import { Lock, Save, Trash2, Clock, Smartphone, RotateCcw, Users, KeyRound } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
 // Inicializamos el cliente de Supabase aquí para este componente
@@ -35,7 +35,7 @@ export const ConfigView = ({
     return (
         <div className="space-y-6 animate-in fade-in pb-20">
             
-            {/* Mensaje de Bienvenida */}
+            {/* --- MENSAJE DE BIENVENIDA --- */}
             <div className={`p-5 rounded-3xl border ${base.card}`}>
                 <h3 className="font-bold text-lg mb-3 flex items-center gap-2"><Smartphone size={20}/> Mensaje de Bienvenida</h3>
                 <p className={`text-xs mb-3 ${base.subtext}`}>Usa [nombre], [fecha], [hora], [pizzas] como variables.</p>
@@ -47,7 +47,6 @@ export const ConfigView = ({
                 />
                 <button 
                     onClick={async () => {
-                        // CORREGIDO: Usamos la instancia local 'supabase' en lugar de 'window.supabase'
                         await supabase.from('configuracion_dia').update({ mensaje_bienvenida: config.mensaje_bienvenida }).eq('id', config.id);
                         alert("Mensaje guardado");
                     }} 
@@ -57,9 +56,37 @@ export const ConfigView = ({
                 </button>
             </div>
 
-            {/* SESIÓN Y SEGURIDAD */}
+            {/* --- ACCESO INVITADOS (RESTITUIDO) --- */}
             <div className={`p-5 rounded-3xl border ${base.card}`}>
-                <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Lock size={20}/> Seguridad & Sesión</h3>
+                <h3 className="font-bold text-lg mb-3 flex items-center gap-2"><Users size={20}/> Acceso Invitados</h3>
+                <p className={`text-xs mb-3 ${base.subtext}`}>Si dejas esto vacío, cualquiera podrá entrar sin clave.</p>
+                
+                <div className="flex gap-2">
+                    <div className={`flex-1 flex items-center px-4 rounded-xl border ${base.input}`}>
+                        <KeyRound size={18} className={base.subtext} />
+                        <input 
+                            type="text"
+                            className="w-full bg-transparent outline-none p-3 ml-2"
+                            value={config.password_invitados || ''}
+                            onChange={(e) => setConfig({...config, password_invitados: e.target.value})}
+                            placeholder="Sin contraseña..."
+                        />
+                    </div>
+                    <button 
+                        onClick={async () => {
+                            await supabase.from('configuracion_dia').update({ password_invitados: config.password_invitados }).eq('id', config.id);
+                            alert("Contraseña de invitados actualizada");
+                        }} 
+                        className={`px-6 rounded-xl font-bold text-sm ${currentTheme.color} text-white shadow-lg`}
+                    >
+                        <Save size={20} />
+                    </button>
+                </div>
+            </div>
+
+            {/* --- SEGURIDAD ADMIN --- */}
+            <div className={`p-5 rounded-3xl border ${base.card}`}>
+                <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Lock size={20}/> Seguridad Admin</h3>
                 
                 {/* Selector de Duración de Sesión */}
                 <div className="mb-6">
@@ -89,7 +116,7 @@ export const ConfigView = ({
                 </div>
             </div>
 
-            {/* ZONA DE PELIGRO */}
+            {/* --- ZONA DE PELIGRO --- */}
             <div className={`p-5 rounded-3xl border border-red-500/20 bg-red-500/5`}>
                 <h3 className="font-bold text-lg mb-4 text-red-500 flex items-center gap-2"><Trash2 size={20}/> Zona de Peligro</h3>
                 
