@@ -6,7 +6,7 @@ import {
   Pizza, Settings, Plus, Trash2, ChefHat, Eye, EyeOff, CheckCircle, 
   Clock, Flame, LogOut, List, User, Bell, ArrowRight, ArrowDownAZ, 
   ArrowUpNarrowWide, Maximize2, Minimize2, Users, Ban, RotateCcw, 
-  KeyRound, LayoutDashboard, XCircle, Sun, Moon, BarChart3, Star, MessageSquare, Palette, Save, UserCheck, ImageIcon, UploadCloud, Timer as TimerIcon, Tag, ChevronUp, ChevronDown, CheckSquare, Square, Calculator, ShoppingBag, X, Minus, Pencil, Info
+  KeyRound, LayoutDashboard, XCircle, Sun, Moon, BarChart3, Star, MessageSquare, Palette, Save, UserCheck, ImageIcon, UploadCloud, Timer as TimerIcon, Tag, ChevronUp, ChevronDown, CheckSquare, Square, Calculator, ShoppingBag, X, Minus, Pencil, Info, Hourglass
 } from 'lucide-react';
 
 const supabase = createClient(
@@ -153,7 +153,7 @@ export default function AdminPage() {
   const [edits, setEdits] = useState<Record<string, any>>({});
   const [invitadosDB, setInvitadosDB] = useState<any[]>([]); 
   const [valoraciones, setValoraciones] = useState<any[]>([]);
-  const [config, setConfig] = useState<any>({ porciones_por_pizza: 4, total_invitados: 10, password_invitados: '', categoria_activa: '["General"]', mensaje_bienvenida: '' });
+  const [config, setConfig] = useState<any>({ porciones_por_pizza: 4, total_invitados: 10, password_invitados: '', categoria_activa: '["General"]', mensaje_bienvenida: '', tiempo_recordatorio_minutos: 10 });
   const [invitadosCount, setInvitadosCount] = useState(0);
   const [onlineUsers, setOnlineUsers] = useState(0);
   const prevPedidosCount = useRef(0);
@@ -247,9 +247,8 @@ export default function AdminPage() {
             const state = presenceChannel.presenceState();
             // Calcular SOLO los invitados
             const count = Object.values(state).reduce((acc: number, presences: any) => {
-                // Filtramos por rol en el array de presencias de cada clave
-                const guests = presences.filter((p: any) => p.role === 'guest');
-                return acc + guests.length;
+                const isGuest = presences.some((p: any) => p.role === 'guest');
+                return acc + (isGuest ? 1 : 0);
             }, 0);
             setOnlineUsers(count);
         })
