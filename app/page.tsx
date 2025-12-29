@@ -417,6 +417,8 @@ export default function VitoPizzaApp() {
       let msg = config.mensaje_bienvenida;
       msg = msg.replace(/\[nombre\]/gi, nombreInvitado || 'Invitado');
       msg = msg.replace(/\[fecha\]/gi, new Date().toLocaleDateString());
+      msg = msg.replace(/\[hora\]/gi, new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      msg = msg.replace(/\[pizzas\]/gi, String(pizzas.length));
       return msg;
   };
 
@@ -964,11 +966,30 @@ export default function VitoPizzaApp() {
          <div className="relative z-10 pt-16">
              {/* TITULO EDITABLE */}
              <div className="mb-6">
-                 {getWelcomeMessage() ? (
-                     <h1 className="text-3xl font-bold leading-tight drop-shadow-md text-white whitespace-pre-wrap">{getWelcomeMessage()}</h1>
-                 ) : (
-                     <h1 className="text-3xl font-bold leading-tight drop-shadow-md text-white">{t.welcomeTitle} <br/> <span className="opacity-80 font-normal text-xl">{t.welcomeSub}</span></h1>
-                 )}
+                 {(() => {
+                     const msg = getWelcomeMessage();
+                     if (msg) {
+                         const parts = msg.split('\n');
+                         return (
+                             <h1 className="text-3xl font-bold leading-tight drop-shadow-md text-white whitespace-pre-wrap">
+                                 {parts[0]}
+                                 {parts.length > 1 && (
+                                     <>
+                                         <br/>
+                                         <span className="opacity-80 font-normal text-xl">{parts.slice(1).join('\n')}</span>
+                                     </>
+                                 )}
+                             </h1>
+                         );
+                     } else {
+                         return (
+                             <h1 className="text-3xl font-bold leading-tight drop-shadow-md text-white">
+                                 {t.welcomeTitle} <br/> 
+                                 <span className="opacity-80 font-normal text-xl">{t.welcomeSub}</span>
+                             </h1>
+                         );
+                     }
+                 })()}
              </div>
              <div className="flex items-center gap-3 text-sm font-medium bg-black/30 p-3 rounded-2xl w-max backdrop-blur-md border border-white/10 text-white animate-in fade-in duration-500 mx-auto mb-4"><span className="text-neutral-300 text-xs font-bold">{currentBannerText}</span></div>
              <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar px-2">
