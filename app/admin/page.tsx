@@ -22,6 +22,25 @@ const formatSeconds = (seconds: number) => {
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 };
 
+// Calcula el stock posible en base a una receta y el inventario actual
+const calcularStockDinamico = (receta: any[], inventario: any[]) => {
+    if (!receta || receta.length === 0) return 0;
+    let min = Infinity;
+    receta.forEach(item => {
+        const ing = inventario.find(i => i.id === item.ingrediente_id);
+        if (ing) {
+            const requerida = Number(item.cantidad || item.cantidad_requerida || 0);
+            if (requerida > 0) {
+                const posible = Math.floor(ing.cantidad_disponible / requerida);
+                if (posible < min) min = posible;
+            }
+        } else {
+            min = 0;
+        }
+    });
+    return min === Infinity ? 0 : min;
+};
+
 // --- COMPONENTE CONTROL DE TIEMPO (Flechas) ---
 const TimeControl = ({ value, onChange, isDarkMode }: { value: number, onChange: (val: number) => void, isDarkMode: boolean }) => {
     const m = Math.floor(value / 60);
@@ -134,7 +153,7 @@ export default function AdminPage() {
   const [edits, setEdits] = useState<Record<string, any>>({});
   const [invitadosDB, setInvitadosDB] = useState<any[]>([]); 
   const [valoraciones, setValoraciones] = useState<any[]>([]);
-  const [config, setConfig] = useState<any>({ porciones_por_pizza: 4, total_invitados: 10, password_invitados: '', categoria_activa: '["General"]' });
+  const [config, setConfig] = useState<any>({ porciones_por_pizza: 4, total_invitados: 10, password_invitados: '', categoria_activa: '["General"]', mensaje_bienvenida: '' });
   const [invitadosCount, setInvitadosCount] = useState(0);
   const [onlineUsers, setOnlineUsers] = useState(0);
   const prevPedidosCount = useRef(0);
@@ -157,7 +176,6 @@ export default function AdminPage() {
   const [newIngName, setNewIngName] = useState('');
   const [newIngQty, setNewIngQty] = useState<string | number>('');
   const [newIngUnit, setNewIngUnit] = useState('g');
-  // Se eliminó selectedIngId porque ahora usamos datalist y nombre directo
    
   // ESTADOS EDICION INGREDIENTE EN LISTA
   const [editingIngId, setEditingIngId] = useState<string | null>(null);
@@ -192,7 +210,6 @@ export default function AdminPage() {
       metric: "bg-neutral-900 border-neutral-800",
       blocked: "bg-red-900/10 border-red-900/30",
       bar: "bg-neutral-900/50 backdrop-blur-md border-white/10 shadow-lg text-white border",
-      // Estilos específicos para bloques internos que daban problemas
       innerCard: "bg-neutral-800 border-neutral-700 text-white",
       uploadBox: "bg-neutral-800 border-neutral-600 hover:bg-neutral-700"
   } : {
@@ -208,7 +225,6 @@ export default function AdminPage() {
       metric: "bg-white border-gray-200 shadow-sm",
       blocked: "bg-red-50 border-red-200",
       bar: "bg-white/50 backdrop-blur-md border-gray-300 shadow-lg text-gray-900 border",
-      // Estilos específicos para modo claro
       innerCard: "bg-neutral-100 border-neutral-200 text-gray-900",
       uploadBox: "bg-neutral-100 border-neutral-300 hover:bg-neutral-200"
   };
@@ -455,38 +471,38 @@ export default function AdminPage() {
 
   // CALCULO STOCK DINAMICO NUEVA PIZZA
   const stockEstimadoNueva = useMemo(() => {
-      if (newPizzaIngredients.length === 0) return 0;
-      let min = Infinity;
-      newPizzaIngredients.forEach(item => {
-          const ing = ingredientes.find(i => i.id === item.ingrediente_id);
-          if(ing) {
-              const possible = Math.floor(ing.cantidad_disponible / item.cantidad);
-              if(possible < min) min = possible;
-          } else { min = 0; }
-      });
-      return min === Infinity ? 0 : min;
+      return calcularStockDinamico(newPizzaIngredients, ingredientes);
   }, [newPizzaIngredients, ingredientes]);
 
+  const activeCategories: string[] = useMemo(() => { try { const parsed = JSON.parse(config.categoria_activa); if (parsed === 'Todas' || (Array.isArray(parsed) && parsed.length === 0)) return []; return Array.isArray(parsed) ? parsed : ['General']; } catch { return ['General']; } }, [config.categoria_activa]);
+
   const metricas = useMemo(() => {
-      const lista = pizzas.filter(p => p.activa).map(pizza => {
+      // 1. Aplicar filtro de categorías también a cocina
+      let lista = pizzas.filter(p => p.activa);
+      
+      if (activeCategories.length > 0 && !activeCategories.includes('Todas')) {
+          lista = lista.filter(p => activeCategories.includes(p.categoria || 'General'));
+      }
+
+      const listaProcesada = lista.map(pizza => {
         const pendientes = pedidos.filter(p => p.pizza_id === pizza.id && p.estado !== 'entregado');
         const totalPendientes = pendientes.reduce((acc, curr) => acc + curr.cantidad_porciones, 0);
         const target = pizza.porciones_individuales || config.porciones_por_pizza;
         
         return { ...pizza, totalPendientes, completas: Math.floor(totalPendientes / target), faltan: target - (totalPendientes % target), target, percent: ((totalPendientes % target) / target) * 100, pedidosPendientes: pendientes, stockRestante: pizza.stock };
       });
-      return lista.sort((a, b) => {
+
+      return listaProcesada.sort((a, b) => {
           if (a.cocinando && !b.cocinando) return -1; if (!a.cocinando && b.cocinando) return 1;
           const aReady = a.totalPendientes >= a.target; const bReady = b.totalPendientes >= b.target;
           if (aReady && !bReady) return -1; if (!aReady && bReady) return 1;
           if (orden === 'nombre') return a.nombre.localeCompare(b.nombre);
           return b.totalPendientes - a.totalPendientes;
       });
-  }, [pizzas, pedidos, config, orden]);
+  }, [pizzas, pedidos, config, orden, activeCategories]);
 
   // Categories & Stats
   const uniqueCategories = useMemo(() => { const cats = new Set<string>(); cats.add('General'); pizzas.forEach(p => { if(p.categoria) cats.add(p.categoria); }); return Array.from(cats); }, [pizzas]);
-  const activeCategories: string[] = useMemo(() => { try { const parsed = JSON.parse(config.categoria_activa); if (parsed === 'Todas' || (Array.isArray(parsed) && parsed.length === 0)) return []; return Array.isArray(parsed) ? parsed : ['General']; } catch { return ['General']; } }, [config.categoria_activa]);
   const toggleCategory = async (cat: string) => { const current = new Set(activeCategories); if (current.has(cat)) current.delete(cat); else current.add(cat); const newArr = Array.from(current); setConfig({...config, categoria_activa: JSON.stringify(newArr)}); await supabase.from('configuracion_dia').update({ categoria_activa: JSON.stringify(newArr) }).eq('id', config.id); };
 
   const stats = useMemo(() => {
@@ -667,7 +683,11 @@ export default function AdminPage() {
         {view === 'cocina' && (
             <div className="grid grid-cols-2 gap-4 mb-4">
                 <div className={`p-3 rounded-2xl border ${base.metric}`}><h4 className={`text-[10px] font-bold uppercase mb-2 text-center border-b pb-1 ${base.divider} ${base.subtext}`}>ENTERAS</h4><div className="grid grid-cols-2 gap-2"><div className="text-center"><p className={`text-[9px] uppercase font-bold ${base.subtext}`}>En Curso</p><p className="text-xl font-bold">{stats.pizzasIncompletas}</p></div><div className="text-center"><p className={`text-[9px] uppercase font-bold ${base.subtext}`}>Entregadas</p><p className="text-xl font-bold">{stats.totalPizzasEntregadas}</p></div></div></div>
-                <div className={`p-3 rounded-2xl border ${base.metric}`}><h4 className={`text-[10px] font-bold uppercase mb-2 text-center border-b pb-1 ${base.divider} ${base.subtext}`}>PORCIONES</h4><div className="grid grid-cols-2 gap-2"><div className="text-center"><p className={`text-[9px] uppercase font-bold ${base.subtext}`}>Pedidas</p><p className="text-xl font-bold">{stats.totalPendientes}</p></div><div className="text-center"><p className={`text-[9px] uppercase font-bold ${base.subtext}`}>En Stock</p><p className="text-xl font-bold">{stats.totalStockPorciones}</p></div></div></div>
+                {/* CAMBIO: Eliminado STOCK, solo PEDIDAS */}
+                <div className={`p-3 rounded-2xl border flex flex-col justify-center items-center ${base.metric}`}>
+                    <h4 className={`text-[10px] font-bold uppercase mb-2 text-center w-full border-b pb-1 ${base.divider} ${base.subtext}`}>PORCIONES PEDIDAS</h4>
+                    <p className="text-3xl font-bold">{stats.totalPendientes}</p>
+                </div>
             </div>
         )}
         <main className="max-w-4xl mx-auto space-y-4 w-full">
@@ -850,7 +870,7 @@ export default function AdminPage() {
                                 </div>
                                 <div className="flex gap-2">
                                     <select className={`flex-1 p-2 text-sm rounded-xl font-bold outline-none bg-white dark:bg-black/20 text-black dark:text-white`} value={newPizzaSelectedIng} onChange={e => setNewPizzaSelectedIng(e.target.value)}>
-                                        <option value="">+ Agregar Ingrediente</option>
+                                        <option value="">+ Ingrediente</option>
                                         {ingredientes.map(i => <option key={i.id} value={`${i.id}|${i.nombre}`}>{i.nombre} (Disp: {i.cantidad_disponible})</option>)}
                                     </select>
                                     <input type="number" className={`w-20 p-2 text-sm rounded-xl text-center font-bold outline-none bg-white dark:bg-black/20 text-black dark:text-white`} value={newPizzaRecipeQty} onChange={e => setNewPizzaRecipeQty(Number(e.target.value) || '')} placeholder="Cant" />
@@ -887,7 +907,8 @@ export default function AdminPage() {
                         const display = { ...p, ...edits[p.id] }; 
                         const isNewRecipe = !!edits[p.id]?.local_recipe;
                         const currentRecipe = isNewRecipe ? edits[p.id].local_recipe : recetas.filter(r => r.pizza_id === p.id).map(r => ({...r, nombre: ingredientes.find(i => i.id === r.ingrediente_id)?.nombre || '?'}));
-                        
+                        const dynamicStock = calcularStockDinamico(currentRecipe, ingredientes);
+
                         return (
                         <div key={p.id} className={`p-5 rounded-3xl border flex flex-col gap-4 relative overflow-hidden transition-all ${base.card} ${isEdited ? 'border-yellow-500/50' : ''}`}>
                             {/* HEADER */}
@@ -959,7 +980,7 @@ export default function AdminPage() {
                                 <div className={`${base.innerCard} p-2 rounded-2xl flex flex-col items-center justify-center relative overflow-hidden text-center`}>
                                     <span className="text-[9px] uppercase font-bold opacity-50 tracking-wider mb-1">Stock</span>
                                     {currentRecipe.length > 0 ? (
-                                        <div className="flex items-center gap-1 font-bold text-xl"><Calculator size={14} className="opacity-30"/> {p.stock}</div>
+                                        <div className="flex items-center gap-1 font-bold text-xl"><Calculator size={14} className="opacity-30"/> {dynamicStock}</div>
                                     ) : (
                                         <input type="number" value={display.stock || 0} onChange={e => updateP(p.id, 'stock', parseInt(e.target.value))} className={`w-full text-center bg-transparent outline-none text-sm font-bold`} />
                                     )}
@@ -997,6 +1018,18 @@ export default function AdminPage() {
               <div className={`p-6 rounded-3xl border space-y-6 ${base.card}`}>
                 <h3 className={`font-bold mb-4 flex items-center gap-2 ${base.subtext}`}><Settings size={18}/> Ajustes Globales</h3>
                 <div className={`border-b pb-4 ${base.divider}`}><label className={`text-sm font-bold flex items-center gap-2 mb-2 ${base.subtext}`}><Users size={16}/> Total Comensales (Lista)</label><div className="flex gap-2"><input type="number" placeholder="10" value={config.total_invitados || ''} onChange={e => setConfig({...config, total_invitados: parseInt(e.target.value)})} className={`w-full p-3 rounded-xl border outline-none ${base.input}`} /><button onClick={async () => { await supabase.from('configuracion_dia').update({ total_invitados: config.total_invitados }).eq('id', config.id); alert('Guardado'); }} className={`font-bold px-4 rounded-xl ${isDarkMode ? 'bg-white text-black' : 'bg-black text-white'}`}>OK</button></div></div>
+                <div className={`border-b pb-4 ${base.divider}`}>
+                    <label className={`text-sm font-bold flex items-center gap-2 mb-2 ${base.subtext}`}><MessageSquare size={16}/> Mensaje Bienvenida</label>
+                    <div className="flex gap-2">
+                        <textarea 
+                            placeholder="Mensaje personalizado..." 
+                            value={config.mensaje_bienvenida || ''} 
+                            onChange={e => setConfig({...config, mensaje_bienvenida: e.target.value})} 
+                            className={`w-full p-3 rounded-xl border outline-none resize-none h-20 text-sm ${base.input}`} 
+                        />
+                        <button onClick={async () => { await supabase.from('configuracion_dia').update({ mensaje_bienvenida: config.mensaje_bienvenida }).eq('id', config.id); alert('Guardado'); }} className={`font-bold px-4 rounded-xl self-end h-20 flex items-center justify-center ${isDarkMode ? 'bg-white text-black' : 'bg-black text-white'}`}>OK</button>
+                    </div>
+                </div>
                 <div className="flex justify-between items-center"><label className={`text-sm ${base.subtext}`}>Modo Estricto</label><button onClick={async () => { const n = !config.modo_estricto; setConfig({...config, modo_estricto: n}); await supabase.from('configuracion_dia').update({ modo_estricto: n }).eq('id', config.id); }} className={`w-12 h-6 rounded-full transition-colors relative ${config.modo_estricto ? 'bg-green-600' : 'bg-gray-400'}`}><div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all ${config.modo_estricto ? 'left-7' : 'left-1'}`}></div></button></div>
                 <div className="border-t pt-4 border-gray-200 dark:border-neutral-800"><button onClick={resetAllOrders} className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2"><Trash2 size={18}/> RESETEAR TODOS LOS PEDIDOS</button></div>
                 <div className={`border-t pt-4 ${base.divider}`}><label className={`text-sm font-bold flex items-center gap-2 mb-2 ${base.subtext}`}><KeyRound size={16}/> Clave Invitados</label><div className="flex gap-2"><input type="text" placeholder="Ej: pizza2024" value={config.password_invitados || ''} onChange={e => setConfig({...config, password_invitados: e.target.value})} className={`w-full p-3 rounded-xl border outline-none ${base.input}`} /><button onClick={async () => { await supabase.from('configuracion_dia').update({ password_invitados: config.password_invitados }).eq('id', config.id); alert('Guardado'); }} className={`font-bold px-4 rounded-xl ${isDarkMode ? 'bg-white text-black' : 'bg-black text-white'}`}>OK</button></div></div>
