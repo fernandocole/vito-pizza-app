@@ -97,6 +97,7 @@ export default function VitoPizzaApp() {
       text: "text-white",
       subtext: "text-neutral-500",
       card: "bg-neutral-900 border-neutral-800",
+      innerCard: "bg-white/5 border border-white/5 text-neutral-300", 
       input: "bg-transparent text-white placeholder-neutral-600",
       inputContainer: "bg-neutral-900 border-neutral-800",
       buttonSec: "bg-black/20 text-white hover:bg-black/40 border-white/10",
@@ -111,6 +112,7 @@ export default function VitoPizzaApp() {
       text: "text-gray-900",
       subtext: "text-gray-500",
       card: "bg-white border-gray-200 shadow-md",
+      innerCard: "bg-neutral-100 border border-transparent text-gray-600",
       input: "bg-transparent text-gray-900 placeholder-gray-400",
       inputContainer: "bg-white border-gray-200 shadow-sm",
       buttonSec: "bg-gray-200 text-gray-600 hover:text-black border-gray-300",
@@ -775,8 +777,26 @@ export default function VitoPizzaApp() {
   async function modificarPedido(p: any, acc: 'sumar' | 'restar') {
     if (!nombreInvitado.trim()) { alert(t.errorName); return; }
     if (usuarioBloqueado) { alert(`${t.blocked}: ${motivoBloqueo || ''}`); return; }
-    if (acc === 'sumar') { if (p.stockRestante <= 0) { alert("Sin stock :("); return; } setOrderToConfirm(p); } else { if (p.cocinando && p.totalPendientes <= p.target) {} const { data } = await supabase.from('pedidos').select('id').eq('pizza_id', p.id).ilike('invitado_nombre', nombreInvitado.trim()).eq('estado', 'pendiente').order('created_at', { ascending: false }).limit(1).single(); if (data) { await supabase.from('pedidos').delete().eq('id', data.id); mostrarMensaje(`${t.successCancel} ${p.displayName}`, 'info'); } }
+    
+    if (acc === 'sumar') { 
+        if (p.stockRestante <= 0) { alert("Sin stock :("); return; } 
+        setOrderToConfirm(p); 
+    } else { 
+        // --- PROTECCIÓN AQUÍ: Si se está cocinando, prohibir cancelación ---
+        if (p.cocinando) {
+            mostrarMensaje("🔥 ¡Ya está en el horno! No se puede cancelar.", 'alerta');
+            return;
+        }
+        // ------------------------------------------------------------------
+
+        const { data } = await supabase.from('pedidos').select('id').eq('pizza_id', p.id).ilike('invitado_nombre', nombreInvitado.trim()).eq('estado', 'pendiente').order('created_at', { ascending: false }).limit(1).single(); 
+        if (data) { 
+            await supabase.from('pedidos').delete().eq('id', data.id); 
+            mostrarMensaje(`${t.successCancel} ${p.displayName}`, 'info'); 
+        } 
+    }
   }
+
   const proceedWithOrder = async () => { if(!orderToConfirm) return; const { error } = await supabase.from('pedidos').insert([{ invitado_nombre: nombreInvitado, pizza_id: orderToConfirm.id, cantidad_porciones: 1, estado: 'pendiente' }]); if (!error) mostrarMensaje(`${t.successOrder} ${orderToConfirm.displayName}!`, 'exito'); setOrderToConfirm(null); }
   const mostrarMensaje = (txt: string, tipo: 'info' | 'alerta' | 'exito') => { setMensaje({ texto: txt, tipo }); if (tipo !== 'alerta') { setTimeout(() => setMensaje(null), 2500); } }
 
@@ -893,7 +913,7 @@ export default function VitoPizzaApp() {
                     <h3 className={`text-2xl font-black mb-1 ${base.text}`}>{t.confTitle}</h3>
                     <p className={`text-lg font-medium mb-4 ${currentTheme.text}`}>{orderToConfirm.displayName}</p>
                     
-                    <div className="bg-neutral-100 dark:bg-white/5 rounded-2xl p-4 mb-6">
+                    <div className={`${base.innerCard} rounded-2xl p-4 mb-6`}>
                         <p className={`text-sm leading-relaxed mb-3 ${base.subtext}`}>
                             {orderToConfirm.tipo === 'pizza' ? t.confPizzaDesc : t.confUnitDesc}
                         </p>

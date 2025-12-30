@@ -6,51 +6,33 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
-self.addEventListener('push', (event) => {
-  const data = event.data ? event.data.json() : {};
-  self.registration.showNotification(data.title || 'Vito Pizza', {
-    body: data.body || '¡Novedades!',
-    icon: '/icon.png',
-    badge: '/icon.png',
-    vibrate: [200, 100, 200],
-    data: { url: data.url || '/' }
-  });
-});
-
+// ESCUCHAR CLIC EN LA NOTIFICACIÓN
 self.addEventListener('notificationclick', (event) => {
+  // 1. Cerrar la notificación inmediatamente
   event.notification.close();
 
-  // Construimos la URL completa destino
-  const urlToOpen = new URL(event.notification.data.url, self.location.origin).href;
+  // 2. Obtener la URL que enviamos desde React (Admin o Guest)
+  // Si no viene nada, por defecto va al inicio '/'
+  const targetUrl = event.notification.data?.url || '/';
 
-  const promiseChain = clients.matchAll({
-    type: 'window',
-    includeUncontrolled: true
-  }).then((windowClients) => {
-    let matchingClient = null;
-
-    for (let i = 0; i < windowClients.length; i++) {
-      const windowClient = windowClients[i];
-      // Si ya hay una ventana abierta de nuestra app
-      if (windowClient.url.includes(self.location.origin)) {
-        matchingClient = windowClient;
-        break;
-      }
-    }
-
-    if (matchingClient) {
-      // 1. Enfocar la ventana
-      return matchingClient.focus().then(() => {
-        // 2. IMPORTANTE: Navegar a la URL correcta (/admin) si no estamos ahí
-        if (matchingClient.url !== urlToOpen) {
-          return matchingClient.navigate(urlToOpen);
+  // 3. Gestionar la ventana
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // A. Si ya hay una pestaña abierta de la app...
+      for (const client of clientList) {
+        // Comprobamos si la URL base coincide (para no capturar otras webs)
+        if (client.url.includes(self.registration.scope) && 'focus' in client) {
+          // ...la enfocamos y navegamos a la sección correcta (Admin o Guest)
+          return client.focus().then((focusedClient) => {
+             return focusedClient.navigate(targetUrl);
+          });
         }
-      });
-    } else {
-      // Si no hay ventana abierta, abrir una nueva
-      return clients.openWindow(urlToOpen);
-    }
-  });
+      }
 
-  event.waitUntil(promiseChain);
+      // B. Si NO hay pestaña abierta, abrimos una nueva en la URL indicada
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(targetUrl);
+      }
+    })
+  );
 });
