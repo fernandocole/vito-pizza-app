@@ -1,21 +1,28 @@
-import { User, Shield, Lock, Unlock, Trash2, RotateCcw } from 'lucide-react';
+import { User, Shield, Lock, Unlock, Trash2, RotateCcw, Plus } from 'lucide-react';
 
 export const UsersView = ({ base, newGuestName, setNewGuestName, addU, allUsersList, resetU, toggleB, eliminarUsuario, tempMotivos, setTempMotivos, guardarMotivo, currentTheme, resetAllOrders }: any) => {
     return (
         <div className="space-y-6">
             
-            {/* FORMULARIO AGREGAR */}
+            {/* FORMULARIO AGREGAR (CORREGIDO) */}
             <div className={`p-4 rounded-3xl border ${base.card}`}>
                 <h3 className="text-sm font-bold mb-3 uppercase opacity-70">Nuevo Invitado</h3>
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-center">
                     <input 
                         type="text" 
                         value={newGuestName} 
                         onChange={e => setNewGuestName(e.target.value)} 
                         placeholder="Nombre..." 
-                        className={`flex-1 p-3 rounded-xl outline-none border ${base.input}`}
+                        // min-w-0 evita que el input empuje fuera de la pantalla en móviles
+                        className={`flex-1 min-w-0 p-3 rounded-xl outline-none border ${base.input}`}
                     />
-                    <button onClick={addU} className={`px-6 rounded-xl font-bold ${currentTheme.color} text-white`}>+</button>
+                    {/* flex-shrink-0 asegura que el botón no se aplaste ni se salga */}
+                    <button 
+                        onClick={addU} 
+                        className={`w-12 h-12 flex-shrink-0 rounded-xl font-bold flex items-center justify-center ${currentTheme.color} text-white shadow-lg active:scale-95`}
+                    >
+                        <Plus size={24} />
+                    </button>
                 </div>
             </div>
 
@@ -23,21 +30,21 @@ export const UsersView = ({ base, newGuestName, setNewGuestName, addU, allUsersL
             <div className="grid gap-3">
                 {allUsersList.map((u: any) => (
                     <div key={u.nombre} className={`${base.card} rounded-2xl p-3 border flex items-center gap-3 ${u.bloqueado ? base.blocked : ''}`}>
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white ${u.bloqueado ? 'bg-red-500' : 'bg-gray-400'}`}>
+                        <div className={`w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center font-bold text-white ${u.bloqueado ? 'bg-red-500' : 'bg-gray-400'}`}>
                             {u.nombre.charAt(0).toUpperCase()}
                         </div>
                         <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
                                 <h3 className="font-bold truncate">{u.nombre}</h3>
-                                {u.origen === 'web' && <span className="text-[8px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full font-bold">WEB</span>}
-                                {u.bloqueado && <span className="text-[8px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-bold">BLOQ</span>}
+                                {u.origen === 'web' && <span className="text-[8px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full font-bold flex-shrink-0">WEB</span>}
+                                {u.bloqueado && <span className="text-[8px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-bold flex-shrink-0">BLOQ</span>}
                             </div>
                             <p className="text-[10px] opacity-50 flex items-center gap-1">
                                 {u.totalOrders > 0 ? `${u.totalOrders} pedidos` : 'Sin pedidos'}
                             </p>
                         </div>
                         
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1 flex-shrink-0">
                             {/* BLOQUEAR / MOTIVO */}
                             <div className="flex flex-col items-end gap-1">
                                 <button onClick={() => toggleB(u)} className={`p-2 rounded-lg ${u.bloqueado ? 'bg-red-500 text-white' : base.buttonSec}`}>
