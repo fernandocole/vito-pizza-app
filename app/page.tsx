@@ -575,8 +575,9 @@ export default function VitoPizzaApp() {
 
   useEffect(() => { fetchDatos(); const c = supabase.channel('app-realtime').on('postgres_changes', { event: '*', schema: 'public' }, () => fetchDatos()).subscribe(); return () => { supabase.removeChannel(c); }; }, [fetchDatos]);
 
-  // --- MEMOS ---
-  const activeCategories: string[] = useMemo(() => {
+  // --- DEFINICIÓN ORDENADA DE ACTIVE CATEGORIES Y ENRICHED PIZZAS ---
+  
+  const activeCategories = useMemo(() => {
       try {
           const parsed = JSON.parse(config.categoria_activa);
           if (parsed === 'Todas' || (Array.isArray(parsed) && parsed.length === 0)) return []; 
@@ -590,8 +591,10 @@ export default function VitoPizzaApp() {
       return pizzas.map(pizza => {
           const target = pizza.porciones_individuales || config.porciones_por_pizza;
           const pen = pedidos.filter(p => p.pizza_id === pizza.id && p.estado !== 'entregado').reduce((a, c) => a + c.cantidad_porciones, 0);
+          
           const totalPotentialStock = (pizza.stock || 0) * target;
           const stockRestante = Math.max(0, totalPotentialStock - pen);
+
           const rats = allRatings.filter(r => r.pizza_id === pizza.id);
           const avg = rats.length > 0 ? (rats.reduce((a, b) => a + b.rating, 0) / rats.length).toFixed(1) : null;
           const sortR = rats.length > 0 ? (rats.reduce((a, b) => a + b.rating, 0) / rats.length) : globalAvg;
@@ -605,37 +608,247 @@ export default function VitoPizzaApp() {
           }
 
           return { 
-              ...pizza, displayName, displayDesc, stockRestante, target, ocupadasActual: pen % target, 
-              faltanParaCompletar: target - (pen % target), avgRating: avg, countRating: countRating, 
-              sortRating: sortR, totalPendientes: pen 
+              ...pizza, 
+              displayName, 
+              displayDesc,
+              stockRestante, 
+              target, 
+              ocupadasActual: pen % target, 
+              faltanParaCompletar: target - (pen % target), 
+              avgRating: avg, 
+              countRating: countRating, 
+              sortRating: sortR, 
+              totalPendientes: pen 
           };
       });
   }, [pizzas, pedidos, config, allRatings, lang, autoTranslations]);
 
+  // --- EFECTO DE FILTRADO Y ORDENAMIENTO (USANDO VARIABLES YA DEFINIDAS) ---
   useEffect(() => {
     if (enrichedPizzas.length === 0) return;
+
     let lista = [...enrichedPizzas];
-    if (activeCategories.length > 0 && !activeCategories.includes('Todas')) { lista = lista.filter(p => activeCategories.includes(p.categoria || 'General')); }
-    if (filter !== 'all') { lista = lista.filter(p => { if (filter === 'top') return p.avgRating && parseFloat(p.avgRating) >= 4.5; if (filter === 'to_rate') return miHistorial[p.id]?.comidos > 0 && !misValoraciones.includes(p.id); if (filter === 'ordered') return (miHistorial[p.id]?.pendientes > 0 || miHistorial[p.id]?.comidos > 0); if (filter === 'new') return (!miHistorial[p.id]?.pendientes && !miHistorial[p.id]?.comidos); if (filter === 'stock') return p.stockRestante > 0; return true; }); }
-    lista.sort((a, b) => { const aReady = !a.cocinando && a.totalPendientes >= a.target; const bReady = !b.cocinando && b.totalPendientes >= b.target; if (aReady && !bReady) return -1; if (!aReady && bReady) return 1; if (a.cocinando && !b.cocinando) return -1; if (!a.cocinando && b.cocinando) return 1; const aStock = a.stockRestante > 0; const bStock = b.stockRestante > 0; if (aStock && !bStock) return -1; if (!aStock && bStock) return 1; if (orden === 'ranking') return b.sortRating - a.sortRating; if (orden === 'nombre') return a.displayName.localeCompare(b.displayName); const aActive = a.ocupadasActual; const bActive = b.ocupadasActual; if (aActive !== bActive) return bActive - aActive; return a.displayName.localeCompare(b.displayName); });
+    if (activeCategories.length > 0 && !activeCategories.includes('Todas')) {
+        lista = lista.filter(p => activeCategories.includes(p.categoria || 'General'));
+    }
+
+    if (filter !== 'all') {
+        lista = lista.filter(p => {
+            if (filter === 'top') return p.avgRating && parseFloat(p.avgRating) >= 4.5;
+            if (filter === 'to_rate') return miHistorial[p.id]?.comidos > 0 && !misValoraciones.includes(p.id);
+            if (filter === 'ordered') return (miHistorial[p.id]?.pendientes > 0 || miHistorial[p.id]?.comidos > 0);
+            if (filter === 'new') return (!miHistorial[p.id]?.pendientes && !miHistorial[p.id]?.comidos);
+            if (filter === 'stock') return p.stockRestante > 0;
+            return true;
+        });
+    }
+
+    lista.sort((a, b) => {
+        const aReady = !a.cocinando && a.totalPendientes >= a.target;
+        const bReady = !b.cocinando && b.totalPendientes >= b.target;
+        if (aReady && !bReady) return -1;
+        if (!aReady && bReady) return 1;
+
+        if (a.cocinando && !b.cocinando) return -1;
+        if (!a.cocinando && b.cocinando) return 1;
+
+        const aStock = a.stockRestante > 0;
+        const bStock = b.stockRestante > 0;
+        if (aStock && !bStock) return -1;
+        if (!aStock && bStock) return 1;
+
+        if (orden === 'ranking') return b.sortRating - a.sortRating;
+        if (orden === 'nombre') return a.displayName.localeCompare(b.displayName);
+
+        const aActive = a.ocupadasActual;
+        const bActive = b.ocupadasActual;
+        if (aActive !== bActive) return bActive - aActive; 
+
+        return a.displayName.localeCompare(b.displayName); 
+    });
+
     setOrderedIds(lista.map(p => p.id));
   }, [orden, filter, pizzas.length, JSON.stringify(pizzas.map(p => ({ id: p.id, cocinando: p.cocinando, stock: p.stock }))), JSON.stringify(activeCategories)]);
 
-  useEffect(() => { const params = new URLSearchParams(window.location.search); const rateId = params.get('rate'); if (rateId && enrichedPizzas.length > 0) { const pizza = enrichedPizzas.find(p => p.id === rateId) || pizzas.find(p => p.id === rateId); if (pizza) { openRating(pizza); const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname; window.history.replaceState({ path: newUrl }, '', newUrl); } } }, [enrichedPizzas]); 
+  useEffect(() => {
+      const params = new URLSearchParams(window.location.search);
+      const rateId = params.get('rate');
+      if (rateId && enrichedPizzas.length > 0) {
+          const pizza = enrichedPizzas.find(p => p.id === rateId) || pizzas.find(p => p.id === rateId);
+          if (pizza) {
+              openRating(pizza);
+              const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+              window.history.replaceState({ path: newUrl }, '', newUrl);
+          }
+      }
+  }, [enrichedPizzas]); 
 
-  useEffect(() => { if(!nombreInvitado || !pizzas.length) return; const storedQueue = localStorage.getItem('vito-review-queue'); let queue: { id: string, pizzaId: string, triggerAt: number }[] = storedQueue ? JSON.parse(storedQueue) : []; let queueChanged = false; const delivered = pedidos.filter(p => p.invitado_nombre === nombreInvitado && p.estado === 'entregado'); delivered.forEach(p => { if (misValoraciones.includes(p.pizza_id)) return; if (queue.find(q => q.id === p.id)) return; if (processedOrderIds.current.has(p.id)) return; processedOrderIds.current.add(p.id); if (!firstLoadRef.current) { const delayMins = config.tiempo_recordatorio_minutos || 10; const triggerTime = Date.now() + (delayMins * 60000); queue.push({ id: p.id, pizzaId: p.pizza_id, triggerAt: triggerTime }); queueChanged = true; } }); if (queueChanged) localStorage.setItem('vito-review-queue', JSON.stringify(queue)); const checker = setInterval(() => { const currentQueueStr = localStorage.getItem('vito-review-queue'); if (!currentQueueStr) return; let currentQueue = JSON.parse(currentQueueStr); const now = Date.now(); const toNotify: any[] = []; const remaining: any[] = []; currentQueue.forEach((item: any) => { if (misValoraciones.includes(item.pizzaId)) return; if (now >= item.triggerAt) toNotify.push(item); else remaining.push(item); }); if (toNotify.length > 0) { const item = toNotify[0]; const pz = enrichedPizzas.find(z => z.id === item.pizzaId) || pizzas.find(z => z.id === item.pizzaId); if (pz) { const delay = config.tiempo_recordatorio_minutos || 10; const nameToShow = pz.displayName || pz.nombre; sendNotification(t.rateQuestion + " " + nameToShow + "?", `${t.ateTimeAgo} ${delay} ${t.minAgo}`, `/?rate=${pz.id}`); setLateRatingPizza(pz); setShowLateRatingModal(true); } localStorage.setItem('vito-review-queue', JSON.stringify(remaining)); } }, 10000); return () => clearInterval(checker); }, [pedidos, nombreInvitado, pizzas, enrichedPizzas, misValoraciones, config]);
+  useEffect(() => {
+      if(!nombreInvitado || !pizzas.length) return;
+      const storedQueue = localStorage.getItem('vito-review-queue');
+      let queue: { id: string, pizzaId: string, triggerAt: number }[] = storedQueue ? JSON.parse(storedQueue) : [];
+      let queueChanged = false;
+      const delivered = pedidos.filter(p => p.invitado_nombre === nombreInvitado && p.estado === 'entregado');
+      delivered.forEach(p => {
+          if (misValoraciones.includes(p.pizza_id)) return;
+          if (queue.find(q => q.id === p.id)) return;
+          if (processedOrderIds.current.has(p.id)) return;
+          processedOrderIds.current.add(p.id);
+          if (!firstLoadRef.current) {
+              const delayMins = config.tiempo_recordatorio_minutos || 10;
+              const triggerTime = Date.now() + (delayMins * 60000);
+              queue.push({ id: p.id, pizzaId: p.pizza_id, triggerAt: triggerTime });
+              queueChanged = true;
+          }
+      });
+      if (queueChanged) localStorage.setItem('vito-review-queue', JSON.stringify(queue));
+      const checker = setInterval(() => {
+          const currentQueueStr = localStorage.getItem('vito-review-queue');
+          if (!currentQueueStr) return;
+          let currentQueue = JSON.parse(currentQueueStr);
+          const now = Date.now();
+          const toNotify: any[] = [];
+          const remaining: any[] = [];
+          currentQueue.forEach((item: any) => {
+              if (misValoraciones.includes(item.pizzaId)) return;
+              if (now >= item.triggerAt) toNotify.push(item);
+              else remaining.push(item);
+          });
+          if (toNotify.length > 0) {
+              const item = toNotify[0];
+              const pz = enrichedPizzas.find(z => z.id === item.pizzaId) || pizzas.find(z => z.id === item.pizzaId);
+              if (pz) {
+                  const delay = config.tiempo_recordatorio_minutos || 10;
+                  const nameToShow = pz.displayName || pz.nombre;
+                  sendNotification(t.rateQuestion + " " + nameToShow + "?", `${t.ateTimeAgo} ${delay} ${t.minAgo}`, `/?rate=${pz.id}`);
+                  setLateRatingPizza(pz);
+                  setShowLateRatingModal(true);
+              }
+              localStorage.setItem('vito-review-queue', JSON.stringify(remaining));
+          }
+      }, 10000); 
+      return () => clearInterval(checker);
+  }, [pedidos, nombreInvitado, pizzas, enrichedPizzas, misValoraciones, config]);
 
-  const summaryData = useMemo(() => { if(!summarySheet) return []; return enrichedPizzas.filter(p => { const h = miHistorial[p.id]; if(!h) return false; if(summarySheet === 'wait') return h.pendientes > 0 && !p.cocinando; if(summarySheet === 'oven') return h.pendientes > 0 && p.cocinando; if(summarySheet === 'ready') return h.comidos > 0; if(summarySheet === 'total') return h.pendientes > 0; return false; }).map(p => { const h = miHistorial[p.id]; let count = 0; if(summarySheet === 'wait') count = h.pendientes; else if(summarySheet === 'oven') count = h.pendientes; else if(summarySheet === 'ready') count = h.comidos; else count = h.pendientes; return { ...p, count }; }); }, [summarySheet, enrichedPizzas, miHistorial]); 
+  const summaryData = useMemo(() => {
+      if(!summarySheet) return [];
+      return enrichedPizzas.filter(p => {
+          const h = miHistorial[p.id];
+          if(!h) return false;
+          if(summarySheet === 'wait') return h.pendientes > 0 && !p.cocinando;
+          if(summarySheet === 'oven') return h.pendientes > 0 && p.cocinando;
+          if(summarySheet === 'ready') return h.comidos > 0; 
+          if(summarySheet === 'total') return h.pendientes > 0;
+          return false;
+      }).map(p => {
+          const h = miHistorial[p.id];
+          let count = 0;
+          if(summarySheet === 'wait') count = h.pendientes;
+          else if(summarySheet === 'oven') count = h.pendientes;
+          else if(summarySheet === 'ready') count = h.comidos;
+          else count = h.pendientes; 
+          return { ...p, count };
+      });
+  }, [summarySheet, enrichedPizzas, miHistorial]); 
 
-  const mySummary = useMemo(() => { let t = 0, w = 0, o = 0, r = 0; pizzas.forEach(p => { const h = miHistorial[p.id]; if(h) { const pen = h.pendientes; if (pen > 0) { if (p.cocinando) o += pen; else w += pen; } r += h.comidos; t += pen; } }); return { total: t, wait: w, oven: o, ready: r }; }, [miHistorial, pizzas]);
+  const mySummary = useMemo(() => {
+      let t = 0, w = 0, o = 0, r = 0;
+      pizzas.forEach(p => {
+          const h = miHistorial[p.id];
+          if(h) {
+              const pen = h.pendientes;
+              if (pen > 0) { if (p.cocinando) o += pen; else w += pen; }
+              r += h.comidos; t += pen;
+          }
+      });
+      return { total: t, wait: w, oven: o, ready: r };
+  }, [miHistorial, pizzas]);
 
-  const currentBannerText = useMemo(() => { if (cargando) return t.loading; const msgs = [`${invitadosActivos} ${t.status}`]; const pData = pizzas.map(p => { const vals = allRatings.filter(v => v.pizza_id === p.id); const avg = vals.length > 0 ? vals.reduce((a, b) => a + b.rating, 0) / vals.length : 0; const totS = (p.stock || 0) * (p.porciones_individuales || config.porciones_por_pizza); const us = pedidos.filter(ped => ped.pizza_id === p.id).reduce((a, c) => a + c.cantidad_porciones, 0); let dName = p.nombre; if (lang !== 'es' && autoTranslations[p.id] && autoTranslations[p.id][lang]) { dName = autoTranslations[p.id][lang].name; } return { ...p, displayName: dName, stock: Math.max(0, totS - us), avg, count: vals.length }; }); pData.forEach(p => { if (p.stock === 0) msgs.push(`${p.displayName}: ${t.soldOut} 😭`); else if (p.stock <= 5) msgs.push(`${t.only} ${p.stock} ${t.of} ${p.displayName}! 🏃`); }); const best = [...pData].sort((a,b) => b.avg - a.avg)[0]; if (best && best.avg >= 4.5 && best.count > 1) msgs.push(`${t.topRated} ${best.displayName} (${best.avg.toFixed(1)}★)`); const pop = pData.filter(p => p.avg > 4.7 && p.count > 2); pop.forEach(p => msgs.push(`${t.hotPick} ${p.displayName}!`)); return msgs[bannerIndex % msgs.length]; }, [invitadosActivos, pizzas, pedidos, bannerIndex, cargando, t, config, allRatings, lang, autoTranslations]);
+  const currentBannerText = useMemo(() => {
+      if (cargando) return t.loading;
+      const msgs = [`${invitadosActivos} ${t.status}`];
+      const pData = pizzas.map(p => {
+          const vals = allRatings.filter(v => v.pizza_id === p.id);
+          const avg = vals.length > 0 ? vals.reduce((a, b) => a + b.rating, 0) / vals.length : 0;
+          const totS = (p.stock || 0) * (p.porciones_individuales || config.porciones_por_pizza);
+          const us = pedidos.filter(ped => ped.pizza_id === p.id).reduce((a, c) => a + c.cantidad_porciones, 0);
+          let dName = p.nombre;
+          if (lang !== 'es' && autoTranslations[p.id] && autoTranslations[p.id][lang]) {
+              dName = autoTranslations[p.id][lang].name;
+          }
+          return { ...p, displayName: dName, stock: Math.max(0, totS - us), avg, count: vals.length };
+      });
+      pData.forEach(p => { if (p.stock === 0) msgs.push(`${p.displayName}: ${t.soldOut} 😭`); else if (p.stock <= 5) msgs.push(`${t.only} ${p.stock} ${t.of} ${p.displayName}! 🏃`); });
+      const best = [...pData].sort((a,b) => b.avg - a.avg)[0];
+      if (best && best.avg >= 4.5 && best.count > 1) msgs.push(`${t.topRated} ${best.displayName} (${best.avg.toFixed(1)}★)`);
+      const pop = pData.filter(p => p.avg > 4.7 && p.count > 2);
+      pop.forEach(p => msgs.push(`${t.hotPick} ${p.displayName}!`));
+      return msgs[bannerIndex % msgs.length];
+  }, [invitadosActivos, pizzas, pedidos, bannerIndex, cargando, t, config, allRatings, lang, autoTranslations]);
 
   const openRating = (p: any) => { setPizzaToRate(p); setRatingValue(0); setCommentValue(''); setShowRatingModal(true); };
   const submitRating = async () => { if (ratingValue === 0) return; await supabase.from('valoraciones').insert([{ pizza_id: pizzaToRate.id, invitado_nombre: nombreInvitado, rating: ratingValue, comentario: commentValue }]); setMisValoraciones(prev => [...prev, pizzaToRate.id]); const storedQueue = localStorage.getItem('vito-review-queue'); if (storedQueue) { const queue = JSON.parse(storedQueue); const newQueue = queue.filter((item: any) => item.pizzaId !== pizzaToRate.id); localStorage.setItem('vito-review-queue', JSON.stringify(newQueue)); } setShowRatingModal(false); setShowLateRatingModal(false); fetchDatos(); };
-  async function modificarPedido(p: any, acc: 'sumar' | 'restar') { if (!nombreInvitado.trim()) { alert(t.errorName); return; } if (usuarioBloqueado) { alert(`${t.blocked}: ${motivoBloqueo || ''}`); return; } if (acc === 'sumar') { if (p.stockRestante <= 0) { alert("Sin stock :("); return; } setOrderToConfirm(p); } else { if (p.cocinando) { mostrarMensaje(`🔥 ¡Ya está ${getCookingText(p.tipo)}! No se puede cancelar.`, 'alerta'); return; } const pending = pedidos.filter(pd => pd.pizza_id === p.id && pd.invitado_nombre.toLowerCase() === nombreInvitado.toLowerCase().trim() && pd.estado === 'pendiente'); if (pending.length > 0) { const toDelete = pending[0]; const newPedidos = pedidos.filter(x => x.id !== toDelete.id); setPedidos(newPedidos); await supabase.from('pedidos').delete().eq('id', toDelete.id); fetchDatos(); } } }
-  const proceedWithOrder = async () => { if(!orderToConfirm) return; const newOrder = { id: `temp-${Date.now()}`, invitado_nombre: nombreInvitado, pizza_id: orderToConfirm.id, cantidad_porciones: 1, estado: 'pendiente', created_at: new Date().toISOString() }; setPedidos(prev => [...prev, newOrder]); setOrderToConfirm(null); mostrarMensaje(`${t.successOrder} ${orderToConfirm.displayName}!`, 'exito'); await supabase.from('pedidos').insert([{ invitado_nombre: nombreInvitado, pizza_id: orderToConfirm.id, cantidad_porciones: 1, estado: 'pendiente' }]); fetchDatos(); }
+
+  async function modificarPedido(p: any, acc: 'sumar' | 'restar') {
+    if (!nombreInvitado.trim()) { alert(t.errorName); return; }
+    if (usuarioBloqueado) { alert(`${t.blocked}: ${motivoBloqueo || ''}`); return; }
+    
+    if (acc === 'sumar') { 
+        if (p.stockRestante <= 0) { alert("Sin stock :("); return; } 
+        setOrderToConfirm(p); 
+    } else { 
+        if (p.cocinando) {
+            mostrarMensaje(`🔥 ¡Ya está ${getCookingText(p.tipo)}! No se puede cancelar.`, 'alerta');
+            return;
+        }
+        const pending = pedidos.filter(pd => pd.pizza_id === p.id && pd.invitado_nombre.toLowerCase() === nombreInvitado.toLowerCase().trim() && pd.estado === 'pendiente');
+        if (pending.length > 0) {
+            const toDelete = pending[0];
+            const newPedidos = pedidos.filter(x => x.id !== toDelete.id);
+            setPedidos(newPedidos); 
+            mostrarMensaje(`${t.successCancel} ${p.displayName}`, 'info'); 
+            await supabase.from('pedidos').delete().eq('id', toDelete.id); 
+            fetchDatos(); 
+        }
+    }
+  }
+
+  const proceedWithOrder = async () => { 
+      if(!orderToConfirm) return; 
+      
+      const newOrder = {
+          id: `temp-${Date.now()}`, 
+          invitado_nombre: nombreInvitado, 
+          pizza_id: orderToConfirm.id, 
+          cantidad_porciones: 1, 
+          estado: 'pendiente',
+          created_at: new Date().toISOString()
+      };
+
+      setPedidos(prev => [...prev, newOrder]);
+      setOrderToConfirm(null);
+      mostrarMensaje(`${t.successOrder} ${orderToConfirm.displayName}!`, 'exito');
+
+      const { error } = await supabase.from('pedidos').insert([{ 
+          invitado_nombre: nombreInvitado, 
+          pizza_id: orderToConfirm.id, 
+          cantidad_porciones: 1, 
+          estado: 'pendiente' 
+      }]);
+
+      if (error) {
+          setPedidos(prev => prev.filter(p => p.id !== newOrder.id));
+          alert("Error al pedir. Intenta de nuevo.");
+      } else {
+          fetchDatos();
+      }
+  }
+
   const mostrarMensaje = (txt: string, tipo: 'info' | 'alerta' | 'exito') => { setMensaje({ texto: txt, tipo }); if (tipo !== 'alerta') { setTimeout(() => setMensaje(null), 2500); } }
+
+  // --------------------------------------------------------------------------------------
+  // RENDERIZADO CONDICIONAL POR PASOS (FLOW)
+  // --------------------------------------------------------------------------------------
 
   if (loadingConfig || flowStep === 'loading') {
       return (<div className={`min-h-screen flex items-center justify-center p-4 ${base.bg}`}><div className={`animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 ${isDarkMode ? 'border-white' : 'border-black'}`}></div></div>);
@@ -645,11 +858,11 @@ export default function VitoPizzaApp() {
   if (flowStep === 'landing') {
       return (
           <div className={`min-h-screen flex flex-col items-center justify-center p-6 font-sans ${base.bg}`}>
-              {/* Botón de Idioma Minimalista (solo texto/bandera) */}
+              {/* Botón de Idioma Minimalista */}
               <div className="absolute top-6 right-6 z-50">
                   <button 
                       onClick={rotarIdioma} 
-                      className={`text-2xl opacity-80 hover:opacity-100 transition-opacity`}
+                      className={`w-10 h-10 rounded-full flex items-center justify-center bg-white/10 backdrop-blur-md border border-white/10 active:scale-95 transition-all text-xl`}
                   >
                       {lang === 'es' ? '🇪🇸' : lang === 'en' ? '🇺🇸' : '🇮🇹'}
                   </button>
@@ -658,7 +871,7 @@ export default function VitoPizzaApp() {
               <div className="flex-1 flex flex-col items-center justify-center w-full max-w-sm relative z-10">
                   <img src="/logo.png" alt="Logo" className="h-64 w-auto object-contain mb-8 drop-shadow-2xl animate-in fade-in zoom-in duration-700" />
                   
-                  {/* Texto Modificado y Traducible (con fallback a local si t no tiene las keys) */}
+                  {/* Texto Modificado y Traducible */}
                   <p className={`text-xl font-medium opacity-80 text-center mb-12 ${base.text}`}>
                       {landingTexts[lang].sub}
                   </p>
@@ -732,7 +945,7 @@ export default function VitoPizzaApp() {
       );
   }
 
-  // 4. ONBOARDING
+  // 4. ONBOARDING (Pasando el nombre como prop)
   if (flowStep === 'onboarding') {
       return (
           <OnboardingOverlay 
@@ -743,7 +956,7 @@ export default function VitoPizzaApp() {
             rotarIdioma={rotarIdioma} 
             lang={lang} 
             t={t}
-            userName={nombreInvitado}
+            userName={nombreInvitado} 
           />
       );
   }
