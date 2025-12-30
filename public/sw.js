@@ -1,35 +1,31 @@
 self.addEventListener('install', (event) => {
-  self.skipWaiting();
+  self.skipWaiting(); // Fuerza la actualización inmediata
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(self.clients.claim()); // Toma el control inmediatamente
 });
 
-// ESCUCHAR CLIC EN LA NOTIFICACIÓN
 self.addEventListener('notificationclick', (event) => {
-  // 1. Cerrar la notificación inmediatamente
-  event.notification.close();
+  event.notification.close(); // Cierra la notificación visual
 
-  // 2. Obtener la URL que enviamos desde React (Admin o Guest)
-  // Si no viene nada, por defecto va al inicio '/'
+  // Obtenemos la URL enviada desde React (ej: '/admin' o '/')
   const targetUrl = event.notification.data?.url || '/';
 
-  // 3. Gestionar la ventana
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // A. Si ya hay una pestaña abierta de la app...
+      // 1. Si la app ya está abierta en una pestaña...
       for (const client of clientList) {
-        // Comprobamos si la URL base coincide (para no capturar otras webs)
+        // Verificamos si es nuestra app
         if (client.url.includes(self.registration.scope) && 'focus' in client) {
-          // ...la enfocamos y navegamos a la sección correcta (Admin o Guest)
           return client.focus().then((focusedClient) => {
-             return focusedClient.navigate(targetUrl);
+            // Forzamos la navegación a la URL correcta (Admin o Guest)
+            return focusedClient.navigate(targetUrl);
           });
         }
       }
 
-      // B. Si NO hay pestaña abierta, abrimos una nueva en la URL indicada
+      // 2. Si la app estaba cerrada, abrimos una ventana nueva en la URL correcta
       if (self.clients.openWindow) {
         return self.clients.openWindow(targetUrl);
       }

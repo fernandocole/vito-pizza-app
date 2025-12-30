@@ -1,15 +1,13 @@
 import { useState } from 'react';
-import { Flame, Clock, CheckCircle, ChefHat } from 'lucide-react';
+import { Flame, Clock, CheckCircle, ChefHat, UtensilsCrossed, Zap } from 'lucide-react';
 import { CookingTimer } from '../../ui/CookingTimer';
 
 export const KitchenView = ({ 
     metricas, base, isCompact, isDarkMode, currentTheme, toggleCocinando, entregar 
 }: any) => {
     
-    // Estado para el filtro activo (default 'with_orders')
     const [filter, setFilter] = useState<'all' | 'with_orders' | 'pending' | 'cooking' | 'ready'>('with_orders');
 
-    // Filtrar las métricas según la selección
     const filteredMetrics = metricas.filter((p: any) => {
         const hasPending = p.totalPendientes > 0;
         const isReady = p.completas > 0;
@@ -21,11 +19,9 @@ export const KitchenView = ({
         if (filter === 'pending') return hasPending && !isCooking && !isReady;
         if (filter === 'cooking') return isCooking;
         if (filter === 'ready') return isReady;
-        
         return true;
     });
 
-    // Helper para generar la clase del botón
     const getFilterBtnClass = (isActive: boolean) => 
         `px-3 py-1.5 rounded-full text-xs font-bold border whitespace-nowrap transition-colors ${
             isActive 
@@ -33,22 +29,26 @@ export const KitchenView = ({
             : base.buttonSec
         }`;
 
-    // ROJO (Único color permitido fuera del tema, solo para horno)
-    const cookingRed = "bg-red-500 text-white border-red-500";
+    const getStatusConfig = (item: any) => {
+        const isPizza = item.tipo === 'pizza';
+        return {
+            textReady: isPizza ? 'EN HORNO' : 'PREPARANDO',
+            textAction: isPizza ? 'Al Horno' : 'Cocinar',
+            color: isPizza ? 'bg-red-600 border-red-600' : 'bg-orange-500 border-orange-500', 
+            icon: isPizza ? <Flame size={isCompact ? 14 : 16} className={item.cocinando ? "animate-bounce" : ""} /> : <UtensilsCrossed size={isCompact ? 14 : 16} className={item.cocinando ? "animate-pulse" : ""} />
+        };
+    };
 
     return (
         <div className="space-y-4">
-            
-            {/* BOTONERA DE FILTROS */}
             <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
                 <button onClick={() => setFilter('with_orders')} className={getFilterBtnClass(filter === 'with_orders')}>Con Pedidos</button>
                 <button onClick={() => setFilter('all')} className={getFilterBtnClass(filter === 'all')}>Todas</button>
                 <button onClick={() => setFilter('pending')} className={getFilterBtnClass(filter === 'pending')}>En Espera</button>
-                <button onClick={() => setFilter('cooking')} className={getFilterBtnClass(filter === 'cooking')}>En Horno</button>
+                <button onClick={() => setFilter('cooking')} className={getFilterBtnClass(filter === 'cooking')}>Cocinando</button>
                 <button onClick={() => setFilter('ready')} className={getFilterBtnClass(filter === 'ready')}>Listas</button>
             </div>
 
-            {/* GRID DE TARJETAS (DISEÑO ORIGINAL LIST VIEW) */}
             <div className="grid gap-3">
                 {filteredMetrics.length === 0 ? (
                     <div className={`text-center py-10 opacity-50 ${base.subtext}`}>
@@ -57,41 +57,46 @@ export const KitchenView = ({
                     </div>
                 ) : (
                     filteredMetrics.map((p: any) => {
-                        const pendingNames = Array.from(new Set(p.pedidosPendientes?.map((ped: any) => ped.invitado_nombre) || []));
-                        const displayNames = pendingNames.join(', ');
+                        const sortedOrders = [...(p.pedidosPendientes || [])].sort((a: any, b: any) => 
+                            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+                        );
+                        const displayNames = sortedOrders.map((ped: any) => ped.invitado_nombre).join(', ');
+                        const config = getStatusConfig(p);
 
                         return (
-                            <div key={p.id} className={`${base.card} rounded-3xl border relative overflow-hidden transition-all ${p.cocinando ? 'border-red-600/50 shadow-lg' : ''} ${isCompact ? 'p-3' : 'p-5'}`}>
+                            <div key={p.id} className={`${base.card} rounded-3xl border relative overflow-hidden transition-all ${p.cocinando ? 'border-red-600/30 shadow-md' : ''} ${isCompact ? 'p-3' : 'p-5'}`}>
                                 
-                                <div className="flex justify-between items-center mb-2 relative z-10">
+                                <div className="flex justify-between items-start mb-3 relative z-10">
                                     <div className="flex-1 min-w-0 pr-2">
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            <h3 className={`font-bold ${isCompact ? 'text-base' : 'text-xl'}`}>
+                                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                                            <h3 className={`font-bold leading-tight ${isCompact ? 'text-base' : 'text-xl'}`}>
                                                 {p.nombre}
                                             </h3>
                                             
-                                            {/* Estados alineados al nombre */}
                                             {p.cocinando && (
-                                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold animate-pulse whitespace-nowrap ${cookingRed}`}>
-                                                    EN HORNO
+                                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold text-white whitespace-nowrap ${config.color}`}>
+                                                    {config.textReady} ({p.enHorno})
                                                 </span>
                                             )}
+
                                             {p.cocinando && p.cocinando_inicio && (
-                                                <div className="scale-90 origin-left"><CookingTimer start={p.cocinando_inicio} duration={p.tiempo_coccion || 60} /></div>
+                                                <div className="scale-90 origin-left">
+                                                    <CookingTimer start={p.cocinando_inicio} duration={p.tiempo_coccion || 60} />
+                                                </div>
                                             )}
-                                            {p.completas > 0 && !p.cocinando && (
+
+                                            {p.enEspera > 0 && (
                                                 <span className={`text-[10px] text-white px-2 py-0.5 rounded-full font-bold whitespace-nowrap bg-gray-500`}>
-                                                    EN ESPERA
+                                                    EN ESPERA ({p.enEspera})
                                                 </span>
                                             )}
                                         </div>
 
-                                        <p className={`text-xs ${base.subtext} flex items-center gap-1 mt-1`}>
-                                            <Clock size={12}/> Pendientes: {p.totalPendientes}
-                                        </p>
-                                        <p className={`text-[10px] mt-1 font-mono ${p.stockRestante === 0 ? 'text-red-500 font-bold' : base.subtext}`}>STOCK: {p.stockRestante} u</p>
+                                        <div className="flex items-center gap-3 text-xs opacity-70">
+                                            <span className="flex items-center gap-1 font-mono"><Clock size={12}/> Tot. Pend: {p.totalPendientes}</span>
+                                            <span className="flex items-center gap-1 font-mono">Stock: {p.stockRestante}</span>
+                                        </div>
                                         
-                                        {/* NOMBRE DE LAS PERSONAS */}
                                         {displayNames && (
                                             <p className={`text-[10px] mt-2 opacity-80 leading-tight truncate ${base.text} font-medium`}>
                                                 <span className="opacity-50 uppercase mr-1">Piden:</span> 
@@ -99,36 +104,64 @@ export const KitchenView = ({
                                             </p>
                                         )}
                                     </div>
-
-                                    {/* Botón Fuego centrado a la derecha */}
-                                    <div className="flex-shrink-0">
-                                        <button onClick={() => toggleCocinando(p)} className={`rounded-xl transition-all flex items-center justify-center ${p.cocinando ? 'bg-red-600 text-white shadow-lg scale-105' : base.buttonSec} ${isCompact ? 'p-2' : 'p-3'}`}>
-                                            <Flame size={isCompact ? 16 : 20} className={p.cocinando ? 'animate-bounce' : ''} />
-                                        </button>
-                                    </div>
                                 </div>
 
-                                {/* Barra de Progreso */}
-                                <div className={`relative ${isDarkMode ? 'bg-black' : 'bg-gray-300'} rounded-full overflow-hidden z-10 mb-3 ${isCompact ? 'h-2' : 'h-4'}`}>
+                                <div className={`relative ${isDarkMode ? 'bg-black' : 'bg-gray-300'} rounded-full overflow-hidden z-10 mb-4 ${isCompact ? 'h-1.5' : 'h-2.5'}`}>
                                     <div className="absolute inset-0 flex justify-between px-[1px] z-20">
                                         {[...Array(p.target)].map((_, i) => <div key={i} className={`w-[1px] h-full ${isDarkMode ? 'bg-white/10' : 'bg-white/50'}`}></div>)}
                                     </div>
-                                    <div className={`absolute h-full ${p.cocinando ? 'bg-red-600' : currentTheme.color} transition-all duration-700`} style={{ width: `${p.percent}%` }}></div>
+                                    <div className={`absolute h-full ${p.cocinando ? config.color : currentTheme.color} transition-all duration-700`} style={{ width: `${p.percent}%` }}></div>
                                 </div>
 
-                                {/* Botón de Acción (Lista / Faltan) */}
-                                {p.completas > 0 ? (
-                                    <button onClick={() => entregar(p)} className={`w-full ${currentTheme.color} text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg active:scale-95 ${isCompact ? 'py-2 text-sm' : 'py-3'}`}>
-                                        <CheckCircle size={isCompact ? 16 : 20} /> ¡LISTA! ({p.completas})
-                                    </button>
-                                ) : (
-                                    // MODIFICACIÓN AQUÍ: Solo mostrar "Faltan..." si target > 1 (es decir, NO es unidad)
-                                    p.target > 1 && (
-                                        <div className={`w-full text-center text-xs ${base.subtext} font-mono border rounded-xl ${isDarkMode ? 'border-neutral-800' : 'border-gray-200'} ${isCompact ? 'py-1' : 'py-2'}`}>
-                                            Faltan {p.faltan} porc.
+                                <div className="flex gap-2 items-center">
+                                    
+                                    {/* IZQUIERDA: MOVER AL HORNO */}
+                                    {p.enEspera > 0 ? (
+                                        <div className="flex-1 flex gap-2">
+                                            <button onClick={() => toggleCocinando(p, 'una')} className={`flex-1 ${base.buttonSec} text-[10px] font-bold rounded-xl flex items-center justify-center gap-1 py-3 active:scale-95 border hover:bg-gray-100 dark:hover:bg-neutral-800`}>
+                                                {config.icon} 1
+                                            </button>
+                                            {p.enEspera > 1 && (
+                                                <button onClick={() => toggleCocinando(p, 'todas')} className={`flex-[1.5] ${config.color} text-white text-[10px] font-bold rounded-xl flex items-center justify-center gap-1 py-3 shadow-lg active:scale-95`}>
+                                                    {config.icon} ¡Todos!
+                                                </button>
+                                            )}
                                         </div>
-                                    )
-                                )}
+                                    ) : (
+                                        <div className={`flex-1 text-center text-[10px] py-3 opacity-40 font-bold border rounded-xl border-dashed ${isDarkMode ? 'border-neutral-700' : 'border-gray-300'}`}>
+                                            Nada en espera
+                                        </div>
+                                    )}
+
+                                    {/* DERECHA: ENTREGAR */}
+                                    {p.enHorno > 0 || p.enEspera > 0 ? (
+                                        <>
+                                            <div className="w-[1px] bg-gray-300 dark:bg-neutral-700 h-8 mx-1"></div>
+                                            
+                                            <div className="flex-[1.5] flex gap-2">
+                                                {/* Botón Normal: 1 Listo (Del Horno) */}
+                                                <button onClick={() => entregar(p, 'una', false)} className={`flex-1 ${base.buttonSec} text-[10px] font-bold rounded-xl flex flex-col leading-none items-center justify-center gap-1 py-2 active:scale-95 border`}>
+                                                    <CheckCircle size={14} /> <span>1 Listo</span>
+                                                </button>
+                                                
+                                                {/* Botón Normal: Todos Listos (Del Horno) */}
+                                                {(p.enHorno > 1) && (
+                                                    <button onClick={() => entregar(p, 'todas', false)} className={`flex-1 ${currentTheme.color} text-white text-[10px] font-bold rounded-xl flex flex-col leading-none items-center justify-center gap-1 py-2 shadow-lg active:scale-95`}>
+                                                        <CheckCircle size={14} /> <span>Todos</span>
+                                                    </button>
+                                                )}
+
+                                                {/* Botón Emergencia: Entregar Directo desde Espera */}
+                                                {/* CORRECCIÓN: Ahora aparece siempre que hay espera, aunque el horno esté lleno */}
+                                                {p.enEspera > 0 && (
+                                                    <button onClick={() => entregar(p, 'una', true)} className={`w-8 bg-yellow-500 text-black font-bold rounded-xl flex items-center justify-center shadow-lg active:scale-95`}>
+                                                        <Zap size={14} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </>
+                                    ) : null}
+                                </div>
                             </div>
                         );
                     })

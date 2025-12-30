@@ -6,7 +6,6 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 
-// IMPORTS REFACTORIZADOS
 import { dictionary } from './utils/dictionary';
 import { OnboardingOverlay } from './components/guest/OnboardingOverlay';
 import { TopBar } from './components/guest/TopBar';
@@ -33,6 +32,15 @@ const THEMES = [
 
 type LangType = 'es' | 'en' | 'it';
 type MensajeTipo = { texto: string, tipo: 'info' | 'alerta' | 'exito' };
+
+// HELPER TEXTOS DINÁMICOS
+const getCookingText = (tipo: string, context: 'ing' | 'ed' | 'short' = 'ing') => {
+    const isPizza = tipo === 'pizza';
+    if (context === 'ing') return isPizza ? 'al horno' : 'en preparación';
+    if (context === 'ed') return isPizza ? 'horneada' : 'lista';
+    if (context === 'short') return isPizza ? 'Horno' : 'Cocina';
+    return isPizza ? 'cocinando' : 'preparando';
+};
 
 export default function VitoPizzaApp() {
   const [lang, setLang] = useState<LangType>('es');
@@ -379,7 +387,21 @@ export default function VitoPizzaApp() {
   
   const changeFilter = (f: any) => { setFilter(f); localStorage.setItem('vito-filter', f); };
   const verifyAccess = (i: string, c: string) => { if (!c || c === '' || i === c) { setAccessGranted(true); if(c !== '') localStorage.setItem('vito-guest-pass-val', i); } else { setAccessGranted(false); } };
-  const handleNameChange = (val: string) => { setNombreInvitado(val); localStorage.setItem('vito-guest-name', val); const user = invitadosLista.find(u => u.nombre.toLowerCase() === val.toLowerCase()); if (user && user.bloqueado) { setUsuarioBloqueado(true); setMotivoBloqueo(user.motivo_bloqueo || ''); } else { setUsuarioBloqueado(false); setMotivoBloqueo(''); } };
+  
+  // --- LOGIN CON NOTIFICACIONES ---
+  const handleNameChange = (val: string) => { 
+      setNombreInvitado(val); 
+      localStorage.setItem('vito-guest-name', val); 
+      
+      // PEDIR NOTIFICACIONES AL LOGUEAR
+      if (val.length > 2 && 'Notification' in window && Notification.permission === 'default') {
+          Notification.requestPermission();
+      }
+
+      const user = invitadosLista.find(u => u.nombre.toLowerCase() === val.toLowerCase()); 
+      if (user && user.bloqueado) { setUsuarioBloqueado(true); setMotivoBloqueo(user.motivo_bloqueo || ''); } else { setUsuarioBloqueado(false); setMotivoBloqueo(''); } 
+  };
+
   const changeTheme = (t: typeof THEMES[0]) => { setCurrentTheme(t); localStorage.setItem('vito-guest-theme', t.name); setShowThemeSelector(false); };
   
   const rotarIdioma = () => { 
@@ -473,26 +495,31 @@ export default function VitoPizzaApp() {
              res[pz.id] = { pendientes: p, comidos: c };
              if (p > 0) penInfo[pz.id] = p;
              
-             // --- LÓGICA DE NOTIFICACIONES ---
+             // --- LÓGICA DE NOTIFICACIONES CORREGIDA (DINÁMICA) ---
              if (!firstLoadRef.current) { 
                  const estabaCocinando = prevCocinandoData.current[pz.id] || false;
                  
-                 // 1. Entra al horno
+                 // 1. Entra al horno (o preparación)
                  if (!estabaCocinando && pz.cocinando && penInfo[pz.id]) {
-                     mostrarMensaje(`¡${penInfo[pz.id]} de ${pz.nombre} al horno!`, 'alerta'); 
-                     sendNotification("¡Al Horno!", `Tu ${pz.nombre} está cocinándose.`); 
+                     const accion = getCookingText(pz.tipo, 'ing');
+                     const titulo = pz.tipo === 'pizza' ? "¡Al Horno!" : "¡En Marcha!";
+                     
+                     mostrarMensaje(`¡${penInfo[pz.id]} de ${pz.nombre} ${accion}!`, 'alerta'); 
+                     sendNotification(titulo, `Tu ${pz.nombre} está ${getCookingText(pz.tipo, 'ing')}.`); 
                  }
                  
                  // 2. Sale del horno (y tenía pendientes)
                  const teniaPendientes = (prevPendingPerPizzaRef.current[pz.id] || 0) > 0;
                  if (estabaCocinando && !pz.cocinando && teniaPendientes) {
+                     const estadoListo = getCookingText(pz.tipo, 'ed');
+                     
                      mostrarMensaje(`¡Tu ${pz.nombre} ESTÁ LISTA!`, 'exito'); 
                      
-                     // NOTIFICACIÓN CON DEEP LINK PARA CALIFICAR
+                     // NOTIFICACIÓN CON DEEP LINK
                      sendNotification(
-                         "¡Pizza Lista!", 
-                         `¡Tu ${pz.nombre} ya salió del horno! A comer.`, 
-                         `/?rate=${pz.id}` // Link directo a calificar esta pizza
+                         `¡${pz.nombre} Lista!`, 
+                         `¡Ya está ${estadoListo}! A comer.`, 
+                         `/?rate=${pz.id}` 
                      );
                  }
              } 
@@ -784,7 +811,7 @@ export default function VitoPizzaApp() {
     } else { 
         // --- PROTECCIÓN AQUÍ: Si se está cocinando, prohibir cancelación ---
         if (p.cocinando) {
-            mostrarMensaje("🔥 ¡Ya está en el horno! No se puede cancelar.", 'alerta');
+            mostrarMensaje(`🔥 ¡Ya está ${getCookingText(p.tipo)}! No se puede cancelar.`, 'alerta');
             return;
         }
         // ------------------------------------------------------------------
