@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { 
-  User, ArrowRight, Lock, AlertCircle, X, PartyPopper, Star, Clock, Eye, EyeOff, Crown, Shield 
+  User, ArrowRight, Lock, AlertCircle, X, PartyPopper, Star, Clock, Eye, EyeOff, Crown, Shield, Globe 
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -46,10 +46,10 @@ export default function VitoPizzaApp() {
   // @ts-ignore
   const t = dictionary[lang];
 
-  // ESTADO DE FLUJO: 'loading' | 'landing' | 'name' | 'password' | 'app'
+  // ESTADO DE FLUJO
   const [flowStep, setFlowStep] = useState<'loading' | 'landing' | 'name' | 'password' | 'onboarding' | 'app'>('loading');
-  const [guestPassInput, setGuestPassInput] = useState(''); // Contraseña en blanco al inicio
-  const [showPassword, setShowPassword] = useState(true); // Ver contraseña activado por defecto para invitados
+  const [guestPassInput, setGuestPassInput] = useState(''); 
+  const [showPassword, setShowPassword] = useState(true); 
 
   const [loadingConfig, setLoadingConfig] = useState(true); 
   const [accessGranted, setAccessGranted] = useState(false);
@@ -292,7 +292,7 @@ export default function VitoPizzaApp() {
     }
   };
 
-  // --- USEEFFECT INITIAL LOAD (MODIFICADO) ---
+  // --- USEEFFECT INITIAL LOAD ---
   useEffect(() => {
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('/sw.js')
@@ -391,6 +391,11 @@ export default function VitoPizzaApp() {
       if (!nombreInvitado.trim()) return alert("Por favor ingresa tu nombre");
       localStorage.setItem('vito-guest-name', nombreInvitado);
       
+      // Pedir notificaciones al confirmar nombre
+      if ('Notification' in window && Notification.permission === 'default') {
+          Notification.requestPermission();
+      }
+
       if (dbPass && dbPass !== '') {
           setFlowStep('password');
       } else {
@@ -566,7 +571,7 @@ export default function VitoPizzaApp() {
       }
     }
     setCargando(false);
-  }, [nombreInvitado, t, notifEnabled, guestPassInput, flowStep]); 
+  }, [nombreInvitado, flowStep]); 
 
   useEffect(() => { fetchDatos(); const c = supabase.channel('app-realtime').on('postgres_changes', { event: '*', schema: 'public' }, () => fetchDatos()).subscribe(); return () => { supabase.removeChannel(c); }; }, [fetchDatos]);
 
@@ -586,9 +591,6 @@ export default function VitoPizzaApp() {
           const target = pizza.porciones_individuales || config.porciones_por_pizza;
           const pen = pedidos.filter(p => p.pizza_id === pizza.id && p.estado !== 'entregado').reduce((a, c) => a + c.cantidad_porciones, 0);
           
-          // Lógica Simplificada: Stock Real Total = (Pizzas enteras * Porciones) - Pendientes.
-          // El stock de la DB son las pizzas enteras que el Admin puede cocinar.
-          // Los pendientes son las porciones reservadas de ese stock total.
           const totalPotentialStock = (pizza.stock || 0) * target;
           const stockRestante = Math.max(0, totalPotentialStock - pen);
 
@@ -824,8 +826,6 @@ export default function VitoPizzaApp() {
       };
 
       // 1. Update State Immediately (Optimistic)
-      // OJO: No bajamos el stock de 'pizzas' (enteras) localmente, solo agregamos pedido.
-      // El cálculo en 'enrichedPizzas' se encarga de restar del total disponible.
       setPedidos(prev => [...prev, newOrder]);
       setOrderToConfirm(null);
       mostrarMensaje(`${t.successOrder} ${orderToConfirm.displayName}!`, 'exito');
@@ -860,11 +860,17 @@ export default function VitoPizzaApp() {
   if (flowStep === 'landing') {
       return (
           <div className={`min-h-screen flex flex-col items-center justify-center p-6 font-sans ${base.bg}`}>
-              <div className="flex-1 flex flex-col items-center justify-center w-full max-w-sm">
+              <div className="absolute top-6 right-6 z-50">
+                  <button onClick={rotarIdioma} className={`p-2 rounded-full border bg-white/10 backdrop-blur-md text-white border-white/20 transition-all active:scale-95`}>
+                     {lang === 'es' ? '🇪🇸' : lang === 'en' ? '🇺🇸' : '🇮🇹'}
+                  </button>
+              </div>
+
+              <div className="flex-1 flex flex-col items-center justify-center w-full max-w-sm relative z-10">
                   <img src="/logo.png" alt="Logo" className="h-64 w-auto object-contain mb-8 drop-shadow-2xl animate-in fade-in zoom-in duration-700" />
                   
-                  <h1 className={`text-4xl font-black mb-2 text-center ${base.text}`}>Il Forno di Vito</h1>
-                  <p className={`text-lg opacity-60 text-center mb-12 ${base.text}`}>La mejor experiencia.</p>
+                  {/* Se eliminó el H1 "Il Forno di Vito" */}
+                  <p className={`text-xl font-medium opacity-80 text-center mb-12 ${base.text}`}>¡Espero que la pases lindo hoy!</p>
 
                   <button 
                       onClick={() => setFlowStep('name')}
@@ -873,7 +879,7 @@ export default function VitoPizzaApp() {
                       <Crown size={24} /> Invitados de Honor
                   </button>
 
-                  <Link href="/admin" className={`mt-6 text-sm font-bold opacity-40 hover:opacity-100 flex items-center gap-2 transition-opacity ${base.text}`}>
+                  <Link href="/admin" className={`mt-8 text-sm font-bold opacity-40 hover:opacity-100 flex items-center gap-2 transition-opacity ${base.text}`}>
                       <Shield size={14} /> Acceso Admin
                   </Link>
               </div>
@@ -886,7 +892,7 @@ export default function VitoPizzaApp() {
       return (
           <div className={`min-h-screen flex items-center justify-center p-4 ${base.bg}`}>
               <div className={`w-full max-w-md p-8 rounded-3xl border shadow-2xl ${base.card} animate-in fade-in slide-in-from-bottom-10`}>
-                  <h2 className={`text-2xl font-bold mb-6 text-center ${base.text}`}>{t.whoAreYou}</h2>
+                  <h2 className={`text-2xl font-bold mb-6 text-center ${base.text}`}>¡Hola, qué bueno verte! ¿Cuál es tu nombre?</h2>
                   <input 
                       type="text" 
                       value={nombreInvitado} 
@@ -967,31 +973,14 @@ export default function VitoPizzaApp() {
          <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mt-20 -mr-20 blur-3xl"></div>
          <div className="relative z-10 pt-16">
              <div className="mb-6">
-                 {(() => {
-                     const msg = getWelcomeMessage();
-                     if (msg) {
-                         const parts = msg.split('\n');
-                         return (
-                             <h1 className="text-3xl font-bold leading-tight drop-shadow-md text-white whitespace-pre-wrap">
-                                 {parts[0]}
-                                 {parts.length > 1 && (
-                                     <>
-                                         <br/>
-                                         <span className="opacity-80 font-normal text-xl">{parts.slice(1).join('\n')}</span>
-                                     </>
-                                 )}
-                             </h1>
-                         );
-                     } else {
-                         return (
-                             <h1 className="text-3xl font-bold leading-tight drop-shadow-md text-white">
-                                 {t.welcomeTitle} <br/> 
-                                 <span className="opacity-80 font-normal text-xl">{t.welcomeSub}</span>
-                             </h1>
-                         );
-                     }
-                 })()}
+                 {/* Mensaje de Bienvenida Personalizado */}
+                 <h1 className="text-3xl font-bold leading-tight drop-shadow-md text-white">
+                    Bienvenido, <br/> 
+                    <span className="text-4xl">{nombreInvitado}</span>
+                 </h1>
+                 <p className="mt-2 text-lg text-white/80 font-medium">Disfruta de la mejor comida 🍕🍔</p>
              </div>
+
              <div className="flex items-center gap-3 text-sm font-medium bg-black/30 p-3 rounded-2xl w-max backdrop-blur-md border border-white/10 text-white animate-in fade-in duration-500 mx-auto mb-4"><span className="text-neutral-300 text-xs font-bold">{currentBannerText}</span></div>
              <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar px-2">
                  {['all','stock','top','to_rate','ordered','new'].map(f => (
@@ -1002,8 +991,22 @@ export default function VitoPizzaApp() {
       </div>
 
       <div className="px-4 mt-6 relative z-20 max-w-lg mx-auto pb-20">
-        
-        {mensaje && (<div className={`fixed top-20 left-4 right-4 p-3 rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] z-[100] flex flex-col items-center justify-center animate-bounce-in text-center ${mensaje.tipo === 'alerta' ? 'border-4 border-neutral-900 font-bold' : 'border-2 border-neutral-200 font-bold'} bg-white text-black`}><div className="flex items-center gap-2 mb-1 text-sm">{mensaje.texto}</div>{mensaje.tipo === 'alerta' && (<button onClick={() => setMensaje(null)} className="mt-1 bg-neutral-900 text-white px-6 py-1.5 rounded-full text-xs font-bold shadow-lg active:scale-95 hover:bg-black transition-transform">{t.okBtn}</button>)}</div>)}
+        <div className={`${base.card} p-2 rounded-2xl border flex items-center gap-3 mb-6`}>
+             <div className={`p-3 rounded-full bg-gradient-to-br ${currentTheme.gradient} text-white shadow-lg`}><User size={24} /></div>
+             <div className="flex-1 pr-2">
+                 <label className={`text-[10px] uppercase font-bold ${base.subtext} ml-1`}>{t.whoAreYou}</label>
+                 <form onSubmit={(e) => { e.preventDefault(); }} className="w-full">
+                    {config.modo_estricto ? (
+                        <select value={nombreInvitado} onChange={e => handleNameChange(e.target.value)} className={`w-full text-lg font-bold outline-none bg-transparent border-b pb-1 ${isDarkMode ? 'text-white border-white/20' : 'text-black border-gray-300'}`}><option value="" className="text-black">...</option>{invitadosLista.map(u => (<option key={u.id} value={u.nombre} className="text-black">{u.nombre}</option>))}</select>
+                    ) : (
+                        <input type="text" value={nombreInvitado} onChange={e => handleNameChange(e.target.value)} placeholder={t.namePlaceholder} className={`w-full text-lg font-bold outline-none bg-transparent ${isDarkMode ? 'text-white placeholder-neutral-600' : 'text-black placeholder-gray-400'}`} />
+                    )}
+                 </form>
+                 {usuarioBloqueado && (<p className="text-red-500 text-xs font-bold mt-1 flex items-center gap-1"><AlertCircle size={10}/> {t.blocked}: {motivoBloqueo}</p>)}
+             </div>
+        </div>
+
+        {mensaje && (<div className={`fixed top-20 left-4 right-4 p-3 rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] z-[100] flex flex-col items-center justify-center animate-bounce-in text-center ${mensaje.tipo === 'alerta' ? 'border-4 border-neutral-900 font-bold' : 'border-2 border-neutral-200 font-bold'} bg-white text-black`}><div className="flex items-center gap-2 mb-1 text-sm">{mensaje.tipo === 'alerta' && mensaje.texto.includes('horno') && <PartyPopper size={18} className="text-orange-600" />}{mensaje.texto}</div>{mensaje.tipo === 'alerta' && (<button onClick={() => setMensaje(null)} className="mt-1 bg-neutral-900 text-white px-6 py-1.5 rounded-full text-xs font-bold shadow-lg active:scale-95 hover:bg-black transition-transform">{t.okBtn}</button>)}</div>)}
 
         {imageToView && (
             <div className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center p-4 animate-in fade-in" onClick={() => setImageToView(null)}>
