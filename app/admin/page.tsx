@@ -23,7 +23,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// --- HELPERS ---
+// --- HELPERS (Fuera del componente) ---
 const compressImage = async (file: File): Promise<Blob> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader(); reader.readAsDataURL(file);
@@ -67,8 +67,10 @@ export default function AdminPage() {
   const [password, setPassword] = useState('');
   const [view, setView] = useState<'cocina' | 'pedidos' | 'menu' | 'ingredientes' | 'usuarios' | 'config' | 'ranking' | 'logs'>('cocina');
   
+  // ESTADO DE SESIÓN
   const [sessionDuration, setSessionDuration] = useState(24 * 60 * 60 * 1000); 
 
+  // DATOS
   const [pedidos, setPedidos] = useState<any[]>([]); 
   const [pizzas, setPizzas] = useState<any[]>([]);
   const [ingredientes, setIngredientes] = useState<any[]>([]);
@@ -76,6 +78,7 @@ export default function AdminPage() {
   const [reservedState, setReservedState] = useState<Record<string, number>>({});
   const [logs, setLogs] = useState<any[]>([]);
     
+  // ESTADO LOCAL
   const [edits, setEdits] = useState<Record<string, any>>({});
   const [invitadosDB, setInvitadosDB] = useState<any[]>([]); 
   const [valoraciones, setValoraciones] = useState<any[]>([]);
@@ -84,6 +87,7 @@ export default function AdminPage() {
   const [onlineUsers, setOnlineUsers] = useState(0);
   const prevPedidosCount = useRef(0);
     
+  // NUEVA COMIDA
   const [newPizzaName, setNewPizzaName] = useState('');
   const [newPizzaDesc, setNewPizzaDesc] = useState('');
   const [newPizzaImg, setNewPizzaImg] = useState('');
@@ -93,17 +97,21 @@ export default function AdminPage() {
   const [newPizzaType, setNewPizzaType] = useState<'pizza' | 'burger' | 'other'>('pizza');
   const [uploading, setUploading] = useState(false);
     
+  // NUEVA RECETAS
   const [newPizzaIngredients, setNewPizzaIngredients] = useState<{ingrediente_id: string, nombre: string, cantidad: number}[]>([]);
   const [newPizzaSelectedIng, setNewPizzaSelectedIng] = useState('');
   const [newPizzaRecipeQty, setNewPizzaRecipeQty] = useState<string | number>('');
 
+  // ESTADOS INGREDIENTES
   const [newIngName, setNewIngName] = useState('');
   const [newIngQty, setNewIngQty] = useState<string | number>('');
   const [newIngUnit, setNewIngUnit] = useState('g');
     
+  // ESTADOS EDICION INGREDIENTE
   const [editingIngId, setEditingIngId] = useState<string | null>(null);
   const [editIngForm, setEditIngForm] = useState<{nombre: string, cantidad: number | string, unidad: string}>({nombre:'', cantidad:0, unidad:'g'});
 
+  // ASIGNAR RECETA EXISTENTE
   const [tempRecipeIng, setTempRecipeIng] = useState<Record<string, string>>({});
   const [tempRecipeQty, setTempRecipeQty] = useState<Record<string, string | number>>({});
     
@@ -151,6 +159,8 @@ export default function AdminPage() {
       uploadBox: "bg-neutral-100 border-neutral-300 hover:bg-neutral-200"
   };
 
+  // --- EFECTOS ---
+  
   useEffect(() => {
     const session = localStorage.getItem('vito-admin-session');
     if (session) {
@@ -224,6 +234,7 @@ export default function AdminPage() {
     return () => { supabase.removeChannel(presenceChannel); };
   }, [autenticado]);
 
+  // --- MEMOS DE BASE ---
   const stockEstimadoNueva = useMemo(() => { return calcularStockDinamico(newPizzaIngredients, ingredientes); }, [newPizzaIngredients, ingredientes]);
   
   const activeCategories: string[] = useMemo(() => { 
@@ -240,11 +251,13 @@ export default function AdminPage() {
       return Array.from(cats).sort(); 
   }, [pizzas]);
 
+  // --- FUNCIONES Y ACCIONES ---
   const toggleDarkMode = () => { setIsDarkMode(!isDarkMode); localStorage.setItem('vito-dark-mode', String(!isDarkMode)); };
   const toggleOrden = () => { const n = orden === 'estado' ? 'nombre' : 'estado'; setOrden(n); localStorage.setItem('vito-orden', n); };
   const toggleCompact = () => { setIsCompact(!isCompact); localStorage.setItem('vito-compact', String(!isCompact)); };
   const selectTheme = (t: any) => { setCurrentTheme(t); localStorage.setItem('vito-theme', t.name); setShowThemeSelector(false); window.dispatchEvent(new Event('storage')); };
 
+  // --- LOGIN ---
   const ingresar = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     let { data } = await supabase.from('configuracion_dia').select('*').single();
@@ -357,18 +370,33 @@ export default function AdminPage() {
   };
   
   const updateLogName = async (id: string, newName: string) => { await supabase.from('access_logs').update({ invitado_nombre: newName, is_manual_edit: true }).eq('id', id); refreshLogsOnly(); };
-  const eliminarUsuario = async (nombre: string, userDB: any) => { if(!confirm(`¿ELIMINAR a ${nombre}?`)) return; await supabase.from('pedidos').delete().eq('invitado_nombre', nombre); if(userDB?.id) { await supabase.from('lista_invitados').delete().eq('id', userDB.id); } cargarDatos(); };
-  const eliminarPedidosGusto = async (nom: string, pid: string) => { if(confirm(`¿Borrar pendientes?`)) { const ids = pedidos.filter(p => p.invitado_nombre.toLowerCase() === nom.toLowerCase() && p.pizza_id === pid && p.estado === 'pendiente').map(p => p.id); if(ids.length) await supabase.from('pedidos').delete().in('id', ids); cargarDatos(); } };
+  
+  // --- ELIMINAR USUARIO ROBUSTO ---
+  const eliminarUsuario = async (nombre: string, userDB: any) => { 
+      if(!confirm(`¿ELIMINAR a ${nombre}?`)) return; 
+      
+      // 1. Borrar todos los pedidos asociados (limpieza)
+      await supabase.from('pedidos').delete().eq('invitado_nombre', nombre); 
+      
+      // 2. Intentar borrar por ID si existe
+      if(userDB?.id) { 
+          await supabase.from('lista_invitados').delete().eq('id', userDB.id); 
+      } else {
+          // 3. FALLBACK: Si no hay ID, borrar por nombre (case insensitive) para asegurar
+          await supabase.from('lista_invitados').delete().ilike('nombre', nombre);
+      }
+      
+      cargarDatos(); 
+  };
+
   const entregar = async (p: any) => { if(!confirm(`¿Salió ${p.nombre}?`)) return; let n = p.target; const ids=[]; for(const pd of p.pedidosPendientes){ if(n<=0) break; ids.push(pd.id); n-=pd.cantidad_porciones; } if(ids.length) { await supabase.from('pedidos').update({ estado: 'entregado' }).in('id', ids); await supabase.from('menu_pizzas').update({ cocinando: false, cocinando_inicio: null }).eq('id', p.id); cargarDatos(); } };
   const updateP = async (id: string, field: string, val: any) => { if (field === 'activa') { await supabase.from('menu_pizzas').update({ activa: val }).eq('id', id); setPizzas(prev => prev.map(p => p.id === id ? { ...p, activa: val } : p)); } else { handleLocalEdit(id, field, val); } };
-  
   const addP = async () => { if(!newPizzaName) return; const { data: pizzaData } = await supabase.from('menu_pizzas').insert([{ nombre: newPizzaName, descripcion: newPizzaDesc, stock: 0, imagen_url: newPizzaImg, tiempo_coccion: newPizzaTime, categoria: newPizzaCat, activa: true, porciones_individuales: newPizzaPortions, tipo: newPizzaType }]).select().single(); if(pizzaData && newPizzaIngredients.length > 0) { const rows = newPizzaIngredients.map(r => ({ pizza_id: pizzaData.id, ingrediente_id: r.ingrediente_id, cantidad_requerida: r.cantidad })); await supabase.from('recetas').insert(rows); } setNewPizzaName(''); setNewPizzaDesc(''); setNewPizzaImg(''); setNewPizzaIngredients([]); await actualizarStockGlobal(); };
   const delP = async (id: string) => { if(!confirm('¿Estás seguro?')) return; await supabase.from('recetas').delete().eq('pizza_id', id); const { error } = await supabase.from('menu_pizzas').delete().eq('id', id); if (error) { if (confirm("⛔ Tiene historial. ¿Borrar TODO?")) { await supabase.from('pedidos').delete().eq('pizza_id', id); await supabase.from('valoraciones').delete().eq('pizza_id', id); const { error: err2 } = await supabase.from('menu_pizzas').delete().eq('id', id); if(err2) alert("Error"); else cargarDatos(); } } else { cargarDatos(); } };
   const changePass = async () => { if(!newPass) return; await supabase.from('configuracion_dia').update({password_admin: newPass}).eq('id', config.id); alert('OK'); setNewPass(''); };
   const addU = async () => { if(!newGuestName) return; const { error } = await supabase.from('lista_invitados').insert([{ nombre: newGuestName }]); if(error) alert('Error'); else { setNewGuestName(''); cargarDatos(); } };
   const toggleB = async (u: any) => { let uid = u.id; if(!uid) { const { data } = await supabase.from('lista_invitados').insert([{ nombre: u.nombre }]).select().single(); if(data) uid = data.id; else return; } await supabase.from('lista_invitados').update({ bloqueado: !u.bloqueado }).eq('id', uid); cargarDatos(); };
   const guardarMotivo = async (nombre: string, u: any) => { const motivo = tempMotivos[nombre]; if (motivo === undefined) return; let uid = u?.id; if (!uid) { const { data, error } = await supabase.from('lista_invitados').insert([{ nombre: nombre, motivo_bloqueo: motivo, bloqueado: true }]).select().single(); if (error || !data) { alert("Error"); return; } } else { await supabase.from('lista_invitados').update({ motivo_bloqueo: motivo }).eq('id', uid); } alert("OK"); cargarDatos(); };
-  const resetU = async (nom: string) => { if(!confirm(`¿Reset?`)) return; const ids = pedidos.filter(p => p.invitado_nombre.toLowerCase() === nom.toLowerCase()).map(p => p.id); if(ids.length) await supabase.from('pedidos').delete().in('id', ids); cargarDatos(); };
   const resetAllOrders = async () => { const promptText = prompt('Escribe "BORRAR TODO"'); if (promptText?.toUpperCase() !== "BORRAR TODO") return; const { error } = await supabase.from('pedidos').delete().neq('id', '00000000-0000-0000-0000-000000000000'); if(!error) { alert("OK"); cargarDatos(); } };
   const delVal = async (id: string) => { if(confirm("¿Borrar?")) { await supabase.from('valoraciones').delete().eq('id', id); cargarDatos(); } };
   const delValPizza = async (pid: string) => { if(confirm("¿Borrar todas?")) { await supabase.from('valoraciones').delete().eq('pizza_id', pid); cargarDatos(); } };
@@ -386,6 +414,47 @@ export default function AdminPage() {
   const cancelChanges = (id: string) => { setEdits(prev => { const newEdits = { ...prev }; delete newEdits[id]; return newEdits; }); };
   const toggleCocinando = async (p: any) => { if(p.tipo === 'pizza' && !p.cocinando && p.totalPendientes < p.target) { alert("Falta para 1 entera"); return; } const newState = !p.cocinando; const startTime = newState ? new Date().toISOString() : null; if (newState) { const receta = recetas.filter(r => r.pizza_id === p.id); if(receta.length > 0) { for (const item of receta) { const ing = ingredientes.find(i => i.id === item.ingrediente_id); if (ing) { const nuevaCant = ing.cantidad_disponible - item.cantidad_requerida; await supabase.from('ingredientes').update({ cantidad_disponible: nuevaCant }).eq('id', ing.id); } } } } else { const receta = recetas.filter(r => r.pizza_id === p.id); if(receta.length > 0) { for (const item of receta) { const ing = ingredientes.find(i => i.id === item.ingrediente_id); if (ing) { const nuevaCant = ing.cantidad_disponible + item.cantidad_requerida; await supabase.from('ingredientes').update({ cantidad_disponible: nuevaCant }).eq('id', ing.id); } } } } await supabase.from('menu_pizzas').update({ cocinando: newState, cocinando_inicio: startTime }).eq('id', p.id); await actualizarStockGlobal(); const { data: ings } = await supabase.from('ingredientes').select('*').order('nombre'); if(ings) setIngredientes(ings); };
   
+  // --- HELPER CRÍTICO: Garantizar Usuario ---
+  const garantizarPersistenciaUsuario = async (nom: string) => {
+      const nombreLimpio = nom.trim();
+      const { data: existing } = await supabase.from('lista_invitados').select('id').ilike('nombre', nombreLimpio).maybeSingle();
+      if (!existing) {
+          // Si no existe, lo creamos para que no se borre al quitar pedidos.
+          await supabase.from('lista_invitados').insert([{ nombre: nombreLimpio, origen: 'web' }]);
+      }
+  };
+
+  // --- ELIMINAR PEDIDO INDIVIDUAL (CORREGIDO) ---
+  const eliminarPedidosGusto = async (nom: string, pid: string) => { 
+      if(!confirm(`¿Borrar pendientes?`)) return; 
+      
+      // 1. Aseguramos que el usuario exista en la BD antes de borrar
+      await garantizarPersistenciaUsuario(nom);
+
+      // 2. Borramos
+      const ids = pedidos.filter(p => p.invitado_nombre.toLowerCase() === nom.toLowerCase() && p.pizza_id === pid && p.estado === 'pendiente').map(p => p.id); 
+      if(ids.length) await supabase.from('pedidos').delete().in('id', ids); 
+      
+      cargarDatos(); 
+  };
+
+  // --- RESET USUARIO COMPLETO (CORREGIDO) ---
+  const resetU = async (nom: string) => { 
+      if(!confirm(`¿Borrar pedidos de ${nom}?`)) return; 
+      
+      // 1. Aseguramos que el usuario exista en la BD antes de borrar
+      await garantizarPersistenciaUsuario(nom);
+
+      // 2. Borramos
+      const ids = pedidos.filter(p => p.invitado_nombre.toLowerCase() === nom.toLowerCase()).map(p => p.id); 
+      if(ids.length) {
+          await supabase.from('pedidos').delete().in('id', ids); 
+      }
+      
+      cargarDatos(); 
+  };
+
+  // --- MEMOS DERIVADOS ---
   const metricas = useMemo(() => { 
       let lista = pizzas.filter(p => p.activa); 
       if (activeCategories.length > 0 && !activeCategories.includes('Todas')) { 
@@ -406,7 +475,6 @@ export default function AdminPage() {
       }); 
   }, [pizzas, pedidos, config, orden, activeCategories]); 
 
-  // --- STATS REFACTORIZADO (Universal) ---
   const stats = useMemo(() => { 
       let waiting = 0;
       let cooking = 0;
@@ -431,8 +499,51 @@ export default function AdminPage() {
   }, [pedidos, pizzas]);
 
   const pedidosAgrupados = Array.from(new Set(pedidos.map(p => p.invitado_nombre.toLowerCase()))).map(nombre => { const susPedidos = pedidos.filter(p => p.invitado_nombre.toLowerCase() === nombre); const nombreReal = susPedidos[0]?.invitado_nombre || nombre; const detalle = pizzas.map(pz => { const ped = susPedidos.filter(p => p.pizza_id === pz.id); if (ped.length === 0) return null; const entr = ped.filter(p => p.estado === 'entregado').reduce((acc, c) => acc + c.cantidad_porciones, 0); const pendientesArr = ped.filter(p => p.estado === 'pendiente'); const pend = pendientesArr.reduce((acc, c) => acc + c.cantidad_porciones, 0); const oldestPending = pendientesArr.length > 0 ? pendientesArr.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0].created_at : null; return { id: pz.id, nombre: pz.nombre, entregada: entr, enHorno: pz.cocinando ? pend : 0, enEspera: pz.cocinando ? 0 : pend, oldestPending: oldestPending }; }).filter(Boolean); const totalEnHorno = detalle.reduce((acc, d) => acc + (d?.enHorno || 0), 0); const totalEnEspera = detalle.reduce((acc, d) => acc + (d?.enEspera || 0), 0); const totalPendienteGeneral = totalEnHorno + totalEnEspera; return { nombre: nombreReal, detalle, totalPendienteGeneral, totalEnHorno, totalEnEspera }; }).sort((a, b) => b.totalPendienteGeneral - a.totalPendienteGeneral);
+  
   const ranking = useMemo(() => { return pizzas.map(p => { const vals = valoraciones.filter(v => v.pizza_id === p.id); const avg = vals.length > 0 ? (vals.reduce((a, b) => a + b.rating, 0) / vals.length) : 0; const orders = pedidos.filter(ped => ped.pizza_id === p.id).reduce((acc, c) => acc + c.cantidad_porciones, 0); return { ...p, avg: parseFloat(avg.toFixed(1)), count: vals.length, totalOrders: orders }; }).sort((a, b) => b.avg - a.avg); }, [pizzas, valoraciones, pedidos]);
-  const allUsersList = useMemo(() => { const map = new Map(); invitadosDB.forEach(u => map.set(u.nombre.toLowerCase(), { ...u, source: 'db', origen: u.origen || 'admin' })); pedidos.forEach(p => {  const key = p.invitado_nombre.toLowerCase(); if (!map.has(key)) map.set(key, { id: null, nombre: p.invitado_nombre, bloqueado: false, source: 'ped', totalOrders: p.cantidad_porciones });  else { const existing = map.get(key); map.set(key, { ...existing, totalOrders: (existing.totalOrders || 0) + p.cantidad_porciones }); } }); invitadosDB.forEach(u => { const key = u.nombre.toLowerCase(); if(map.has(key)) { const existing = map.get(key); map.set(key, { ...existing, source: 'db', id: u.id, origen: u.origen || 'admin' }); }}); return Array.from(map.values()).sort((a, b) => a.nombre.localeCompare(b.nombre)); }, [invitadosDB, pedidos]);
+  
+  // --- LISTA DE USUARIOS CORREGIDA (FIX DOUBLE COUNTING) ---
+  const allUsersList = useMemo(() => { 
+      // 1. Calcular totales reales desde los pedidos primero
+      const orderCounts: Record<string, number> = {};
+      pedidos.forEach(p => {
+          const k = p.invitado_nombre.toLowerCase();
+          orderCounts[k] = (orderCounts[k] || 0) + p.cantidad_porciones;
+      });
+
+      const map = new Map(); 
+      
+      // 2. Procesar usuarios de DB
+      invitadosDB.forEach(u => {
+          const k = u.nombre.toLowerCase();
+          const isWebOrigin = u.origen === 'web';
+          map.set(k, { 
+              ...u, 
+              totalOrders: orderCounts[k] || 0, // Usar el total calculado previamente
+              source: isWebOrigin ? 'ped' : 'db', 
+              origen: u.origen || 'admin' 
+          }); 
+      }); 
+      
+      // 3. Procesar Guests que no estén en DB (aunque ahora deberían guardarse)
+      Object.keys(orderCounts).forEach(key => {
+          if (!map.has(key)) {
+              // Buscar el nombre con mayúsculas/minúsculas correctas del primer pedido
+              const realName = pedidos.find(p => p.invitado_nombre.toLowerCase() === key)?.invitado_nombre || key;
+              
+              map.set(key, { 
+                  id: null, 
+                  nombre: realName, 
+                  bloqueado: false, 
+                  source: 'ped', 
+                  totalOrders: orderCounts[key],
+                  origen: 'web'
+              });  
+          }
+      }); 
+      
+      return Array.from(map.values()).sort((a, b) => a.nombre.localeCompare(b.nombre)); 
+  }, [invitadosDB, pedidos]);
 
   if (!autenticado) return (
     <div className={`min-h-screen flex items-center justify-center p-4 pb-40 ${base.bg}`}>
@@ -469,7 +580,7 @@ export default function AdminPage() {
       </div>
       <div className="relative z-10 pt-24 px-4 pb-36">
         
-        {/* --- TABLERO DE MÉTRICAS --- */}
+        {/* TABLERO UNIVERSAL (Colores neutros) */}
         {view === 'cocina' && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                 <div className={`p-3 rounded-2xl border flex flex-col items-center justify-center ${base.metric}`}>
