@@ -1,4 +1,8 @@
-import { CheckSquare, Square, Plus, ImageIcon, UploadCloud, X, Calculator, Save, Eye, EyeOff, Trash2, Pizza, Utensils } from 'lucide-react';
+import { useState } from 'react';
+import { 
+  CheckSquare, Square, Plus, ImageIcon, UploadCloud, X, Calculator, Save, 
+  Eye, EyeOff, Trash2, Pizza, Utensils, ChevronDown, ChevronUp 
+} from 'lucide-react';
 import { TimeControl } from '../../ui/TimeControl';
 import { BurgerIcon } from '../../ui/BurgerIcon'; 
 
@@ -13,6 +17,13 @@ export const MenuView = ({
     reservedState, calcularStockDinamico, updateLocalRecipe, 
     newPizzaType, setNewPizzaType 
 }: any) => {
+
+    // Estado para controlar qué items están expandidos
+    const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+    const toggleExpand = (id: string) => {
+        setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
+    };
 
     return (
         <div className="space-y-6">
@@ -45,7 +56,7 @@ export const MenuView = ({
                         <button 
                             onClick={() => { 
                                 setNewPizzaType('pizza'); 
-                                setNewPizzaPortions(4); // CAMBIO A 4
+                                setNewPizzaPortions(4); 
                                 setNewPizzaCat('Pizzas'); 
                             }}
                             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${newPizzaType === 'pizza' ? 'bg-white dark:bg-neutral-800 shadow text-black dark:text-white' : 'text-gray-400 hover:text-gray-600'}`}
@@ -98,12 +109,12 @@ export const MenuView = ({
                              ))}
                         </div>
                         <div className="flex gap-2">
-                            <select className={`flex-1 p-2 text-sm rounded-xl font-bold outline-none bg-white dark:bg-black/20 text-black dark:text-white`} value={newPizzaSelectedIng} onChange={(e: any) => setNewPizzaSelectedIng(e.target.value)}>
+                            <select className={`flex-1 w-0 min-w-0 p-2 text-sm rounded-xl font-bold outline-none bg-white dark:bg-black/20 text-black dark:text-white`} value={newPizzaSelectedIng} onChange={(e: any) => setNewPizzaSelectedIng(e.target.value)}>
                                 <option value="">+ Ingrediente</option>
                                 {ingredients.map((i: any) => <option key={i.id} value={`${i.id}|${i.nombre}`}>{i.nombre} (Disp: {i.cantidad_disponible})</option>)}
                             </select>
-                            <input type="number" className={`w-20 p-2 text-sm rounded-xl text-center font-bold outline-none bg-white dark:bg-black/20 text-black dark:text-white`} value={newPizzaRecipeQty} onChange={(e: any) => setNewPizzaRecipeQty(Number(e.target.value) || '')} placeholder="Cant" />
-                            <button onClick={addToNewPizzaRecipe} className="bg-neutral-800 dark:bg-white text-white dark:text-black px-4 rounded-xl text-sm font-bold shadow-sm">OK</button>
+                            <input type="number" className={`w-14 p-2 text-sm rounded-xl text-center font-bold outline-none bg-white dark:bg-black/20 text-black dark:text-white`} value={newPizzaRecipeQty} onChange={(e: any) => setNewPizzaRecipeQty(Number(e.target.value) || '')} placeholder="Cant" />
+                            <button onClick={addToNewPizzaRecipe} className="bg-neutral-800 dark:bg-white text-white dark:text-black px-4 rounded-xl text-sm font-bold shadow-sm flex-shrink-0">OK</button>
                         </div>
                     </div>
 
@@ -143,9 +154,10 @@ export const MenuView = ({
                 </div>
             </div>
             
-            <div className="space-y-4">
+            <div className="space-y-3">
                 {pizzas.map((p: any) => {
                 const isEdited = !!edits[p.id];
+                const isOpen = expanded[p.id]; // Verificamos si está expandido
                 const display = { ...p, ...edits[p.id] }; 
                 const isNewRecipe = !!edits[p.id]?.local_recipe;
                 const currentRecipe = isNewRecipe ? edits[p.id].local_recipe : recetas.filter((r: any) => r.pizza_id === p.id).map((r: any) => ({...r, nombre: ingredients.find((i: any) => i.id === r.ingrediente_id)?.nombre || '?'}));
@@ -153,9 +165,15 @@ export const MenuView = ({
                 const currentType = display.tipo || 'pizza';
 
                 return (
-                <div key={p.id} className={`p-5 rounded-3xl border flex flex-col gap-4 relative overflow-hidden transition-all ${base.card} ${isEdited ? 'border-yellow-500/50' : ''}`}>
-                    <div className="flex justify-between items-start">
-                        <div className="flex items-center gap-2 w-full">
+                <div key={p.id} className={`p-4 rounded-3xl border flex flex-col relative overflow-hidden transition-all ${base.card} ${isEdited ? 'border-yellow-500/50' : ''}`}>
+                    {/* --- HEADER (Siempre visible) --- */}
+                    <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-2 flex-1 mr-2">
+                            {/* Botón de expandir/contraer */}
+                            <button onClick={() => toggleExpand(p.id)} className={`p-1.5 rounded-lg ${base.buttonSec}`}>
+                                {isOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                            </button>
+
                             {currentType === 'burger' ? (
                                 <BurgerIcon className="text-orange-500 w-5 h-5 flex-shrink-0" />
                             ) : currentType === 'other' ? (
@@ -163,128 +181,140 @@ export const MenuView = ({
                             ) : (
                                 <Pizza size={20} className="text-red-500 flex-shrink-0" />
                             )}
-                            <input value={display.nombre} onChange={(e: any) => updateP(p.id, 'nombre', e.target.value)} className="bg-transparent font-bold text-2xl outline-none w-full border-b border-transparent focus:border-white/20 pb-1" />
+                            
+                            {/* Input de nombre */}
+                            <input 
+                                value={display.nombre} 
+                                onChange={(e: any) => updateP(p.id, 'nombre', e.target.value)} 
+                                className="bg-transparent font-bold text-lg outline-none w-full border-b border-transparent focus:border-white/20 pb-1 truncate" 
+                            />
                         </div>
-                        <div className="flex gap-2 ml-4">
+
+                        <div className="flex gap-2 flex-shrink-0">
                             {isEdited && (
                                 <>
-                                    <button onClick={() => savePizzaChanges(p.id)} className="p-2 bg-yellow-500 text-black rounded-xl animate-pulse shadow-lg hover:scale-105 transition-transform"><Save size={18}/></button>
-                                    <button onClick={() => cancelChanges(p.id)} className="p-2 bg-red-500 text-white rounded-xl shadow-lg hover:scale-105 transition-transform"><X size={18}/></button>
+                                    <button onClick={() => savePizzaChanges(p.id)} className="p-2 bg-yellow-500 text-black rounded-xl animate-pulse shadow-lg hover:scale-105 transition-transform"><Save size={16}/></button>
+                                    <button onClick={() => cancelChanges(p.id)} className="p-2 bg-red-500 text-white rounded-xl shadow-lg hover:scale-105 transition-transform"><X size={16}/></button>
                                 </>
                             )}
-                            <button onClick={() => updateP(p.id, 'activa', !p.activa)} className={`p-2 rounded-xl transition-colors ${p.activa ? 'bg-white/10 hover:bg-white/20' : 'bg-black/50 text-neutral-500'}`}>{p.activa ? <Eye size={18}/> : <EyeOff size={18}/>}</button>
-                            <button onClick={() => delP(p.id)} className="p-2 text-red-500 hover:bg-red-500/10 rounded-xl transition-colors"><Trash2 size={18}/></button>
+                            <button onClick={() => updateP(p.id, 'activa', !p.activa)} className={`p-2 rounded-xl transition-colors ${p.activa ? 'bg-white/10 hover:bg-white/20' : 'bg-black/50 text-neutral-500'}`}>{p.activa ? <Eye size={16}/> : <EyeOff size={16}/>}</button>
+                            <button onClick={() => delP(p.id)} className="p-2 text-red-500 hover:bg-red-500/10 rounded-xl transition-colors"><Trash2 size={16}/></button>
                         </div>
                     </div>
 
-                    <div className="flex gap-4">
-                        <label className="cursor-pointer relative w-20 h-20 rounded-xl overflow-hidden bg-neutral-900 group flex-shrink-0 shadow-inner">
-                            {display.imagen_url ? <img src={display.imagen_url} className="w-full h-full object-cover"/> : <div className="flex items-center justify-center h-full text-neutral-600"><ImageIcon size={20}/></div>}
-                            <div className="absolute inset-0 bg-black/50 hidden group-hover:flex items-center justify-center text-white"><UploadCloud size={16}/></div>
-                            <input type="file" accept="image/*" className="hidden" onChange={(e: any) => handleImageUpload(e, p.id)}/>
-                        </label>
-                        <textarea value={display.descripcion || ''} onChange={(e: any) => updateP(p.id, 'descripcion', e.target.value)} className={`flex-1 p-0 bg-transparent text-sm leading-relaxed outline-none resize-none h-20 opacity-80 placeholder-opacity-30 ${isDarkMode ? 'placeholder-white' : 'placeholder-black'}`} placeholder="Descripción..." />
-                    </div>
-                    
-                    <div className={`${base.innerCard} p-3 rounded-2xl`}>
-                        <div className="flex justify-between items-center mb-2">
-                            <p className="text-[10px] font-bold uppercase opacity-50 tracking-wider">Receta</p>
-                            <span className="text-[10px] font-bold bg-black/20 px-2 py-0.5 rounded-full">{currentRecipe.length} Ingredientes</span>
-                        </div>
-                        <div className="flex flex-wrap gap-2 mb-3">
-                            {currentRecipe.map((r: any, idx: number) => (
-                                <span key={idx} className="text-xs bg-white dark:bg-white/10 px-2 py-1 rounded-lg flex items-center gap-1 border border-black/5 dark:border-white/5 font-medium text-black dark:text-white">
-                                    {r.nombre}: {r.cantidad_requerida}
-                                    <button onClick={() => removeFromExistingPizza(p.id, idx, currentRecipe)} className="text-red-400 hover:text-red-300 ml-1"><X size={12}/></button>
-                                </span>
-                            ))}
-                        </div>
-                        <div className="flex gap-2">
-                            <select className={`flex-1 p-1.5 text-xs rounded-lg font-bold outline-none bg-white dark:bg-black/20 text-black dark:text-white`} value={tempRecipeIng[p.id] || ''} onChange={(e: any) => setTempRecipeIng({...tempRecipeIng, [p.id]: e.target.value})}>
-                                <option value="">+ Ingrediente</option>
-                                {ingredients.map((i: any) => <option key={i.id} value={`${i.id}|${i.nombre}`}>{i.nombre} (Disp: {Math.max(0, i.cantidad_disponible - (reservedState[i.id] || 0))})</option>)}
-                            </select>
-                            <input type="number" placeholder="Cant" className={`w-16 p-1.5 text-xs rounded-lg text-center font-bold outline-none bg-white dark:bg-black/20 text-black dark:text-white`} value={tempRecipeQty[p.id] || ''} onChange={(e: any) => setTempRecipeQty({...tempRecipeQty, [p.id]: Number(e.target.value) || ''})} />
-                            <button onClick={() => {
-                                if(!tempRecipeIng[p.id]) return;
-                                const [ingId, name] = tempRecipeIng[p.id].split('|');
-                                addToExistingPizza(p.id, ingId, name, tempRecipeQty[p.id] || 0, currentRecipe);
-                                setTempRecipeIng({...tempRecipeIng, [p.id]: ''}); 
-                                setTempRecipeQty({...tempRecipeQty, [p.id]: ''});
-                            }} className="bg-neutral-800 dark:bg-white text-white dark:text-black px-3 rounded-lg text-xs font-bold">OK</button>
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        <div className={`${base.innerCard} p-2 rounded-2xl flex flex-col items-center justify-center text-center`}>
-                            <span className="text-[9px] uppercase font-bold opacity-50 tracking-wider mb-1">Tipo & Cat.</span>
-                            <div className="flex gap-1 bg-black/10 dark:bg-white/5 p-1 rounded-lg mb-1">
-                                <button 
-                                    onClick={() => {
-                                        updateP(p.id, 'tipo', 'pizza');
-                                        updateP(p.id, 'categoria', 'Pizzas'); 
-                                        updateP(p.id, 'porciones_individuales', 4); // CAMBIO A 4
-                                    }}
-                                    className={`p-1.5 rounded-md transition-all ${currentType === 'pizza' ? 'bg-white dark:bg-neutral-700 text-red-500 shadow' : 'text-gray-400 hover:text-gray-500'}`}
-                                    title="Pizza"
-                                >
-                                    <Pizza size={16}/>
-                                </button>
-                                <button 
-                                    onClick={() => {
-                                        updateP(p.id, 'tipo', 'burger');
-                                        updateP(p.id, 'categoria', 'Hamburguesas'); 
-                                        updateP(p.id, 'porciones_individuales', 1);
-                                    }}
-                                    className={`p-1.5 rounded-md transition-all ${currentType === 'burger' ? 'bg-white dark:bg-neutral-700 text-orange-500 shadow' : 'text-gray-400 hover:text-gray-500'}`}
-                                    title="Burger"
-                                >
-                                    <BurgerIcon className="w-4 h-4"/>
-                                </button>
-                                <button 
-                                    onClick={() => {
-                                        updateP(p.id, 'tipo', 'other');
-                                    }}
-                                    className={`p-1.5 rounded-md transition-all ${currentType === 'other' ? 'bg-white dark:bg-neutral-700 text-blue-500 shadow' : 'text-gray-400 hover:text-gray-500'}`}
-                                    title="Otro"
-                                >
-                                    <Utensils size={16}/>
-                                </button>
+                    {/* --- CONTENIDO EXPANDIBLE --- */}
+                    {isOpen && (
+                        <div className="flex flex-col gap-4 mt-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                            <div className="flex gap-4">
+                                <label className="cursor-pointer relative w-20 h-20 rounded-xl overflow-hidden bg-neutral-900 group flex-shrink-0 shadow-inner">
+                                    {display.imagen_url ? <img src={display.imagen_url} className="w-full h-full object-cover"/> : <div className="flex items-center justify-center h-full text-neutral-600"><ImageIcon size={20}/></div>}
+                                    <div className="absolute inset-0 bg-black/50 hidden group-hover:flex items-center justify-center text-white"><UploadCloud size={16}/></div>
+                                    <input type="file" accept="image/*" className="hidden" onChange={(e: any) => handleImageUpload(e, p.id)}/>
+                                </label>
+                                <textarea value={display.descripcion || ''} onChange={(e: any) => updateP(p.id, 'descripcion', e.target.value)} className={`flex-1 p-0 bg-transparent text-sm leading-relaxed outline-none resize-none h-20 opacity-80 placeholder-opacity-30 ${isDarkMode ? 'placeholder-white' : 'placeholder-black'}`} placeholder="Descripción..." />
                             </div>
-                            <input 
-                                list="categories" 
-                                value={display.categoria || ''} 
-                                onChange={(e: any) => updateP(p.id, 'categoria', e.target.value)} 
-                                className={`w-full text-center bg-transparent outline-none text-[10px] font-bold opacity-80`} 
-                                placeholder="Categoría..."
-                            />
-                        </div>
-                        
-                        <div className={`${base.innerCard} p-2 rounded-2xl flex flex-col items-center justify-center text-center ${currentType === 'burger' ? 'opacity-50' : ''}`}>
-                            <span className="text-[9px] uppercase font-bold opacity-50 tracking-wider mb-1">Porciones</span>
-                            <input 
-                                type="number" 
-                                disabled={currentType === 'burger'}
-                                value={display.porciones_individuales || ''} 
-                                onChange={(e: any) => updateP(p.id, 'porciones_individuales', e.target.value ? parseInt(e.target.value) : null)} 
-                                className={`w-full text-center bg-transparent outline-none text-sm font-bold`} 
-                            />
-                        </div>
-                        
-                        <div className={`${base.innerCard} p-2 rounded-2xl flex flex-col items-center justify-center relative overflow-hidden text-center`}>
-                            <span className="text-[9px] uppercase font-bold opacity-50 tracking-wider mb-1">Stock</span>
-                            {currentRecipe.length > 0 ? (
-                                <div className="flex items-center gap-1 font-bold text-xl"><Calculator size={14} className="opacity-30"/> {dynamicStock}</div>
-                            ) : (
-                                <input type="number" value={display.stock || 0} onChange={(e: any) => updateP(p.id, 'stock', parseInt(e.target.value))} className={`w-full text-center bg-transparent outline-none text-sm font-bold`} />
-                            )}
-                        </div>
+                            
+                            <div className={`${base.innerCard} p-3 rounded-2xl`}>
+                                <div className="flex justify-between items-center mb-2">
+                                    <p className="text-[10px] font-bold uppercase opacity-50 tracking-wider">Receta</p>
+                                    <span className="text-[10px] font-bold bg-black/20 px-2 py-0.5 rounded-full">{currentRecipe.length} Ingredientes</span>
+                                </div>
+                                <div className="flex flex-wrap gap-2 mb-3">
+                                    {currentRecipe.map((r: any, idx: number) => (
+                                        <span key={idx} className="text-xs bg-white dark:bg-white/10 px-2 py-1 rounded-lg flex items-center gap-1 border border-black/5 dark:border-white/5 font-medium text-black dark:text-white">
+                                            {r.nombre}: {r.cantidad_requerida}
+                                            <button onClick={() => removeFromExistingPizza(p.id, idx, currentRecipe)} className="text-red-400 hover:text-red-300 ml-1"><X size={12}/></button>
+                                        </span>
+                                    ))}
+                                </div>
+                                <div className="flex gap-2">
+                                    <select className={`flex-1 w-0 min-w-0 p-1.5 text-xs rounded-lg font-bold outline-none bg-white dark:bg-black/20 text-black dark:text-white`} value={tempRecipeIng[p.id] || ''} onChange={(e: any) => setTempRecipeIng({...tempRecipeIng, [p.id]: e.target.value})}>
+                                        <option value="">+ Ingrediente</option>
+                                        {ingredients.map((i: any) => <option key={i.id} value={`${i.id}|${i.nombre}`}>{i.nombre} (Disp: {Math.max(0, i.cantidad_disponible - (reservedState[i.id] || 0))})</option>)}
+                                    </select>
+                                    <input type="number" placeholder="Cant" className={`w-12 p-1.5 text-xs rounded-lg text-center font-bold outline-none bg-white dark:bg-black/20 text-black dark:text-white`} value={tempRecipeQty[p.id] || ''} onChange={(e: any) => setTempRecipeQty({...tempRecipeQty, [p.id]: Number(e.target.value) || ''})} />
+                                    <button onClick={() => {
+                                        if(!tempRecipeIng[p.id]) return;
+                                        const [ingId, name] = tempRecipeIng[p.id].split('|');
+                                        addToExistingPizza(p.id, ingId, name, tempRecipeQty[p.id] || 0, currentRecipe);
+                                        setTempRecipeIng({...tempRecipeIng, [p.id]: ''}); 
+                                        setTempRecipeQty({...tempRecipeQty, [p.id]: ''});
+                                    }} className="bg-neutral-800 dark:bg-white text-white dark:text-black px-3 rounded-lg text-xs font-bold flex-shrink-0">OK</button>
+                                </div>
+                            </div>
 
-                        <div className={`${base.innerCard} p-2 rounded-2xl flex flex-col items-center justify-center text-center`}>
-                            <span className="text-[9px] uppercase font-bold opacity-50 tracking-wider mb-1">Timer</span>
-                            <TimeControl value={display.tiempo_coccion || 60} onChange={(val: number) => updateP(p.id, 'tiempo_coccion', val)} isDarkMode={isDarkMode} />
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                <div className={`${base.innerCard} p-2 rounded-2xl flex flex-col items-center justify-center text-center`}>
+                                    <span className="text-[9px] uppercase font-bold opacity-50 tracking-wider mb-1">Tipo & Cat.</span>
+                                    <div className="flex gap-1 bg-black/10 dark:bg-white/5 p-1 rounded-lg mb-1">
+                                        <button 
+                                            onClick={() => {
+                                                updateP(p.id, 'tipo', 'pizza');
+                                                updateP(p.id, 'categoria', 'Pizzas'); 
+                                                updateP(p.id, 'porciones_individuales', 4);
+                                            }}
+                                            className={`p-1.5 rounded-md transition-all ${currentType === 'pizza' ? 'bg-white dark:bg-neutral-700 text-red-500 shadow' : 'text-gray-400 hover:text-gray-500'}`}
+                                            title="Pizza"
+                                        >
+                                            <Pizza size={16}/>
+                                        </button>
+                                        <button 
+                                            onClick={() => {
+                                                updateP(p.id, 'tipo', 'burger');
+                                                updateP(p.id, 'categoria', 'Hamburguesas'); 
+                                                updateP(p.id, 'porciones_individuales', 1);
+                                            }}
+                                            className={`p-1.5 rounded-md transition-all ${currentType === 'burger' ? 'bg-white dark:bg-neutral-700 text-orange-500 shadow' : 'text-gray-400 hover:text-gray-500'}`}
+                                            title="Burger"
+                                        >
+                                            <BurgerIcon className="w-4 h-4"/>
+                                        </button>
+                                        <button 
+                                            onClick={() => {
+                                                updateP(p.id, 'tipo', 'other');
+                                            }}
+                                            className={`p-1.5 rounded-md transition-all ${currentType === 'other' ? 'bg-white dark:bg-neutral-700 text-blue-500 shadow' : 'text-gray-400 hover:text-gray-500'}`}
+                                            title="Otro"
+                                        >
+                                            <Utensils size={16}/>
+                                        </button>
+                                    </div>
+                                    <input 
+                                        list="categories" 
+                                        value={display.categoria || ''} 
+                                        onChange={(e: any) => updateP(p.id, 'categoria', e.target.value)} 
+                                        className={`w-full text-center bg-transparent outline-none text-[10px] font-bold opacity-80`} 
+                                        placeholder="Categoría..."
+                                    />
+                                </div>
+                                
+                                <div className={`${base.innerCard} p-2 rounded-2xl flex flex-col items-center justify-center text-center ${currentType === 'burger' ? 'opacity-50' : ''}`}>
+                                    <span className="text-[9px] uppercase font-bold opacity-50 tracking-wider mb-1">Porciones</span>
+                                    <input 
+                                        type="number" 
+                                        disabled={currentType === 'burger'}
+                                        value={display.porciones_individuales || ''} 
+                                        onChange={(e: any) => updateP(p.id, 'porciones_individuales', e.target.value ? parseInt(e.target.value) : null)} 
+                                        className={`w-full text-center bg-transparent outline-none text-sm font-bold`} 
+                                    />
+                                </div>
+                                
+                                <div className={`${base.innerCard} p-2 rounded-2xl flex flex-col items-center justify-center relative overflow-hidden text-center`}>
+                                    <span className="text-[9px] uppercase font-bold opacity-50 tracking-wider mb-1">Stock</span>
+                                    {currentRecipe.length > 0 ? (
+                                        <div className="flex items-center gap-1 font-bold text-xl"><Calculator size={14} className="opacity-30"/> {dynamicStock}</div>
+                                    ) : (
+                                        <input type="number" value={display.stock || 0} onChange={(e: any) => updateP(p.id, 'stock', parseInt(e.target.value))} className={`w-full text-center bg-transparent outline-none text-sm font-bold`} />
+                                    )}
+                                </div>
+
+                                <div className={`${base.innerCard} p-2 rounded-2xl flex flex-col items-center justify-center text-center`}>
+                                    <span className="text-[9px] uppercase font-bold opacity-50 tracking-wider mb-1">Timer</span>
+                                    <TimeControl value={display.tiempo_coccion || 60} onChange={(val: number) => updateP(p.id, 'tiempo_coccion', val)} isDarkMode={isDarkMode} />
+                                </div>
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </div>
                 );})}
             </div>

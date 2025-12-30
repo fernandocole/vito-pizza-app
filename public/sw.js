@@ -1,14 +1,11 @@
 self.addEventListener('install', (event) => {
-  console.log('Service Worker: Instalado');
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  console.log('Service Worker: Activado');
   event.waitUntil(self.clients.claim());
 });
 
-// Escuchar notificaciones push (Backend)
 self.addEventListener('push', (event) => {
   const data = event.data ? event.data.json() : {};
   self.registration.showNotification(data.title || 'Vito Pizza', {
@@ -16,30 +13,44 @@ self.addEventListener('push', (event) => {
     icon: '/icon.png',
     badge: '/icon.png',
     vibrate: [200, 100, 200],
-    data: { url: data.url || '/' } // Guardamos la URL destino
+    data: { url: data.url || '/' }
   });
 });
 
-// Manejar clics en la notificación
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
-  // Obtenemos la URL destino (si viene del admin será '/admin', si no '/')
-  const urlToOpen = event.notification.data?.url || '/';
+  // Construimos la URL completa destino
+  const urlToOpen = new URL(event.notification.data.url, self.location.origin).href;
 
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // 1. Si ya hay una pestaña abierta en esa URL, enfocarla
-      for (const client of clientList) {
-        // Comprobamos si la URL del cliente coincide con la destino
-        if (client.url.includes(urlToOpen) && 'focus' in client) {
-          return client.focus();
+  const promiseChain = clients.matchAll({
+    type: 'window',
+    includeUncontrolled: true
+  }).then((windowClients) => {
+    let matchingClient = null;
+
+    for (let i = 0; i < windowClients.length; i++) {
+      const windowClient = windowClients[i];
+      // Si ya hay una ventana abierta de nuestra app
+      if (windowClient.url.includes(self.location.origin)) {
+        matchingClient = windowClient;
+        break;
+      }
+    }
+
+    if (matchingClient) {
+      // 1. Enfocar la ventana
+      return matchingClient.focus().then(() => {
+        // 2. IMPORTANTE: Navegar a la URL correcta (/admin) si no estamos ahí
+        if (matchingClient.url !== urlToOpen) {
+          return matchingClient.navigate(urlToOpen);
         }
-      }
-      // 2. Si no, abrir una nueva ventana en la URL correcta
-      if (clients.openWindow) {
-        return clients.openWindow(urlToOpen);
-      }
-    })
-  );
+      });
+    } else {
+      // Si no hay ventana abierta, abrir una nueva
+      return clients.openWindow(urlToOpen);
+    }
+  });
+
+  event.waitUntil(promiseChain);
 });

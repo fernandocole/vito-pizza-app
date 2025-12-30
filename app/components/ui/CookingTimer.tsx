@@ -10,14 +10,22 @@ const formatSeconds = (seconds: number) => {
 };
 
 export const CookingTimer = ({ start, duration, onFinish, small = false }: { start: string, duration: number, onFinish?: () => void, small?: boolean }) => {
+    
+    // NOTA: duration debe llegar en SEGUNDOS.
     const [timeLeft, setTimeLeft] = useState(duration);
+
     useEffect(() => {
         if (!start) return;
         const interval = setInterval(() => {
             const startTime = new Date(start).getTime();
             const now = new Date().getTime();
-            const elapsedSeconds = Math.floor((now - startTime) / 1000);
+            
+            // Calculamos segundos transcurridos con protección de zona horaria
+            const elapsedSeconds = Math.max(0, Math.floor((now - startTime) / 1000));
+            
+            // Calculamos restante
             const remaining = Math.max(0, duration - elapsedSeconds);
+            
             setTimeLeft(remaining);
             if (remaining === 0 && onFinish) onFinish();
         }, 1000);
@@ -26,7 +34,7 @@ export const CookingTimer = ({ start, duration, onFinish, small = false }: { sta
     
     const isFinished = timeLeft === 0;
 
-    // Versión reducida para la App de Invitados
+    // Versión reducida (para App Invitados)
     if (small) {
          return (
         <span className={`ml-1 text-[10px] px-2 py-0.5 rounded-full font-mono font-bold flex items-center gap-1 transition-colors ${isFinished ? 'bg-black/20 text-white/50' : 'bg-black/40 text-white'}`}>
@@ -38,9 +46,15 @@ export const CookingTimer = ({ start, duration, onFinish, small = false }: { sta
 
     // Versión completa para Admin
     return (
-        <div className={`flex items-center gap-1 font-mono font-bold px-3 py-1 rounded-full text-xs transition-all duration-300 ${isFinished ? 'bg-red-600 text-white animate-bounce border-2 border-yellow-400 shadow-[0_0_15px_rgba(239,68,68,0.8)] scale-110' : 'bg-orange-100 text-orange-600 border border-orange-200'}`}>
-            <Clock size={12} />
-            <span>{isFinished ? 'LISTA!' : formatSeconds(timeLeft)}</span>
+        <div className={`flex items-center gap-1 font-mono font-bold px-2 py-0.5 rounded-full text-xs transition-all duration-300 ${
+            isFinished 
+            ? 'bg-gray-600 text-white shadow-sm' // Listo: Gris oscuro, sin resplandor
+            : 'bg-gray-500 text-white border border-gray-400/30' // Contando: Gris medio
+        }`}>
+            <Clock size={12} className={isFinished ? '' : 'animate-pulse'} />
+            <span className="tabular-nums">
+                {isFinished ? 'LISTO' : formatSeconds(timeLeft)}
+            </span>
         </div>
     );
 };

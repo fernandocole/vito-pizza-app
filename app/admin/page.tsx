@@ -4,7 +4,8 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { 
   Users, LogOut, LayoutDashboard, List, ChefHat, BarChart3, ShoppingBag, Settings, 
-  Palette, Sun, Moon, ArrowUpNarrowWide, ArrowDownAZ, Maximize2, Minimize2, ShieldAlert
+  Palette, Sun, Moon, ArrowUpNarrowWide, ArrowDownAZ, Maximize2, Minimize2, ShieldAlert,
+  Flame, Clock, CheckCircle, Hourglass
 } from 'lucide-react';
 
 // Imports de Vistas
@@ -22,7 +23,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// --- HELPERS (Fuera del componente) ---
+// --- HELPERS ---
 const compressImage = async (file: File): Promise<Blob> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader(); reader.readAsDataURL(file);
@@ -66,10 +67,8 @@ export default function AdminPage() {
   const [password, setPassword] = useState('');
   const [view, setView] = useState<'cocina' | 'pedidos' | 'menu' | 'ingredientes' | 'usuarios' | 'config' | 'ranking' | 'logs'>('cocina');
   
-  // ESTADO DE SESIÓN (Default 24hs)
   const [sessionDuration, setSessionDuration] = useState(24 * 60 * 60 * 1000); 
 
-  // DATOS
   const [pedidos, setPedidos] = useState<any[]>([]); 
   const [pizzas, setPizzas] = useState<any[]>([]);
   const [ingredientes, setIngredientes] = useState<any[]>([]);
@@ -77,7 +76,6 @@ export default function AdminPage() {
   const [reservedState, setReservedState] = useState<Record<string, number>>({});
   const [logs, setLogs] = useState<any[]>([]);
     
-  // ESTADO LOCAL
   const [edits, setEdits] = useState<Record<string, any>>({});
   const [invitadosDB, setInvitadosDB] = useState<any[]>([]); 
   const [valoraciones, setValoraciones] = useState<any[]>([]);
@@ -86,7 +84,6 @@ export default function AdminPage() {
   const [onlineUsers, setOnlineUsers] = useState(0);
   const prevPedidosCount = useRef(0);
     
-  // NUEVA COMIDA
   const [newPizzaName, setNewPizzaName] = useState('');
   const [newPizzaDesc, setNewPizzaDesc] = useState('');
   const [newPizzaImg, setNewPizzaImg] = useState('');
@@ -96,21 +93,17 @@ export default function AdminPage() {
   const [newPizzaType, setNewPizzaType] = useState<'pizza' | 'burger' | 'other'>('pizza');
   const [uploading, setUploading] = useState(false);
     
-  // NUEVA RECETAS
   const [newPizzaIngredients, setNewPizzaIngredients] = useState<{ingrediente_id: string, nombre: string, cantidad: number}[]>([]);
   const [newPizzaSelectedIng, setNewPizzaSelectedIng] = useState('');
   const [newPizzaRecipeQty, setNewPizzaRecipeQty] = useState<string | number>('');
 
-  // ESTADOS INGREDIENTES (INVENTARIO)
   const [newIngName, setNewIngName] = useState('');
   const [newIngQty, setNewIngQty] = useState<string | number>('');
   const [newIngUnit, setNewIngUnit] = useState('g');
     
-  // ESTADOS EDICION INGREDIENTE EN LISTA
   const [editingIngId, setEditingIngId] = useState<string | null>(null);
   const [editIngForm, setEditIngForm] = useState<{nombre: string, cantidad: number | string, unidad: string}>({nombre:'', cantidad:0, unidad:'g'});
 
-  // ASIGNAR RECETA EXISTENTE
   const [tempRecipeIng, setTempRecipeIng] = useState<Record<string, string>>({});
   const [tempRecipeQty, setTempRecipeQty] = useState<Record<string, string | number>>({});
     
@@ -158,9 +151,6 @@ export default function AdminPage() {
       uploadBox: "bg-neutral-100 border-neutral-300 hover:bg-neutral-200"
   };
 
-  // --- EFECTOS ---
-  
-  // 1. CHEQUEO DE SESION AUTOMATICO
   useEffect(() => {
     const session = localStorage.getItem('vito-admin-session');
     if (session) {
@@ -169,13 +159,26 @@ export default function AdminPage() {
             if (Date.now() < parsed.expiry) {
                 setAutenticado(true);
             } else {
-                localStorage.removeItem('vito-admin-session'); // Expiró
+                localStorage.removeItem('vito-admin-session');
             }
         } catch (e) {
             localStorage.removeItem('vito-admin-session');
         }
     }
   }, []);
+
+  useEffect(() => {
+      if (autenticado) {
+          window.history.pushState(null, document.title, window.location.href);
+          const handlePopState = () => {
+              window.history.pushState(null, document.title, window.location.href);
+          };
+          window.addEventListener('popstate', handlePopState);
+          return () => {
+              window.removeEventListener('popstate', handlePopState);
+          };
+      }
+  }, [autenticado]);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('vito-theme');
@@ -221,7 +224,6 @@ export default function AdminPage() {
     return () => { supabase.removeChannel(presenceChannel); };
   }, [autenticado]);
 
-  // --- MEMOS DE BASE (Requeridos por funciones) ---
   const stockEstimadoNueva = useMemo(() => { return calcularStockDinamico(newPizzaIngredients, ingredientes); }, [newPizzaIngredients, ingredientes]);
   
   const activeCategories: string[] = useMemo(() => { 
@@ -238,13 +240,11 @@ export default function AdminPage() {
       return Array.from(cats).sort(); 
   }, [pizzas]);
 
-  // --- FUNCIONES Y ACCIONES ---
   const toggleDarkMode = () => { setIsDarkMode(!isDarkMode); localStorage.setItem('vito-dark-mode', String(!isDarkMode)); };
   const toggleOrden = () => { const n = orden === 'estado' ? 'nombre' : 'estado'; setOrden(n); localStorage.setItem('vito-orden', n); };
   const toggleCompact = () => { setIsCompact(!isCompact); localStorage.setItem('vito-compact', String(!isCompact)); };
   const selectTheme = (t: any) => { setCurrentTheme(t); localStorage.setItem('vito-theme', t.name); setShowThemeSelector(false); window.dispatchEvent(new Event('storage')); };
 
-  // --- LOGIN CON PERSISTENCIA ---
   const ingresar = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     let { data } = await supabase.from('configuracion_dia').select('*').single();
@@ -253,22 +253,12 @@ export default function AdminPage() {
     if (data && data.password_admin === password) { 
         setAutenticado(true); 
         setConfig(data); 
-        
-        // GUARDAR SESION
         const expiry = Date.now() + sessionDuration;
         localStorage.setItem('vito-admin-session', JSON.stringify({ expiry }));
-        
         cargarDatos(); 
     } else { 
         alert('Incorrecto'); 
     }
-  };
-
-  // --- LOGOUT ---
-  const salir = () => {
-      localStorage.removeItem('vito-admin-session');
-      setAutenticado(false);
-      window.location.href='/';
   };
 
   const refreshLogsOnly = async () => {
@@ -280,13 +270,12 @@ export default function AdminPage() {
     if ('serviceWorker' in navigator && navigator.serviceWorker.ready) {
         try {
             const registration = await navigator.serviceWorker.ready;
-            // AQUI AGREGAMOS LA URL AL OBJETO DATA
             registration.showNotification(title, {
                 body: body,
                 icon: '/icon.png',
                 badge: '/icon.png',
                 vibrate: [200, 100, 200],
-                data: { url: '/admin' } // <--- ESTO REDIRIGE AL ADMIN
+                data: { url: '/admin' }
             } as any);
             return;
         } catch (e) { console.log("SW notification failed"); }
@@ -397,7 +386,6 @@ export default function AdminPage() {
   const cancelChanges = (id: string) => { setEdits(prev => { const newEdits = { ...prev }; delete newEdits[id]; return newEdits; }); };
   const toggleCocinando = async (p: any) => { if(p.tipo === 'pizza' && !p.cocinando && p.totalPendientes < p.target) { alert("Falta para 1 entera"); return; } const newState = !p.cocinando; const startTime = newState ? new Date().toISOString() : null; if (newState) { const receta = recetas.filter(r => r.pizza_id === p.id); if(receta.length > 0) { for (const item of receta) { const ing = ingredientes.find(i => i.id === item.ingrediente_id); if (ing) { const nuevaCant = ing.cantidad_disponible - item.cantidad_requerida; await supabase.from('ingredientes').update({ cantidad_disponible: nuevaCant }).eq('id', ing.id); } } } } else { const receta = recetas.filter(r => r.pizza_id === p.id); if(receta.length > 0) { for (const item of receta) { const ing = ingredientes.find(i => i.id === item.ingrediente_id); if (ing) { const nuevaCant = ing.cantidad_disponible + item.cantidad_requerida; await supabase.from('ingredientes').update({ cantidad_disponible: nuevaCant }).eq('id', ing.id); } } } } await supabase.from('menu_pizzas').update({ cocinando: newState, cocinando_inicio: startTime }).eq('id', p.id); await actualizarStockGlobal(); const { data: ings } = await supabase.from('ingredientes').select('*').order('nombre'); if(ings) setIngredientes(ings); };
   
-  // --- MEMOS DERIVADOS (Dependen de las funciones anteriores y estado) ---
   const metricas = useMemo(() => { 
       let lista = pizzas.filter(p => p.activa); 
       if (activeCategories.length > 0 && !activeCategories.includes('Todas')) { 
@@ -416,9 +404,32 @@ export default function AdminPage() {
           if (orden === 'nombre') return a.nombre.localeCompare(b.nombre); 
           return b.totalPendientes - a.totalPendientes; 
       }); 
-  }, [pizzas, pedidos, config, orden, activeCategories]); // activeCategories ya está definido arriba
+  }, [pizzas, pedidos, config, orden, activeCategories]); 
 
-  const stats = useMemo(() => { const totalPendientes = metricas.reduce((acc, m) => acc + m.totalPendientes, 0); const pizzasIncompletas = metricas.filter(m => m.faltan < m.target && m.totalPendientes > 0).length; let totalPizzasEntregadas = 0; pizzas.forEach(pz => { const porc = pedidos.filter(p => p.pizza_id === pz.id && p.estado === 'entregado').reduce((acc, c) => acc + c.cantidad_porciones, 0); const t = pz.porciones_individuales || config.porciones_por_pizza; totalPizzasEntregadas += Math.floor(porc / t); }); const totalStock = pizzas.reduce((acc, p) => acc + ((p.stock || 0) * (p.porciones_individuales || config.porciones_por_pizza)), 0); return { totalPendientes, pizzasIncompletas, totalPizzasEntregadas, totalStockPorciones: totalStock }; }, [metricas, pizzas, pedidos, config]);
+  // --- STATS REFACTORIZADO (Universal) ---
+  const stats = useMemo(() => { 
+      let waiting = 0;
+      let cooking = 0;
+      let delivered = 0;
+      const hungryPeople = new Set();
+
+      pedidos.forEach(p => {
+          if (p.estado === 'pendiente') {
+              hungryPeople.add(p.invitado_nombre.toLowerCase());
+              const pizza = pizzas.find(z => z.id === p.pizza_id);
+              if (pizza?.cocinando) {
+                  cooking += p.cantidad_porciones;
+              } else {
+                  waiting += p.cantidad_porciones;
+              }
+          } else if (p.estado === 'entregado') {
+              delivered += p.cantidad_porciones;
+          }
+      });
+
+      return { waiting, cooking, delivered, hungryPeople: hungryPeople.size };
+  }, [pedidos, pizzas]);
+
   const pedidosAgrupados = Array.from(new Set(pedidos.map(p => p.invitado_nombre.toLowerCase()))).map(nombre => { const susPedidos = pedidos.filter(p => p.invitado_nombre.toLowerCase() === nombre); const nombreReal = susPedidos[0]?.invitado_nombre || nombre; const detalle = pizzas.map(pz => { const ped = susPedidos.filter(p => p.pizza_id === pz.id); if (ped.length === 0) return null; const entr = ped.filter(p => p.estado === 'entregado').reduce((acc, c) => acc + c.cantidad_porciones, 0); const pendientesArr = ped.filter(p => p.estado === 'pendiente'); const pend = pendientesArr.reduce((acc, c) => acc + c.cantidad_porciones, 0); const oldestPending = pendientesArr.length > 0 ? pendientesArr.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0].created_at : null; return { id: pz.id, nombre: pz.nombre, entregada: entr, enHorno: pz.cocinando ? pend : 0, enEspera: pz.cocinando ? 0 : pend, oldestPending: oldestPending }; }).filter(Boolean); const totalEnHorno = detalle.reduce((acc, d) => acc + (d?.enHorno || 0), 0); const totalEnEspera = detalle.reduce((acc, d) => acc + (d?.enEspera || 0), 0); const totalPendienteGeneral = totalEnHorno + totalEnEspera; return { nombre: nombreReal, detalle, totalPendienteGeneral, totalEnHorno, totalEnEspera }; }).sort((a, b) => b.totalPendienteGeneral - a.totalPendienteGeneral);
   const ranking = useMemo(() => { return pizzas.map(p => { const vals = valoraciones.filter(v => v.pizza_id === p.id); const avg = vals.length > 0 ? (vals.reduce((a, b) => a + b.rating, 0) / vals.length) : 0; const orders = pedidos.filter(ped => ped.pizza_id === p.id).reduce((acc, c) => acc + c.cantidad_porciones, 0); return { ...p, avg: parseFloat(avg.toFixed(1)), count: vals.length, totalOrders: orders }; }).sort((a, b) => b.avg - a.avg); }, [pizzas, valoraciones, pedidos]);
   const allUsersList = useMemo(() => { const map = new Map(); invitadosDB.forEach(u => map.set(u.nombre.toLowerCase(), { ...u, source: 'db', origen: u.origen || 'admin' })); pedidos.forEach(p => {  const key = p.invitado_nombre.toLowerCase(); if (!map.has(key)) map.set(key, { id: null, nombre: p.invitado_nombre, bloqueado: false, source: 'ped', totalOrders: p.cantidad_porciones });  else { const existing = map.get(key); map.set(key, { ...existing, totalOrders: (existing.totalOrders || 0) + p.cantidad_porciones }); } }); invitadosDB.forEach(u => { const key = u.nombre.toLowerCase(); if(map.has(key)) { const existing = map.get(key); map.set(key, { ...existing, source: 'db', id: u.id, origen: u.origen || 'admin' }); }}); return Array.from(map.values()).sort((a, b) => a.nombre.localeCompare(b.nombre)); }, [invitadosDB, pedidos]);
@@ -457,15 +468,29 @@ export default function AdminPage() {
           </div>
       </div>
       <div className="relative z-10 pt-24 px-4 pb-36">
+        
+        {/* --- TABLERO DE MÉTRICAS --- */}
         {view === 'cocina' && (
-            <div className="grid grid-cols-2 gap-4 mb-4">
-                <div className={`p-3 rounded-2xl border ${base.metric}`}><h4 className={`text-[10px] font-bold uppercase mb-2 text-center border-b pb-1 ${base.divider} ${base.subtext}`}>ENTERAS</h4><div className="grid grid-cols-2 gap-2"><div className="text-center"><p className={`text-[9px] uppercase font-bold ${base.subtext}`}>En Curso</p><p className="text-xl font-bold">{stats.pizzasIncompletas}</p></div><div className="text-center"><p className={`text-[9px] uppercase font-bold ${base.subtext}`}>Entregadas</p><p className="text-xl font-bold">{stats.totalPizzasEntregadas}</p></div></div></div>
-                <div className={`p-3 rounded-2xl border flex flex-col justify-center items-center ${base.metric}`}>
-                    <h4 className={`text-[10px] font-bold uppercase mb-2 text-center w-full border-b pb-1 ${base.divider} ${base.subtext}`}>PORCIONES PEDIDAS</h4>
-                    <p className="text-3xl font-bold">{stats.totalPendientes}</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                <div className={`p-3 rounded-2xl border flex flex-col items-center justify-center ${base.metric}`}>
+                    <div className="flex items-center gap-1 mb-1 opacity-60"><Flame size={16}/><span className="text-[10px] font-bold uppercase">En Horno</span></div>
+                    <p className="text-2xl font-black">{stats.cooking}</p>
+                </div>
+                <div className={`p-3 rounded-2xl border flex flex-col items-center justify-center ${base.metric}`}>
+                    <div className="flex items-center gap-1 mb-1 opacity-60"><Hourglass size={16}/><span className="text-[10px] font-bold uppercase">En Cola</span></div>
+                    <p className="text-2xl font-black">{stats.waiting}</p>
+                </div>
+                <div className={`p-3 rounded-2xl border flex flex-col items-center justify-center ${base.metric}`}>
+                    <div className="flex items-center gap-1 mb-1 opacity-60"><CheckCircle size={16}/><span className="text-[10px] font-bold uppercase">Entregado</span></div>
+                    <p className="text-2xl font-black">{stats.delivered}</p>
+                </div>
+                <div className={`p-3 rounded-2xl border flex flex-col items-center justify-center ${base.metric}`}>
+                    <div className="flex items-center gap-1 mb-1 opacity-60"><Users size={16}/><span className="text-[10px] font-bold uppercase">Esperando</span></div>
+                    <p className="text-2xl font-black">{stats.hungryPeople}</p>
                 </div>
             </div>
         )}
+
         <main className="max-w-4xl mx-auto space-y-4 w-full">
             {view === 'cocina' && <KitchenView metricas={metricas} base={base} isCompact={isCompact} isDarkMode={isDarkMode} currentTheme={currentTheme} toggleCocinando={toggleCocinando} entregar={entregar} />}
             {view === 'pedidos' && <OrdersView pedidosAgrupados={pedidosAgrupados} base={base} isDarkMode={isDarkMode} eliminarPedidosGusto={eliminarPedidosGusto} />}
