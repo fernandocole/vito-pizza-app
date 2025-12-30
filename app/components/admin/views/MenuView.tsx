@@ -191,14 +191,33 @@ export const MenuView = ({
                         </div>
 
                         <div className="flex gap-2 flex-shrink-0">
+                            {/* BOTONES GUARDAR/CANCELAR MEJORADOS */}
                             {isEdited && (
                                 <>
-                                    <button onClick={() => savePizzaChanges(p.id)} className="p-2 bg-yellow-500 text-black rounded-xl animate-pulse shadow-lg hover:scale-105 transition-transform"><Save size={16}/></button>
-                                    <button onClick={() => cancelChanges(p.id)} className="p-2 bg-red-500 text-white rounded-xl shadow-lg hover:scale-105 transition-transform"><X size={16}/></button>
+                                    <button 
+                                        onClick={() => savePizzaChanges(p.id)} 
+                                        className={`p-2 ${currentTheme.color} text-white rounded-xl animate-pulse shadow-lg hover:scale-105 transition-transform`}
+                                        title="Guardar"
+                                    >
+                                        <Save size={16}/>
+                                    </button>
+                                    <button 
+                                        onClick={() => cancelChanges(p.id)} 
+                                        className={`p-2 bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300 rounded-xl shadow-sm hover:scale-105 transition-transform`}
+                                        title="Cancelar"
+                                    >
+                                        <X size={16}/>
+                                    </button>
                                 </>
                             )}
-                            <button onClick={() => updateP(p.id, 'activa', !p.activa)} className={`p-2 rounded-xl transition-colors ${p.activa ? 'bg-white/10 hover:bg-white/20' : 'bg-black/50 text-neutral-500'}`}>{p.activa ? <Eye size={16}/> : <EyeOff size={16}/>}</button>
-                            <button onClick={() => delP(p.id)} className="p-2 text-red-500 hover:bg-red-500/10 rounded-xl transition-colors"><Trash2 size={16}/></button>
+                            
+                            {/* Botones de acción normales */}
+                            {!isEdited && (
+                                <button onClick={() => updateP(p.id, 'activa', !p.activa)} className={`p-2 rounded-xl transition-colors ${p.activa ? 'bg-white/10 hover:bg-white/20' : 'bg-black/50 text-neutral-500'}`}>{p.activa ? <Eye size={16}/> : <EyeOff size={16}/>}</button>
+                            )}
+                            {!isEdited && (
+                                <button onClick={() => delP(p.id)} className="p-2 text-red-500 hover:bg-red-500/10 rounded-xl transition-colors"><Trash2 size={16}/></button>
+                            )}
                         </div>
                     </div>
 
