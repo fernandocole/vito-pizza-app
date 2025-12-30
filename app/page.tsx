@@ -33,7 +33,6 @@ const THEMES = [
 type LangType = 'es' | 'en' | 'it';
 type MensajeTipo = { texto: string, tipo: 'info' | 'alerta' | 'exito' };
 
-// HELPER TEXTOS DINÁMICOS
 const getCookingText = (tipo: string, context: 'ing' | 'ed' | 'short' = 'ing') => {
     const isPizza = tipo === 'pizza';
     if (context === 'ing') return isPizza ? 'al horno' : 'en preparación';
@@ -242,20 +241,18 @@ export default function VitoPizzaApp() {
     if ('serviceWorker' in navigator && navigator.serviceWorker.ready) {
         try {
             const registration = await navigator.serviceWorker.ready;
-            
             registration.showNotification(title, {
                 body: body,
                 icon: '/icon.png',
                 badge: '/icon.png',
                 vibrate: [200, 100, 200],
-                data: { url: url } // Pasamos la URL al SW
+                data: { url: url }
             } as any);
             return;
         } catch (e) {
             console.log("Fallo SW notification, intentando standard");
         }
     }
-    
     if (Notification.permission === 'granted') {
         new Notification(title, { body, icon: '/icon.png' });
     }
@@ -388,16 +385,12 @@ export default function VitoPizzaApp() {
   const changeFilter = (f: any) => { setFilter(f); localStorage.setItem('vito-filter', f); };
   const verifyAccess = (i: string, c: string) => { if (!c || c === '' || i === c) { setAccessGranted(true); if(c !== '') localStorage.setItem('vito-guest-pass-val', i); } else { setAccessGranted(false); } };
   
-  // --- LOGIN CON NOTIFICACIONES ---
   const handleNameChange = (val: string) => { 
       setNombreInvitado(val); 
       localStorage.setItem('vito-guest-name', val); 
-      
-      // PEDIR NOTIFICACIONES AL LOGUEAR
       if (val.length > 2 && 'Notification' in window && Notification.permission === 'default') {
           Notification.requestPermission();
       }
-
       const user = invitadosLista.find(u => u.nombre.toLowerCase() === val.toLowerCase()); 
       if (user && user.bloqueado) { setUsuarioBloqueado(true); setMotivoBloqueo(user.motivo_bloqueo || ''); } else { setUsuarioBloqueado(false); setMotivoBloqueo(''); } 
   };
@@ -495,32 +488,19 @@ export default function VitoPizzaApp() {
              res[pz.id] = { pendientes: p, comidos: c };
              if (p > 0) penInfo[pz.id] = p;
              
-             // --- LÓGICA DE NOTIFICACIONES CORREGIDA (DINÁMICA) ---
              if (!firstLoadRef.current) { 
                  const estabaCocinando = prevCocinandoData.current[pz.id] || false;
-                 
-                 // 1. Entra al horno (o preparación)
                  if (!estabaCocinando && pz.cocinando && penInfo[pz.id]) {
                      const accion = getCookingText(pz.tipo, 'ing');
                      const titulo = pz.tipo === 'pizza' ? "¡Al Horno!" : "¡En Marcha!";
-                     
                      mostrarMensaje(`¡${penInfo[pz.id]} de ${pz.nombre} ${accion}!`, 'alerta'); 
                      sendNotification(titulo, `Tu ${pz.nombre} está ${getCookingText(pz.tipo, 'ing')}.`); 
                  }
-                 
-                 // 2. Sale del horno (y tenía pendientes)
                  const teniaPendientes = (prevPendingPerPizzaRef.current[pz.id] || 0) > 0;
                  if (estabaCocinando && !pz.cocinando && teniaPendientes) {
                      const estadoListo = getCookingText(pz.tipo, 'ed');
-                     
                      mostrarMensaje(`¡Tu ${pz.nombre} ESTÁ LISTA!`, 'exito'); 
-                     
-                     // NOTIFICACIÓN CON DEEP LINK
-                     sendNotification(
-                         `¡${pz.nombre} Lista!`, 
-                         `¡Ya está ${estadoListo}! A comer.`, 
-                         `/?rate=${pz.id}` 
-                     );
+                     sendNotification(`¡${pz.nombre} Lista!`, `¡Ya está ${estadoListo}! A comer.`, `/?rate=${pz.id}`);
                  }
              } 
              
@@ -554,16 +534,20 @@ export default function VitoPizzaApp() {
       } catch { return ['General']; }
   }, [config.categoria_activa]);
 
+  // --- MEMO ENRICHED PIZZAS (STOCK VISUAL CORRECTO) ---
   const enrichedPizzas = useMemo(() => {
       const globalAvg = allRatings.length > 0 ? (allRatings.reduce((a, r) => a + r.rating, 0) / allRatings.length) : 0;
       
       return pizzas.map(pizza => {
-          const totalStock = (pizza.stock || 0) * (pizza.porciones_individuales || config.porciones_por_pizza);
-          const used = pedidos.filter(p => p.pizza_id === pizza.id).reduce((a, c) => a + c.cantidad_porciones, 0);
-          const stockRestante = Math.max(0, totalStock - used);
-          const pen = pedidos.filter(p => p.pizza_id === pizza.id && p.estado !== 'entregado').reduce((a, c) => a + c.cantidad_porciones, 0);
           const target = pizza.porciones_individuales || config.porciones_por_pizza;
+          const pen = pedidos.filter(p => p.pizza_id === pizza.id && p.estado !== 'entregado').reduce((a, c) => a + c.cantidad_porciones, 0);
           
+          // Lógica Simplificada: Stock Real Total = (Pizzas enteras * Porciones) - Pendientes.
+          // El stock de la DB son las pizzas enteras que el Admin puede cocinar.
+          // Los pendientes son las porciones reservadas de ese stock total.
+          const totalPotentialStock = (pizza.stock || 0) * target;
+          const stockRestante = Math.max(0, totalPotentialStock - pen);
+
           const rats = allRatings.filter(r => r.pizza_id === pizza.id);
           const avg = rats.length > 0 ? (rats.reduce((a, b) => a + b.rating, 0) / rats.length).toFixed(1) : null;
           const sortR = rats.length > 0 ? (rats.reduce((a, b) => a + b.rating, 0) / rats.length) : globalAvg;
@@ -596,8 +580,6 @@ export default function VitoPizzaApp() {
     if (enrichedPizzas.length === 0) return;
 
     let lista = [...enrichedPizzas];
-    
-    // Filtrar por categoría activa
     if (activeCategories.length > 0 && !activeCategories.includes('Todas')) {
         lista = lista.filter(p => activeCategories.includes(p.categoria || 'General'));
     }
@@ -638,109 +620,70 @@ export default function VitoPizzaApp() {
     });
 
     setOrderedIds(lista.map(p => p.id));
-  }, [
-      orden, 
-      filter, 
-      pizzas.length, 
-      JSON.stringify(pizzas.map(p => ({ id: p.id, cocinando: p.cocinando, stock: p.stock }))),
-      JSON.stringify(activeCategories)
-  ]);
+  }, [orden, filter, pizzas.length, JSON.stringify(pizzas.map(p => ({ id: p.id, cocinando: p.cocinando, stock: p.stock }))), JSON.stringify(activeCategories)]);
 
-  // --- ESCUCHAR DEEP LINKS (PARAMETRO URL) ---
-  // IMPORTANTE: Este efecto debe ir DESPUÉS de definir enrichedPizzas y openRating
   useEffect(() => {
       const params = new URLSearchParams(window.location.search);
       const rateId = params.get('rate');
-
       if (rateId && enrichedPizzas.length > 0) {
           const pizza = enrichedPizzas.find(p => p.id === rateId) || pizzas.find(p => p.id === rateId);
           if (pizza) {
-              // openRating está definido abajo, por eso lo movemos después. 
-              // PERO como es una función dentro del componente, necesitamos definirla antes de este efecto o usar hoisting.
-              // Para evitar líos de dependencias, definiremos openRating antes.
               openRating(pizza);
-              
               const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
               window.history.replaceState({ path: newUrl }, '', newUrl);
           }
       }
-  }, [enrichedPizzas]); // Quitamos openRating de dependencias si es estable o usamos useCallback
+  }, [enrichedPizzas]); 
 
-  // --- LÓGICA DE RECORDATORIO REFACTORIZADA ---
   useEffect(() => {
       if(!nombreInvitado || !pizzas.length) return;
-
       const storedQueue = localStorage.getItem('vito-review-queue');
       let queue: { id: string, pizzaId: string, triggerAt: number }[] = storedQueue ? JSON.parse(storedQueue) : [];
       let queueChanged = false;
-
       const delivered = pedidos.filter(p => p.invitado_nombre === nombreInvitado && p.estado === 'entregado');
-
       delivered.forEach(p => {
           if (misValoraciones.includes(p.pizza_id)) return;
           if (queue.find(q => q.id === p.id)) return;
           if (processedOrderIds.current.has(p.id)) return;
-
           processedOrderIds.current.add(p.id);
-          
           if (!firstLoadRef.current) {
               const delayMins = config.tiempo_recordatorio_minutos || 10;
               const triggerTime = Date.now() + (delayMins * 60000);
-              
               queue.push({ id: p.id, pizzaId: p.pizza_id, triggerAt: triggerTime });
               queueChanged = true;
           }
       });
-
-      if (queueChanged) {
-          localStorage.setItem('vito-review-queue', JSON.stringify(queue));
-      }
-
+      if (queueChanged) localStorage.setItem('vito-review-queue', JSON.stringify(queue));
       const checker = setInterval(() => {
           const currentQueueStr = localStorage.getItem('vito-review-queue');
           if (!currentQueueStr) return;
-          
           let currentQueue = JSON.parse(currentQueueStr);
           const now = Date.now();
           const toNotify: any[] = [];
           const remaining: any[] = [];
-
           currentQueue.forEach((item: any) => {
               if (misValoraciones.includes(item.pizzaId)) return;
-
-              if (now >= item.triggerAt) {
-                  toNotify.push(item);
-              } else {
-                  remaining.push(item);
-              }
+              if (now >= item.triggerAt) toNotify.push(item);
+              else remaining.push(item);
           });
-
           if (toNotify.length > 0) {
               const item = toNotify[0];
               const pz = enrichedPizzas.find(z => z.id === item.pizzaId) || pizzas.find(z => z.id === item.pizzaId);
-              
               if (pz) {
                   const delay = config.tiempo_recordatorio_minutos || 10;
                   const nameToShow = pz.displayName || pz.nombre;
-                  // DEEP LINK AQUI TAMBIEN
-                  sendNotification(
-                      t.rateQuestion + " " + nameToShow + "?", 
-                      `${t.ateTimeAgo} ${delay} ${t.minAgo}`,
-                      `/?rate=${pz.id}`
-                  );
+                  sendNotification(t.rateQuestion + " " + nameToShow + "?", `${t.ateTimeAgo} ${delay} ${t.minAgo}`, `/?rate=${pz.id}`);
                   setLateRatingPizza(pz);
                   setShowLateRatingModal(true);
               }
               localStorage.setItem('vito-review-queue', JSON.stringify(remaining));
           }
       }, 10000); 
-
       return () => clearInterval(checker);
   }, [pedidos, nombreInvitado, pizzas, enrichedPizzas, misValoraciones, config]);
 
   const summaryData = useMemo(() => {
       if(!summarySheet) return [];
-      
       return enrichedPizzas.filter(p => {
           const h = miHistorial[p.id];
           if(!h) return false;
@@ -756,7 +699,6 @@ export default function VitoPizzaApp() {
           else if(summarySheet === 'oven') count = h.pendientes;
           else if(summarySheet === 'ready') count = h.comidos;
           else count = h.pendientes; 
-
           return { ...p, count };
       });
   }, [summarySheet, enrichedPizzas, miHistorial]); 
@@ -782,12 +724,10 @@ export default function VitoPizzaApp() {
           const avg = vals.length > 0 ? vals.reduce((a, b) => a + b.rating, 0) / vals.length : 0;
           const totS = (p.stock || 0) * (p.porciones_individuales || config.porciones_por_pizza);
           const us = pedidos.filter(ped => ped.pizza_id === p.id).reduce((a, c) => a + c.cantidad_porciones, 0);
-          
           let dName = p.nombre;
           if (lang !== 'es' && autoTranslations[p.id] && autoTranslations[p.id][lang]) {
               dName = autoTranslations[p.id][lang].name;
           }
-
           return { ...p, displayName: dName, stock: Math.max(0, totS - us), avg, count: vals.length };
       });
       pData.forEach(p => { if (p.stock === 0) msgs.push(`${p.displayName}: ${t.soldOut} 😭`); else if (p.stock <= 5) msgs.push(`${t.only} ${p.stock} ${t.of} ${p.displayName}! 🏃`); });
@@ -809,22 +749,59 @@ export default function VitoPizzaApp() {
         if (p.stockRestante <= 0) { alert("Sin stock :("); return; } 
         setOrderToConfirm(p); 
     } else { 
-        // --- PROTECCIÓN AQUÍ: Si se está cocinando, prohibir cancelación ---
         if (p.cocinando) {
             mostrarMensaje(`🔥 ¡Ya está ${getCookingText(p.tipo)}! No se puede cancelar.`, 'alerta');
             return;
         }
-        // ------------------------------------------------------------------
-
-        const { data } = await supabase.from('pedidos').select('id').eq('pizza_id', p.id).ilike('invitado_nombre', nombreInvitado.trim()).eq('estado', 'pendiente').order('created_at', { ascending: false }).limit(1).single(); 
-        if (data) { 
-            await supabase.from('pedidos').delete().eq('id', data.id); 
+        // Optimistic UI for Delete
+        const pending = pedidos.filter(pd => pd.pizza_id === p.id && pd.invitado_nombre.toLowerCase() === nombreInvitado.toLowerCase().trim() && pd.estado === 'pendiente');
+        if (pending.length > 0) {
+            const toDelete = pending[0];
+            const newPedidos = pedidos.filter(x => x.id !== toDelete.id);
+            setPedidos(newPedidos); // Update UI
             mostrarMensaje(`${t.successCancel} ${p.displayName}`, 'info'); 
-        } 
+            await supabase.from('pedidos').delete().eq('id', toDelete.id); 
+            fetchDatos(); // Re-sync later
+        }
     }
   }
 
-  const proceedWithOrder = async () => { if(!orderToConfirm) return; const { error } = await supabase.from('pedidos').insert([{ invitado_nombre: nombreInvitado, pizza_id: orderToConfirm.id, cantidad_porciones: 1, estado: 'pendiente' }]); if (!error) mostrarMensaje(`${t.successOrder} ${orderToConfirm.displayName}!`, 'exito'); setOrderToConfirm(null); }
+  // --- PROCEED WITH ORDER (OPTIMISTIC UPDATE) ---
+  const proceedWithOrder = async () => { 
+      if(!orderToConfirm) return; 
+      
+      const newOrder = {
+          id: `temp-${Date.now()}`, 
+          invitado_nombre: nombreInvitado, 
+          pizza_id: orderToConfirm.id, 
+          cantidad_porciones: 1, 
+          estado: 'pendiente',
+          created_at: new Date().toISOString()
+      };
+
+      // 1. Update State Immediately (Optimistic)
+      // OJO: No bajamos el stock de 'pizzas' (enteras) localmente, solo agregamos pedido.
+      // El cálculo en 'enrichedPizzas' se encarga de restar del total disponible.
+      setPedidos(prev => [...prev, newOrder]);
+      setOrderToConfirm(null);
+      mostrarMensaje(`${t.successOrder} ${orderToConfirm.displayName}!`, 'exito');
+
+      // 2. Send to DB in Background
+      const { error } = await supabase.from('pedidos').insert([{ 
+          invitado_nombre: nombreInvitado, 
+          pizza_id: orderToConfirm.id, 
+          cantidad_porciones: 1, 
+          estado: 'pendiente' 
+      }]);
+
+      if (error) {
+          setPedidos(prev => prev.filter(p => p.id !== newOrder.id));
+          alert("Error al pedir. Intenta de nuevo.");
+      } else {
+          fetchDatos();
+      }
+  }
+
   const mostrarMensaje = (txt: string, tipo: 'info' | 'alerta' | 'exito') => { setMensaje({ texto: txt, tipo }); if (tipo !== 'alerta') { setTimeout(() => setMensaje(null), 2500); } }
 
   if (loadingConfig) { return (<div className={`min-h-screen flex items-center justify-center p-4 ${base.bg}`}><div className={`animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 ${isDarkMode ? 'border-white' : 'border-black'}`}></div></div>); }
@@ -908,7 +885,6 @@ export default function VitoPizzaApp() {
       </div>
 
       <div className="px-4 mt-6 relative z-20 max-w-lg mx-auto pb-20">
-        {/* User Select */}
         <div className={`${base.card} p-2 rounded-2xl border flex items-center gap-3 mb-6`}>
              <div className={`p-3 rounded-full bg-gradient-to-br ${currentTheme.gradient} text-white shadow-lg`}><User size={24} /></div>
              <div className="flex-1 pr-2">
@@ -933,7 +909,6 @@ export default function VitoPizzaApp() {
             </div>
         )}
 
-        {/* MODAL DE CONFIRMACIÓN DE PEDIDO */}
         {orderToConfirm && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-md animate-in fade-in zoom-in duration-300">
                 <div className={`${base.card} w-full max-w-sm rounded-[32px] p-6 shadow-2xl relative border`}>
@@ -958,10 +933,8 @@ export default function VitoPizzaApp() {
             </div>
         )}
 
-        {/* Rating Modal */}
         {showRatingModal && (<div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in"><div className={`${base.card} p-6 rounded-3xl w-full max-w-sm relative shadow-2xl border`}><button onClick={() => setShowRatingModal(false)} className={`absolute top-4 right-4 ${base.subtext} hover:${base.text}`}><X /></button><h3 className={`text-xl font-bold mb-1 ${base.text}`}>{t.rateTitle} {pizzaToRate?.displayName || pizzaToRate?.nombre}</h3><div className="flex justify-center gap-2 mb-6 mt-4">{[1, 2, 3, 4, 5].map(star => (<button key={star} onClick={() => setRatingValue(star)} className="transition-transform hover:scale-110"><Star size={32} fill={star <= ratingValue ? "#eab308" : "transparent"} className={star <= ratingValue ? "text-yellow-500" : "text-neutral-600"} /></button>))}</div><textarea className={`w-full p-3 rounded-xl border outline-none mb-4 resize-none h-24 ${base.input} ${isDarkMode ? 'border-neutral-700 bg-black/50' : 'border-gray-200 bg-gray-50'}`} placeholder="..." value={commentValue} onChange={e => setCommentValue(e.target.value)} /><button onClick={submitRating} disabled={ratingValue === 0} className={`w-full py-3 rounded-xl font-bold shadow-lg ${ratingValue > 0 ? `${currentTheme.color} text-white` : 'bg-neutral-800 text-neutral-500'}`}>{t.sendReview}</button></div></div>)}
 
-        {/* Late Rating Toast */}
         {showLateRatingModal && lateRatingPizza && (
             <div className="fixed top-24 left-4 right-4 z-[100] animate-bounce-in">
                 <div className={`${base.card} p-4 rounded-2xl shadow-2xl border border-yellow-500/50 flex items-center justify-between gap-3`}>

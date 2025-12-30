@@ -1,34 +1,124 @@
-import { Trash2, Edit3, Save, X, Plus, Package } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Trash2, Edit3, Save, X, Plus, Package, Share2, Smartphone, MessageCircle } from 'lucide-react';
 
 export const InventoryView = ({ 
-    base, currentTheme, ingredients, newIngName, setNewIngName, newIngQty, setNewIngQty, newIngUnit, setNewIngUnit, 
-    addIng, editingIngId, editIngForm, setEditIngForm, saveEditIng, cancelEditIng, delIng, startEditIng, reservedState, quickUpdateStock 
+    base, currentTheme, ingredients, newIngName, setNewIngName, newIngQty, setNewIngQty, 
+    newIngUnit, setNewIngUnit, newIngCat, setNewIngCat, // Props de categoría
+    addIng, editingIngId, editIngForm, setEditIngForm, saveEditIng, cancelEditIng, delIng, 
+    startEditIng, reservedState, quickUpdateStock 
 }: any) => {
     
-    // Detectar modo oscuro basado en el color de fondo recibido
-    const isDark = base.bg.includes('neutral-950');
+    const [filterCategory, setFilterCategory] = useState<string>('Todos');
+    const [showShareModal, setShowShareModal] = useState(false);
 
-    // Estilos específicos para el botón de incremento según el modo
+    const isDark = base.bg.includes('neutral-950');
     const incrementBtnClass = isDark 
         ? "text-neutral-500 hover:bg-neutral-700 hover:text-white" 
         : "text-gray-400 hover:bg-gray-200 hover:text-black";
 
+    // 1. Obtener categorías únicas
+    const uniqueCategories = useMemo(() => {
+        const cats = new Set<string>();
+        ingredients.forEach((i: any) => {
+            if(i.categoria) cats.add(i.categoria.trim());
+        });
+        return ['Todos', 'General', ...Array.from(cats).filter(c => c !== 'General').sort()];
+    }, [ingredients]);
+
+    // 2. Filtrar ingredientes
+    const filteredIngredients = useMemo(() => {
+        if (filterCategory === 'Todos') return ingredients;
+        return ingredients.filter((i: any) => (i.categoria || 'General') === filterCategory);
+    }, [ingredients, filterCategory]);
+
+    // 3. Funciones de Compartir
+    const generateShareText = () => {
+        if (filteredIngredients.length === 0) return "Lista vacía";
+        let text = `*🛒 Lista de Compras (${filterCategory})*\n\n`;
+        filteredIngredients.forEach((ing: any) => {
+            text += `- ${ing.nombre}: ${ing.cantidad_disponible} ${ing.unidad}\n`;
+        });
+        return text;
+    };
+
+    const handleWhatsAppShare = () => {
+        const text = generateShareText();
+        const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+        window.open(url, '_blank');
+        setShowShareModal(false);
+    };
+
+    const handleNativeShare = async () => {
+        const text = generateShareText();
+        if (navigator.share) {
+            try {
+                await navigator.share({
+                    title: 'Lista de Compras - Vito App',
+                    text: text,
+                });
+                setShowShareModal(false);
+            } catch (error) {
+                console.log('Error sharing', error);
+            }
+        } else {
+            alert("Tu dispositivo no soporta compartir nativo.");
+        }
+    };
+
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 relative">
             
+            {/* CABECERA: Título y Share */}
+            <div className="flex justify-between items-center px-1">
+                <h2 className="text-xl font-bold opacity-80">Inventario</h2>
+                <button 
+                    onClick={() => setShowShareModal(true)}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold ${currentTheme.color} text-white shadow-lg active:scale-95 transition-transform`}
+                >
+                    <Share2 size={16} /> Compartir
+                </button>
+            </div>
+
+            {/* FILTROS DE CATEGORÍA */}
+            <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+                {uniqueCategories.map(cat => (
+                    <button
+                        key={cat}
+                        onClick={() => setFilterCategory(cat)}
+                        className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all border ${
+                            filterCategory === cat 
+                                ? `${currentTheme.color} text-white border-transparent shadow-md` 
+                                : base.buttonSec
+                        }`}
+                    >
+                        {cat}
+                    </button>
+                ))}
+            </div>
+
             {/* FORMULARIO AGREGAR */}
             <div className={`p-4 rounded-3xl border ${base.card} flex flex-col gap-3`}>
                 <div className="flex items-center gap-2 opacity-50 uppercase text-[10px] font-bold tracking-wider">
                     <Package size={12}/> Nuevo Ingrediente
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                     <input 
                         type="text" 
                         value={newIngName} 
                         onChange={e => setNewIngName(e.target.value)} 
-                        placeholder="Nombre (ej: Harina)" 
-                        className={`flex-[2] p-3 rounded-xl outline-none border min-w-0 ${base.input}`} 
+                        placeholder="Nombre..." 
+                        className={`flex-[2] p-3 rounded-xl outline-none border min-w-[120px] ${base.input}`} 
                     />
+                    <input 
+                        type="text" 
+                        value={newIngCat} 
+                        onChange={e => setNewIngCat(e.target.value)} 
+                        placeholder="Categoría" 
+                        list="cat-list"
+                        className={`flex-1 p-3 rounded-xl outline-none border min-w-[100px] ${base.input}`} 
+                    />
+                    <datalist id="cat-list">{uniqueCategories.map(c => <option key={c} value={c} />)}</datalist>
+                    
                     <input 
                         type="number" 
                         value={newIngQty} 
@@ -56,9 +146,9 @@ export const InventoryView = ({
                 </div>
             </div>
 
-            {/* LISTA INGREDIENTES - 2 COLUMNAS */}
+            {/* LISTA INGREDIENTES */}
             <div className="grid gap-3 grid-cols-2">
-                {ingredients.map((ing: any) => {
+                {filteredIngredients.map((ing: any) => {
                     const isEditing = editingIngId === ing.id;
                     const reserved = reservedState[ing.id] || 0;
                     
@@ -67,32 +157,27 @@ export const InventoryView = ({
                             {isEditing ? (
                                 <div className="p-4 space-y-3">
                                     <label className="text-[10px] font-bold opacity-50 uppercase">Editando</label>
-                                    <input type="text" value={editIngForm.nombre} onChange={e => setEditIngForm({...editIngForm, nombre: e.target.value})} className={`w-full p-3 rounded-xl border text-sm outline-none ${base.input}`} />
+                                    <input type="text" value={editIngForm.nombre} onChange={e => setEditIngForm({...editIngForm, nombre: e.target.value})} className={`w-full p-2 rounded-lg border text-sm ${base.input}`} placeholder="Nombre" />
+                                    <input type="text" value={editIngForm.categoria} onChange={e => setEditIngForm({...editIngForm, categoria: e.target.value})} className={`w-full p-2 rounded-lg border text-sm ${base.input}`} placeholder="Categoría" list="cat-list" />
+                                    
                                     <div className="flex gap-2">
-                                        <input type="number" value={editIngForm.cantidad} onChange={e => setEditIngForm({...editIngForm, cantidad: e.target.value})} className={`w-full p-3 rounded-xl border text-sm outline-none ${base.input}`} />
-                                        <select value={editIngForm.unidad} onChange={e => setEditIngForm({...editIngForm, unidad: e.target.value})} className={`p-3 rounded-xl border text-sm bg-transparent outline-none ${base.input}`}>
+                                        <input type="number" value={editIngForm.cantidad} onChange={e => setEditIngForm({...editIngForm, cantidad: e.target.value})} className={`w-full p-2 rounded-lg border text-sm ${base.input}`} />
+                                        <select value={editIngForm.unidad} onChange={e => setEditIngForm({...editIngForm, unidad: e.target.value})} className={`p-2 rounded-lg border text-sm bg-transparent ${base.input}`}>
                                             <option value="g">g</option><option value="kg">kg</option><option value="u">u</option>
                                         </select>
                                     </div>
-                                    
-                                    {/* BOTONES DE EDICIÓN MODERNIZADOS */}
                                     <div className="flex gap-2 mt-3">
-                                        {/* Cancelar: Botón secundario */}
                                         <button 
                                             onClick={cancelEditIng} 
-                                            className={`flex-1 ${base.buttonSec} border p-3 rounded-xl flex items-center justify-center active:scale-95 transition-all`}
-                                            title="Cancelar"
+                                            className={`flex-1 ${base.buttonSec} border p-2 rounded-lg flex items-center justify-center`}
                                         >
-                                            <X size={20} className="opacity-70"/>
+                                            <X size={16}/>
                                         </button>
-                                        
-                                        {/* Guardar: Botón primario con tema */}
                                         <button 
                                             onClick={() => saveEditIng(ing.id)} 
-                                            className={`flex-[2] ${currentTheme.color} text-white p-3 rounded-xl flex items-center justify-center shadow-md active:scale-95 transition-all hover:opacity-90`}
-                                            title="Guardar"
+                                            className={`flex-[2] ${currentTheme.color} text-white p-2 rounded-lg flex items-center justify-center shadow`}
                                         >
-                                            <Save size={20}/>
+                                            <Save size={16}/>
                                         </button>
                                     </div>
                                 </div>
@@ -101,16 +186,21 @@ export const InventoryView = ({
                                     {/* CABECERA TARJETA */}
                                     <div className="p-4 pb-2 relative flex-1">
                                         <div className="flex justify-between items-start mb-1">
-                                            <h3 className="font-bold text-sm truncate pr-6 opacity-80">{ing.nombre}</h3>
+                                            {/* Contenedor de Texto: Deslizable */}
+                                            <div className="min-w-0 pr-12"> 
+                                                <h3 className="font-bold text-sm overflow-x-auto whitespace-nowrap no-scrollbar opacity-90">
+                                                    {ing.nombre}
+                                                </h3>
+                                                <p className="text-[9px] opacity-50 uppercase font-bold">{ing.categoria || 'General'}</p>
+                                            </div>
                                             
-                                            {/* Botones de acción (Edit/Delete) */}
-                                            <div className="flex gap-1 opacity-30 group-hover:opacity-100 transition-opacity">
-                                                <button onClick={() => startEditIng(ing)} className="hover:text-blue-500 transition-colors"><Edit3 size={14}/></button>
-                                                <button onClick={() => delIng(ing.id)} className="hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
+                                            {/* Botones de acción absolutos (Sin fondo) */}
+                                            <div className="flex gap-1 opacity-30 group-hover:opacity-100 transition-opacity absolute right-2 top-2">
+                                                <button onClick={() => startEditIng(ing)} className="hover:text-blue-500 transition-colors p-1"><Edit3 size={14}/></button>
+                                                <button onClick={() => delIng(ing.id)} className="hover:text-red-500 transition-colors p-1"><Trash2 size={14}/></button>
                                             </div>
                                         </div>
                                         
-                                        {/* CANTIDAD GRANDE (Achicada) */}
                                         <div className="flex items-baseline gap-1 mt-2">
                                             <span className="text-xl font-black tracking-tight">{ing.cantidad_disponible}</span>
                                             <span className="text-xs font-bold opacity-40">{ing.unidad}</span>
@@ -123,7 +213,7 @@ export const InventoryView = ({
                                         )}
                                     </div>
 
-                                    {/* BOTONES DE CARGA RÁPIDA (Footer Limpio y Corregido) */}
+                                    {/* BOTONES DE CARGA RÁPIDA */}
                                     <div className="px-2 pb-2 pt-0">
                                         <div className="flex gap-1 justify-between">
                                             {[1, 5, 10, 100].map((amt) => (
@@ -143,6 +233,34 @@ export const InventoryView = ({
                     );
                 })}
             </div>
+
+            {/* MODAL DE COMPARTIR */}
+            {showShareModal && (
+                <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in p-4">
+                    <div className={`${base.card} w-full max-w-sm rounded-3xl p-6 shadow-2xl relative border`}>
+                        <button onClick={() => setShowShareModal(false)} className="absolute top-4 right-4 opacity-50 hover:opacity-100"><X size={20}/></button>
+                        
+                        <h3 className="text-xl font-bold mb-1">Compartir Lista</h3>
+                        <p className="text-sm opacity-60 mb-6">Selecciona cómo quieres enviar la lista de <b>{filterCategory}</b>.</p>
+                        
+                        <div className="space-y-3">
+                            <button 
+                                onClick={handleWhatsAppShare}
+                                className="w-full py-4 rounded-xl flex items-center justify-center gap-3 font-bold bg-[#25D366] text-white shadow-lg active:scale-95 transition-transform"
+                            >
+                                <MessageCircle size={24} /> WhatsApp
+                            </button>
+                            
+                            <button 
+                                onClick={handleNativeShare}
+                                className={`w-full py-4 rounded-xl flex items-center justify-center gap-3 font-bold border ${base.buttonSec} active:scale-95 transition-transform`}
+                            >
+                                <Smartphone size={24} /> Otras Apps...
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
