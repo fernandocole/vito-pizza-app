@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { 
-  User, ArrowRight, Lock, AlertCircle, X, PartyPopper, Star, Clock 
+  User, ArrowRight, Lock, AlertCircle, X, PartyPopper, Star, Clock, Eye, EyeOff, Crown, Shield 
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -46,9 +46,13 @@ export default function VitoPizzaApp() {
   // @ts-ignore
   const t = dictionary[lang];
 
+  // ESTADO DE FLUJO: 'loading' | 'landing' | 'name' | 'password' | 'app'
+  const [flowStep, setFlowStep] = useState<'loading' | 'landing' | 'name' | 'password' | 'onboarding' | 'app'>('loading');
+  const [guestPassInput, setGuestPassInput] = useState(''); // Contraseña en blanco al inicio
+  const [showPassword, setShowPassword] = useState(true); // Ver contraseña activado por defecto para invitados
+
   const [loadingConfig, setLoadingConfig] = useState(true); 
   const [accessGranted, setAccessGranted] = useState(false);
-  const [guestPassInput, setGuestPassInput] = useState('');
   const [dbPass, setDbPass] = useState('');
 
   const [pizzas, setPizzas] = useState<any[]>([]);
@@ -288,6 +292,7 @@ export default function VitoPizzaApp() {
     }
   };
 
+  // --- USEEFFECT INITIAL LOAD (MODIFICADO) ---
   useEffect(() => {
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('/sw.js')
@@ -318,14 +323,14 @@ export default function VitoPizzaApp() {
 
     const savedNotif = localStorage.getItem('vito-notif-enabled');
     if (savedNotif === 'true' && typeof Notification !== 'undefined' && Notification.permission === 'granted') setNotifEnabled(true);
-    const savedOrden = localStorage.getItem('vito-orden');
-    if (savedOrden) setOrden(savedOrden as any);
-    const savedCompact = localStorage.getItem('vito-compact');
-    if (savedCompact) setIsCompact(savedCompact === 'true');
-    const savedFilter = localStorage.getItem('vito-filter');
-    if (savedFilter) setFilter(savedFilter as any);
+    
+    const savedOrden = localStorage.getItem('vito-orden'); if (savedOrden) setOrden(savedOrden as any);
+    const savedCompact = localStorage.getItem('vito-compact'); if (savedCompact) setIsCompact(savedCompact === 'true');
+    const savedFilter = localStorage.getItem('vito-filter'); if (savedFilter) setFilter(savedFilter as any);
+    
     const savedPass = localStorage.getItem('vito-guest-pass-val');
     if(savedPass) setGuestPassInput(savedPass);
+
     const interval = setInterval(() => { setBannerIndex((prev) => prev + 1); }, 3000);
 
     const handleBeforeInstallPrompt = (e: any) => {
@@ -336,16 +341,14 @@ export default function VitoPizzaApp() {
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
     const presenceChannel = supabase.channel('online-users');
-    presenceChannel
-      .on('presence', { event: 'sync' }, () => {
+    presenceChannel.on('presence', { event: 'sync' }, () => {
         const state = presenceChannel.presenceState();
         const count = Object.values(state).reduce((acc: number, presences: any) => {
             const isGuest = presences.some((p: any) => p.role === 'guest');
             return acc + (isGuest ? 1 : 0);
         }, 0);
         setOnlineUsers(count);
-      })
-      .subscribe(async (status) => {
+      }).subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
           await presenceChannel.track({
             online_at: new Date().toISOString(),
@@ -361,6 +364,60 @@ export default function VitoPizzaApp() {
     };
   }, []);
 
+  // --- LOGICA DE FLUJO DE ACCESO ---
+  const fetchConfig = useCallback(async () => {
+    const { data } = await supabase.from('configuracion_dia').select('*').single();
+    if (data) {
+        setConfig(data);
+        setDbPass(data.password_invitados || '');
+    }
+    
+    const savedName = localStorage.getItem('vito-guest-name');
+    const savedPass = localStorage.getItem('vito-guest-pass-val');
+
+    // Lógica para saltar login si ya hay sesión
+    if (savedName && (!data?.password_invitados || savedPass === data.password_invitados)) {
+        setNombreInvitado(savedName);
+        setFlowStep('app');
+    } else {
+        setFlowStep('landing');
+    }
+    setLoadingConfig(false);
+  }, []);
+
+  useEffect(() => { fetchConfig(); }, [fetchConfig]);
+
+  const handleNameSubmit = () => {
+      if (!nombreInvitado.trim()) return alert("Por favor ingresa tu nombre");
+      localStorage.setItem('vito-guest-name', nombreInvitado);
+      
+      if (dbPass && dbPass !== '') {
+          setFlowStep('password');
+      } else {
+          checkOnboarding();
+      }
+  };
+
+  const handlePasswordSubmit = () => {
+      if (guestPassInput === dbPass) {
+          localStorage.setItem('vito-guest-pass-val', guestPassInput);
+          checkOnboarding();
+      } else {
+          alert("Contraseña incorrecta");
+      }
+  };
+
+  const checkOnboarding = () => {
+      const seen = localStorage.getItem('vito-onboarding-seen');
+      if (!seen) {
+          setFlowStep('onboarding');
+          setShowOnboarding(true);
+      } else {
+          setFlowStep('app');
+      }
+  };
+
+  // --- CONTROLADORES DE FLUJO ---
   const handleInstallClick = async () => {
       if (!deferredPrompt) return;
       deferredPrompt.prompt();
@@ -372,6 +429,7 @@ export default function VitoPizzaApp() {
   const completeOnboarding = () => {
       localStorage.setItem('vito-onboarding-seen', 'true');
       setShowOnboarding(false);
+      setFlowStep('app');
   };
 
   const toggleDarkMode = () => { const n = !isDarkMode; setIsDarkMode(n); localStorage.setItem('vito-dark-mode', String(n)); };
@@ -387,12 +445,6 @@ export default function VitoPizzaApp() {
   
   const handleNameChange = (val: string) => { 
       setNombreInvitado(val); 
-      localStorage.setItem('vito-guest-name', val); 
-      if (val.length > 2 && 'Notification' in window && Notification.permission === 'default') {
-          Notification.requestPermission();
-      }
-      const user = invitadosLista.find(u => u.nombre.toLowerCase() === val.toLowerCase()); 
-      if (user && user.bloqueado) { setUsuarioBloqueado(true); setMotivoBloqueo(user.motivo_bloqueo || ''); } else { setUsuarioBloqueado(false); setMotivoBloqueo(''); } 
   };
 
   const changeTheme = (t: typeof THEMES[0]) => { setCurrentTheme(t); localStorage.setItem('vito-guest-theme', t.name); setShowThemeSelector(false); };
@@ -488,7 +540,7 @@ export default function VitoPizzaApp() {
              res[pz.id] = { pendientes: p, comidos: c };
              if (p > 0) penInfo[pz.id] = p;
              
-             if (!firstLoadRef.current) { 
+             if (!firstLoadRef.current && flowStep === 'app') { 
                  const estabaCocinando = prevCocinandoData.current[pz.id] || false;
                  if (!estabaCocinando && pz.cocinando && penInfo[pz.id]) {
                      const accion = getCookingText(pz.tipo, 'ing');
@@ -510,19 +562,11 @@ export default function VitoPizzaApp() {
         });
         
         setMiHistorial(res);
-        
-        if (firstLoadRef.current) { 
-            dPiz.forEach(pz => { 
-                prevCocinandoData.current[pz.id] = pz.cocinando;
-                const pend = dPed.filter(p => p.pizza_id === pz.id && p.invitado_nombre.toLowerCase() === nombreInvitado.toLowerCase().trim() && p.estado !== 'entregado').reduce((acc, x) => acc + x.cantidad_porciones, 0);
-                prevPendingPerPizzaRef.current[pz.id] = pend;
-            }); 
-            firstLoadRef.current = false; 
-        }
+        if (firstLoadRef.current) firstLoadRef.current = false;
       }
     }
     setCargando(false);
-  }, [nombreInvitado, t, notifEnabled, guestPassInput]); 
+  }, [nombreInvitado, t, notifEnabled, guestPassInput, flowStep]); 
 
   useEffect(() => { fetchDatos(); const c = supabase.channel('app-realtime').on('postgres_changes', { event: '*', schema: 'public' }, () => fetchDatos()).subscribe(); return () => { supabase.removeChannel(c); }; }, [fetchDatos]);
 
@@ -530,7 +574,7 @@ export default function VitoPizzaApp() {
       try {
           const parsed = JSON.parse(config.categoria_activa);
           if (parsed === 'Todas' || (Array.isArray(parsed) && parsed.length === 0)) return []; 
-          return Array.isArray(parsed) ? parsed : ['General'];
+          return Array.isArray(parsed) ? parsed : ['General']; 
       } catch { return ['General']; }
   }, [config.categoria_activa]);
 
@@ -804,39 +848,112 @@ export default function VitoPizzaApp() {
 
   const mostrarMensaje = (txt: string, tipo: 'info' | 'alerta' | 'exito') => { setMensaje({ texto: txt, tipo }); if (tipo !== 'alerta') { setTimeout(() => setMensaje(null), 2500); } }
 
-  if (loadingConfig) { return (<div className={`min-h-screen flex items-center justify-center p-4 ${base.bg}`}><div className={`animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 ${isDarkMode ? 'border-white' : 'border-black'}`}></div></div>); }
+  // --------------------------------------------------------------------------------------
+  // RENDERIZADO CONDICIONAL POR PASOS (FLOW)
+  // --------------------------------------------------------------------------------------
 
-  if (!accessGranted) {
+  if (loadingConfig || flowStep === 'loading') {
+      return (<div className={`min-h-screen flex items-center justify-center p-4 ${base.bg}`}><div className={`animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 ${isDarkMode ? 'border-white' : 'border-black'}`}></div></div>);
+  }
+
+  // 1. LANDING PAGE
+  if (flowStep === 'landing') {
       return (
-        <div className={`min-h-screen flex items-center justify-center p-4 font-sans ${base.bg}`}>
-            <div className={`w-full max-w-md p-8 rounded-3xl border shadow-2xl text-center ${base.card}`}>
-                <div className="flex justify-center mb-2"><img src="/logo.png" alt="Logo" className="h-48 w-auto object-contain" /></div>
-                <h2 className={`text-xl font-bold mb-4 ${base.text}`}>{t.enterPass}</h2>
-                <div className="flex gap-2">
-                    <input type="password" value={guestPassInput} onChange={e => setGuestPassInput(e.target.value)} className={`w-full p-4 rounded-xl border outline-none text-center text-lg tracking-widest ${base.inputContainer} ${base.text}`} placeholder="****" />
-                    <button onClick={() => verifyAccess(guestPassInput, dbPass)} className={`p-4 rounded-xl font-bold ${isDarkMode ? 'bg-white text-black' : 'bg-black text-white'}`}><ArrowRight /></button>
-                </div>
-                <div className={`mt-8 pt-4 border-t border-white/5`}>
-                    <Link href="/admin" className={`text-xs flex items-center justify-center gap-1 ${base.subtext} hover:${base.text}`}><Lock size={12}/> {t.adminLink}</Link>
-                </div>
-            </div>
-        </div>
+          <div className={`min-h-screen flex flex-col items-center justify-center p-6 font-sans ${base.bg}`}>
+              <div className="flex-1 flex flex-col items-center justify-center w-full max-w-sm">
+                  <img src="/logo.png" alt="Logo" className="h-64 w-auto object-contain mb-8 drop-shadow-2xl animate-in fade-in zoom-in duration-700" />
+                  
+                  <h1 className={`text-4xl font-black mb-2 text-center ${base.text}`}>Il Forno di Vito</h1>
+                  <p className={`text-lg opacity-60 text-center mb-12 ${base.text}`}>La mejor experiencia.</p>
+
+                  <button 
+                      onClick={() => setFlowStep('name')}
+                      className={`w-full py-5 rounded-2xl text-xl font-bold shadow-2xl transition-transform active:scale-95 flex items-center justify-center gap-3 ${currentTheme.color} text-white`}
+                  >
+                      <Crown size={24} /> Invitados de Honor
+                  </button>
+
+                  <Link href="/admin" className={`mt-6 text-sm font-bold opacity-40 hover:opacity-100 flex items-center gap-2 transition-opacity ${base.text}`}>
+                      <Shield size={14} /> Acceso Admin
+                  </Link>
+              </div>
+          </div>
       );
   }
 
+  // 2. NAME INPUT
+  if (flowStep === 'name') {
+      return (
+          <div className={`min-h-screen flex items-center justify-center p-4 ${base.bg}`}>
+              <div className={`w-full max-w-md p-8 rounded-3xl border shadow-2xl ${base.card} animate-in fade-in slide-in-from-bottom-10`}>
+                  <h2 className={`text-2xl font-bold mb-6 text-center ${base.text}`}>{t.whoAreYou}</h2>
+                  <input 
+                      type="text" 
+                      value={nombreInvitado} 
+                      onChange={e => setNombreInvitado(e.target.value)} 
+                      placeholder="Tu nombre..." 
+                      className={`w-full p-4 rounded-xl border outline-none text-lg text-center mb-4 ${base.inputContainer} ${base.text}`} 
+                      autoFocus
+                  />
+                  <button onClick={handleNameSubmit} className={`w-full py-4 rounded-xl font-bold ${currentTheme.color} text-white shadow-lg`}>
+                      Continuar <ArrowRight className="inline ml-2"/>
+                  </button>
+                  <button onClick={() => setFlowStep('landing')} className={`w-full py-3 mt-2 text-sm opacity-50 ${base.text}`}>Volver</button>
+              </div>
+          </div>
+      );
+  }
+
+  // 3. PASSWORD INPUT
+  if (flowStep === 'password') {
+      return (
+          <div className={`min-h-screen flex items-center justify-center p-4 ${base.bg}`}>
+              <div className={`w-full max-w-md p-8 rounded-3xl border shadow-2xl ${base.card} animate-in fade-in slide-in-from-bottom-10`}>
+                  <h2 className={`text-xl font-bold mb-6 text-center ${base.text}`}>{t.enterPass}</h2>
+                  <div className="relative mb-4">
+                      <input 
+                          type={showPassword ? "text" : "password"} 
+                          value={guestPassInput} 
+                          onChange={e => setGuestPassInput(e.target.value)} 
+                          className={`w-full p-4 rounded-xl border outline-none text-center text-lg tracking-widest ${base.inputContainer} ${base.text}`} 
+                          placeholder="****" 
+                          autoFocus
+                      />
+                      <button 
+                          onClick={() => setShowPassword(!showPassword)} 
+                          className="absolute right-4 top-4 opacity-50"
+                      >
+                          {showPassword ? <EyeOff /> : <Eye />}
+                      </button>
+                  </div>
+                  <button onClick={handlePasswordSubmit} className={`w-full py-4 rounded-xl font-bold ${currentTheme.color} text-white shadow-lg`}>
+                      Ingresar
+                  </button>
+                  <button onClick={() => setFlowStep('name')} className={`w-full py-3 mt-2 text-sm opacity-50 ${base.text}`}>Volver</button>
+              </div>
+          </div>
+      );
+  }
+
+  // 4. ONBOARDING
+  if (flowStep === 'onboarding') {
+      return (
+          <OnboardingOverlay 
+            show={true} 
+            step={onboardingStep} 
+            setStep={setOnboardingStep} 
+            complete={completeOnboarding} 
+            rotarIdioma={rotarIdioma} 
+            lang={lang} 
+            t={t}
+          />
+      );
+  }
+
+  // 5. MAIN APP
   return (
     <div className={`min-h-screen font-sans pb-28 transition-colors duration-500 overflow-x-hidden ${base.bg}`}>
       
-      <OnboardingOverlay 
-        show={showOnboarding} 
-        step={onboardingStep} 
-        setStep={setOnboardingStep} 
-        complete={completeOnboarding} 
-        rotarIdioma={rotarIdioma} 
-        lang={lang} 
-        t={t}
-      />
-
       <TopBar 
         base={base} notifEnabled={notifEnabled} toggleNotificaciones={toggleNotificaciones} 
         rotarIdioma={rotarIdioma} lang={lang} onlineUsers={onlineUsers} config={config} 
@@ -885,22 +1002,8 @@ export default function VitoPizzaApp() {
       </div>
 
       <div className="px-4 mt-6 relative z-20 max-w-lg mx-auto pb-20">
-        <div className={`${base.card} p-2 rounded-2xl border flex items-center gap-3 mb-6`}>
-             <div className={`p-3 rounded-full bg-gradient-to-br ${currentTheme.gradient} text-white shadow-lg`}><User size={24} /></div>
-             <div className="flex-1 pr-2">
-                 <label className={`text-[10px] uppercase font-bold ${base.subtext} ml-1`}>{t.whoAreYou}</label>
-                 <form onSubmit={(e) => { e.preventDefault(); }} className="w-full">
-                    {config.modo_estricto ? (
-                        <select value={nombreInvitado} onChange={e => handleNameChange(e.target.value)} className={`w-full text-lg font-bold outline-none bg-transparent border-b pb-1 ${isDarkMode ? 'text-white border-white/20' : 'text-black border-gray-300'}`}><option value="" className="text-black">...</option>{invitadosLista.map(u => (<option key={u.id} value={u.nombre} className="text-black">{u.nombre}</option>))}</select>
-                    ) : (
-                        <input type="text" value={nombreInvitado} onChange={e => handleNameChange(e.target.value)} placeholder={t.namePlaceholder} className={`w-full text-lg font-bold outline-none bg-transparent ${isDarkMode ? 'text-white placeholder-neutral-600' : 'text-black placeholder-gray-400'}`} />
-                    )}
-                 </form>
-                 {usuarioBloqueado && (<p className="text-red-500 text-xs font-bold mt-1 flex items-center gap-1"><AlertCircle size={10}/> {t.blocked}: {motivoBloqueo}</p>)}
-             </div>
-        </div>
-
-        {mensaje && (<div className={`fixed top-20 left-4 right-4 p-3 rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] z-[100] flex flex-col items-center justify-center animate-bounce-in text-center ${mensaje.tipo === 'alerta' ? 'border-4 border-neutral-900 font-bold' : 'border-2 border-neutral-200 font-bold'} bg-white text-black`}><div className="flex items-center gap-2 mb-1 text-sm">{mensaje.tipo === 'alerta' && mensaje.texto.includes('horno') && <PartyPopper size={18} className="text-orange-600" />}{mensaje.texto}</div>{mensaje.tipo === 'alerta' && (<button onClick={() => setMensaje(null)} className="mt-1 bg-neutral-900 text-white px-6 py-1.5 rounded-full text-xs font-bold shadow-lg active:scale-95 hover:bg-black transition-transform">{t.okBtn}</button>)}</div>)}
+        
+        {mensaje && (<div className={`fixed top-20 left-4 right-4 p-3 rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] z-[100] flex flex-col items-center justify-center animate-bounce-in text-center ${mensaje.tipo === 'alerta' ? 'border-4 border-neutral-900 font-bold' : 'border-2 border-neutral-200 font-bold'} bg-white text-black`}><div className="flex items-center gap-2 mb-1 text-sm">{mensaje.texto}</div>{mensaje.tipo === 'alerta' && (<button onClick={() => setMensaje(null)} className="mt-1 bg-neutral-900 text-white px-6 py-1.5 rounded-full text-xs font-bold shadow-lg active:scale-95 hover:bg-black transition-transform">{t.okBtn}</button>)}</div>)}
 
         {imageToView && (
             <div className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center p-4 animate-in fade-in" onClick={() => setImageToView(null)}>
