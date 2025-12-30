@@ -46,10 +46,10 @@ export default function VitoPizzaApp() {
   // @ts-ignore
   const t = dictionary[lang];
 
-  // ESTADO DE FLUJO
+  // ESTADO DE FLUJO: 'loading' | 'landing' | 'name' | 'password' | 'onboarding' | 'app'
   const [flowStep, setFlowStep] = useState<'loading' | 'landing' | 'name' | 'password' | 'onboarding' | 'app'>('loading');
   const [guestPassInput, setGuestPassInput] = useState(''); 
-  const [showPassword, setShowPassword] = useState(true); 
+  const [showPassword, setShowPassword] = useState(true); // Default true para invitados
 
   const [loadingConfig, setLoadingConfig] = useState(true); 
   const [accessGranted, setAccessGranted] = useState(false);
@@ -292,7 +292,7 @@ export default function VitoPizzaApp() {
     }
   };
 
-  // --- USEEFFECT INITIAL LOAD ---
+  // --- USEEFFECT INITIAL LOAD (MODIFICADO) ---
   useEffect(() => {
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('/sw.js')
@@ -391,11 +391,6 @@ export default function VitoPizzaApp() {
       if (!nombreInvitado.trim()) return alert("Por favor ingresa tu nombre");
       localStorage.setItem('vito-guest-name', nombreInvitado);
       
-      // Pedir notificaciones al confirmar nombre
-      if ('Notification' in window && Notification.permission === 'default') {
-          Notification.requestPermission();
-      }
-
       if (dbPass && dbPass !== '') {
           setFlowStep('password');
       } else {
@@ -571,7 +566,7 @@ export default function VitoPizzaApp() {
       }
     }
     setCargando(false);
-  }, [nombreInvitado, flowStep]); 
+  }, [nombreInvitado, t, notifEnabled, guestPassInput, flowStep]); 
 
   useEffect(() => { fetchDatos(); const c = supabase.channel('app-realtime').on('postgres_changes', { event: '*', schema: 'public' }, () => fetchDatos()).subscribe(); return () => { supabase.removeChannel(c); }; }, [fetchDatos]);
 
@@ -591,6 +586,9 @@ export default function VitoPizzaApp() {
           const target = pizza.porciones_individuales || config.porciones_por_pizza;
           const pen = pedidos.filter(p => p.pizza_id === pizza.id && p.estado !== 'entregado').reduce((a, c) => a + c.cantidad_porciones, 0);
           
+          // Lógica Simplificada: Stock Real Total = (Pizzas enteras * Porciones) - Pendientes.
+          // El stock de la DB son las pizzas enteras que el Admin puede cocinar.
+          // Los pendientes son las porciones reservadas de ese stock total.
           const totalPotentialStock = (pizza.stock || 0) * target;
           const stockRestante = Math.max(0, totalPotentialStock - pen);
 
@@ -826,6 +824,8 @@ export default function VitoPizzaApp() {
       };
 
       // 1. Update State Immediately (Optimistic)
+      // OJO: No bajamos el stock de 'pizzas' (enteras) localmente, solo agregamos pedido.
+      // El cálculo en 'enrichedPizzas' se encarga de restar del total disponible.
       setPedidos(prev => [...prev, newOrder]);
       setOrderToConfirm(null);
       mostrarMensaje(`${t.successOrder} ${orderToConfirm.displayName}!`, 'exito');
@@ -860,16 +860,20 @@ export default function VitoPizzaApp() {
   if (flowStep === 'landing') {
       return (
           <div className={`min-h-screen flex flex-col items-center justify-center p-6 font-sans ${base.bg}`}>
+              {/* Botón de Idioma - Diseño consistente */}
               <div className="absolute top-6 right-6 z-50">
-                  <button onClick={rotarIdioma} className={`p-2 rounded-full border bg-white/10 backdrop-blur-md text-white border-white/20 transition-all active:scale-95`}>
-                     {lang === 'es' ? '🇪🇸' : lang === 'en' ? '🇺🇸' : '🇮🇹'}
+                  <button 
+                      onClick={rotarIdioma} 
+                      className={`w-10 h-10 rounded-full flex items-center justify-center border bg-white/10 backdrop-blur-md text-white border-white/20 transition-all active:scale-95 hover:bg-white/20`}
+                  >
+                      {lang === 'es' ? '🇪🇸' : lang === 'en' ? '🇺🇸' : '🇮🇹'}
                   </button>
               </div>
 
               <div className="flex-1 flex flex-col items-center justify-center w-full max-w-sm relative z-10">
                   <img src="/logo.png" alt="Logo" className="h-64 w-auto object-contain mb-8 drop-shadow-2xl animate-in fade-in zoom-in duration-700" />
                   
-                  {/* Se eliminó el H1 "Il Forno di Vito" */}
+                  {/* Sin título H1, solo logo y subtítulo modificado */}
                   <p className={`text-xl font-medium opacity-80 text-center mb-12 ${base.text}`}>¡Espero que la pases lindo hoy!</p>
 
                   <button 
@@ -973,7 +977,7 @@ export default function VitoPizzaApp() {
          <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mt-20 -mr-20 blur-3xl"></div>
          <div className="relative z-10 pt-16">
              <div className="mb-6">
-                 {/* Mensaje de Bienvenida Personalizado */}
+                 {/* Header Personalizado con Nombre y "Comida" */}
                  <h1 className="text-3xl font-bold leading-tight drop-shadow-md text-white">
                     Bienvenido, <br/> 
                     <span className="text-4xl">{nombreInvitado}</span>
@@ -991,22 +995,8 @@ export default function VitoPizzaApp() {
       </div>
 
       <div className="px-4 mt-6 relative z-20 max-w-lg mx-auto pb-20">
-        <div className={`${base.card} p-2 rounded-2xl border flex items-center gap-3 mb-6`}>
-             <div className={`p-3 rounded-full bg-gradient-to-br ${currentTheme.gradient} text-white shadow-lg`}><User size={24} /></div>
-             <div className="flex-1 pr-2">
-                 <label className={`text-[10px] uppercase font-bold ${base.subtext} ml-1`}>{t.whoAreYou}</label>
-                 <form onSubmit={(e) => { e.preventDefault(); }} className="w-full">
-                    {config.modo_estricto ? (
-                        <select value={nombreInvitado} onChange={e => handleNameChange(e.target.value)} className={`w-full text-lg font-bold outline-none bg-transparent border-b pb-1 ${isDarkMode ? 'text-white border-white/20' : 'text-black border-gray-300'}`}><option value="" className="text-black">...</option>{invitadosLista.map(u => (<option key={u.id} value={u.nombre} className="text-black">{u.nombre}</option>))}</select>
-                    ) : (
-                        <input type="text" value={nombreInvitado} onChange={e => handleNameChange(e.target.value)} placeholder={t.namePlaceholder} className={`w-full text-lg font-bold outline-none bg-transparent ${isDarkMode ? 'text-white placeholder-neutral-600' : 'text-black placeholder-gray-400'}`} />
-                    )}
-                 </form>
-                 {usuarioBloqueado && (<p className="text-red-500 text-xs font-bold mt-1 flex items-center gap-1"><AlertCircle size={10}/> {t.blocked}: {motivoBloqueo}</p>)}
-             </div>
-        </div>
-
-        {mensaje && (<div className={`fixed top-20 left-4 right-4 p-3 rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] z-[100] flex flex-col items-center justify-center animate-bounce-in text-center ${mensaje.tipo === 'alerta' ? 'border-4 border-neutral-900 font-bold' : 'border-2 border-neutral-200 font-bold'} bg-white text-black`}><div className="flex items-center gap-2 mb-1 text-sm">{mensaje.tipo === 'alerta' && mensaje.texto.includes('horno') && <PartyPopper size={18} className="text-orange-600" />}{mensaje.texto}</div>{mensaje.tipo === 'alerta' && (<button onClick={() => setMensaje(null)} className="mt-1 bg-neutral-900 text-white px-6 py-1.5 rounded-full text-xs font-bold shadow-lg active:scale-95 hover:bg-black transition-transform">{t.okBtn}</button>)}</div>)}
+        
+        {mensaje && (<div className={`fixed top-20 left-4 right-4 p-3 rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] z-[100] flex flex-col items-center justify-center animate-bounce-in text-center ${mensaje.tipo === 'alerta' ? 'border-4 border-neutral-900 font-bold' : 'border-2 border-neutral-200 font-bold'} bg-white text-black`}><div className="flex items-center gap-2 mb-1 text-sm">{mensaje.texto}</div>{mensaje.tipo === 'alerta' && (<button onClick={() => setMensaje(null)} className="mt-1 bg-neutral-900 text-white px-6 py-1.5 rounded-full text-xs font-bold shadow-lg active:scale-95 hover:bg-black transition-transform">{t.okBtn}</button>)}</div>)}
 
         {imageToView && (
             <div className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center p-4 animate-in fade-in" onClick={() => setImageToView(null)}>
