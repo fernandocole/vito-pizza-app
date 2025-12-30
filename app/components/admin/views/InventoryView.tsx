@@ -3,7 +3,7 @@ import { Trash2, Edit3, Save, X, Plus, Package, Share2, Smartphone, MessageCircl
 
 export const InventoryView = ({ 
     base, currentTheme, ingredients, newIngName, setNewIngName, newIngQty, setNewIngQty, 
-    newIngUnit, setNewIngUnit, newIngCat, setNewIngCat, // Props de categoría
+    newIngUnit, setNewIngUnit, newIngCat, setNewIngCat, 
     addIng, editingIngId, editIngForm, setEditIngForm, saveEditIng, cancelEditIng, delIng, 
     startEditIng, reservedState, quickUpdateStock 
 }: any) => {
@@ -186,7 +186,6 @@ export const InventoryView = ({
                                     {/* CABECERA TARJETA */}
                                     <div className="p-4 pb-2 relative flex-1">
                                         <div className="flex justify-between items-start mb-1">
-                                            {/* Contenedor de Texto: Deslizable */}
                                             <div className="min-w-0 pr-12"> 
                                                 <h3 className="font-bold text-sm overflow-x-auto whitespace-nowrap no-scrollbar opacity-90">
                                                     {ing.nombre}
@@ -194,7 +193,6 @@ export const InventoryView = ({
                                                 <p className="text-[9px] opacity-50 uppercase font-bold">{ing.categoria || 'General'}</p>
                                             </div>
                                             
-                                            {/* Botones de acción absolutos (Sin fondo) */}
                                             <div className="flex gap-1 opacity-30 group-hover:opacity-100 transition-opacity absolute right-2 top-2">
                                                 <button onClick={() => startEditIng(ing)} className="hover:text-blue-500 transition-colors p-1"><Edit3 size={14}/></button>
                                                 <button onClick={() => delIng(ing.id)} className="hover:text-red-500 transition-colors p-1"><Trash2 size={14}/></button>
@@ -234,28 +232,37 @@ export const InventoryView = ({
                 })}
             </div>
 
-            {/* MODAL DE COMPARTIR */}
+            {/* MODAL DE COMPARTIR - ESTILO BOTTOM SHEET ELEVADO */}
             {showShareModal && (
-                <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in p-4">
-                    <div className={`${base.card} w-full max-w-sm rounded-3xl p-6 shadow-2xl relative border`}>
-                        <button onClick={() => setShowShareModal(false)} className="absolute top-4 right-4 opacity-50 hover:opacity-100"><X size={20}/></button>
+                // z-[60] para estar sobre la barra de navegación (z-50)
+                // pb-24 para elevarlo visualmente sobre la barra
+                <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in p-4 pb-24 sm:pb-4">
+                    
+                    {/* Fondo Clickable para cerrar */}
+                    <div className="absolute inset-0" onClick={() => setShowShareModal(false)}></div>
+
+                    <div className={`${base.card} w-full max-w-sm rounded-[32px] p-6 shadow-2xl relative border z-10 animate-in slide-in-from-bottom-10 duration-300`}>
+                        {/* Indicador de arrastre visual */}
+                        <div className="w-12 h-1 bg-gray-300 dark:bg-gray-700 rounded-full mx-auto mb-6 opacity-50"></div>
+
+                        <button onClick={() => setShowShareModal(false)} className="absolute top-6 right-6 opacity-50 hover:opacity-100 p-1"><X size={20}/></button>
                         
-                        <h3 className="text-xl font-bold mb-1">Compartir Lista</h3>
-                        <p className="text-sm opacity-60 mb-6">Selecciona cómo quieres enviar la lista de <b>{filterCategory}</b>.</p>
+                        <h3 className="text-xl font-bold mb-1 text-center">Compartir Lista</h3>
+                        <p className="text-sm opacity-60 mb-6 text-center">Enviando lista de: <b>{filterCategory}</b></p>
                         
                         <div className="space-y-3">
                             <button 
                                 onClick={handleWhatsAppShare}
-                                className="w-full py-4 rounded-xl flex items-center justify-center gap-3 font-bold bg-[#25D366] text-white shadow-lg active:scale-95 transition-transform"
+                                className="w-full py-4 rounded-2xl flex items-center justify-center gap-3 font-bold bg-[#25D366] text-white shadow-lg active:scale-95 transition-transform hover:brightness-110"
                             >
-                                <MessageCircle size={24} /> WhatsApp
+                                <MessageCircle size={24} /> Enviar por WhatsApp
                             </button>
                             
                             <button 
                                 onClick={handleNativeShare}
-                                className={`w-full py-4 rounded-xl flex items-center justify-center gap-3 font-bold border ${base.buttonSec} active:scale-95 transition-transform`}
+                                className={`w-full py-4 rounded-2xl flex items-center justify-center gap-3 font-bold border ${base.buttonSec} active:scale-95 transition-transform`}
                             >
-                                <Smartphone size={24} /> Otras Apps...
+                                <Smartphone size={24} /> Otras Aplicaciones
                             </button>
                         </div>
                     </div>
