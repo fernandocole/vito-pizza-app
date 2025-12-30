@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { 
-  User, ArrowRight, Lock, AlertCircle, X, PartyPopper, Star, Clock, Eye, EyeOff, Crown, Shield, Globe 
+  User, ArrowRight, Lock, AlertCircle, X, PartyPopper, Star, Clock, Eye, EyeOff, Crown, Shield 
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -46,10 +46,10 @@ export default function VitoPizzaApp() {
   // @ts-ignore
   const t = dictionary[lang];
 
-  // ESTADO DE FLUJO: 'loading' | 'landing' | 'name' | 'password' | 'onboarding' | 'app'
+  // ESTADO DE FLUJO: 'loading' | 'landing' | 'name' | 'password' | 'app'
   const [flowStep, setFlowStep] = useState<'loading' | 'landing' | 'name' | 'password' | 'onboarding' | 'app'>('loading');
-  const [guestPassInput, setGuestPassInput] = useState(''); 
-  const [showPassword, setShowPassword] = useState(true); // Default true para invitados
+  const [guestPassInput, setGuestPassInput] = useState(''); // Contraseña en blanco al inicio
+  const [showPassword, setShowPassword] = useState(true); // Ver contraseña activado por defecto para invitados
 
   const [loadingConfig, setLoadingConfig] = useState(true); 
   const [accessGranted, setAccessGranted] = useState(false);
@@ -860,21 +860,11 @@ export default function VitoPizzaApp() {
   if (flowStep === 'landing') {
       return (
           <div className={`min-h-screen flex flex-col items-center justify-center p-6 font-sans ${base.bg}`}>
-              {/* Botón de Idioma - Diseño consistente */}
-              <div className="absolute top-6 right-6 z-50">
-                  <button 
-                      onClick={rotarIdioma} 
-                      className={`w-10 h-10 rounded-full flex items-center justify-center border bg-white/10 backdrop-blur-md text-white border-white/20 transition-all active:scale-95 hover:bg-white/20`}
-                  >
-                      {lang === 'es' ? '🇪🇸' : lang === 'en' ? '🇺🇸' : '🇮🇹'}
-                  </button>
-              </div>
-
-              <div className="flex-1 flex flex-col items-center justify-center w-full max-w-sm relative z-10">
+              <div className="flex-1 flex flex-col items-center justify-center w-full max-w-sm">
                   <img src="/logo.png" alt="Logo" className="h-64 w-auto object-contain mb-8 drop-shadow-2xl animate-in fade-in zoom-in duration-700" />
                   
-                  {/* Sin título H1, solo logo y subtítulo modificado */}
-                  <p className={`text-xl font-medium opacity-80 text-center mb-12 ${base.text}`}>¡Espero que la pases lindo hoy!</p>
+                  <h1 className={`text-4xl font-black mb-2 text-center ${base.text}`}>Il Forno di Vito</h1>
+                  <p className={`text-lg opacity-60 text-center mb-12 ${base.text}`}>La mejor experiencia.</p>
 
                   <button 
                       onClick={() => setFlowStep('name')}
@@ -883,7 +873,7 @@ export default function VitoPizzaApp() {
                       <Crown size={24} /> Invitados de Honor
                   </button>
 
-                  <Link href="/admin" className={`mt-8 text-sm font-bold opacity-40 hover:opacity-100 flex items-center gap-2 transition-opacity ${base.text}`}>
+                  <Link href="/admin" className={`mt-6 text-sm font-bold opacity-40 hover:opacity-100 flex items-center gap-2 transition-opacity ${base.text}`}>
                       <Shield size={14} /> Acceso Admin
                   </Link>
               </div>
@@ -896,7 +886,7 @@ export default function VitoPizzaApp() {
       return (
           <div className={`min-h-screen flex items-center justify-center p-4 ${base.bg}`}>
               <div className={`w-full max-w-md p-8 rounded-3xl border shadow-2xl ${base.card} animate-in fade-in slide-in-from-bottom-10`}>
-                  <h2 className={`text-2xl font-bold mb-6 text-center ${base.text}`}>¡Hola, qué bueno verte! ¿Cuál es tu nombre?</h2>
+                  <h2 className={`text-2xl font-bold mb-6 text-center ${base.text}`}>{t.whoAreYou}</h2>
                   <input 
                       type="text" 
                       value={nombreInvitado} 
@@ -977,14 +967,31 @@ export default function VitoPizzaApp() {
          <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mt-20 -mr-20 blur-3xl"></div>
          <div className="relative z-10 pt-16">
              <div className="mb-6">
-                 {/* Header Personalizado con Nombre y "Comida" */}
-                 <h1 className="text-3xl font-bold leading-tight drop-shadow-md text-white">
-                    Bienvenido, <br/> 
-                    <span className="text-4xl">{nombreInvitado}</span>
-                 </h1>
-                 <p className="mt-2 text-lg text-white/80 font-medium">Disfruta de la mejor comida 🍕🍔</p>
+                 {(() => {
+                     const msg = getWelcomeMessage();
+                     if (msg) {
+                         const parts = msg.split('\n');
+                         return (
+                             <h1 className="text-3xl font-bold leading-tight drop-shadow-md text-white whitespace-pre-wrap">
+                                 {parts[0]}
+                                 {parts.length > 1 && (
+                                     <>
+                                         <br/>
+                                         <span className="opacity-80 font-normal text-xl">{parts.slice(1).join('\n')}</span>
+                                     </>
+                                 )}
+                             </h1>
+                         );
+                     } else {
+                         return (
+                             <h1 className="text-3xl font-bold leading-tight drop-shadow-md text-white">
+                                 {t.welcomeTitle} <br/> 
+                                 <span className="opacity-80 font-normal text-xl">{t.welcomeSub}</span>
+                             </h1>
+                         );
+                     }
+                 })()}
              </div>
-
              <div className="flex items-center gap-3 text-sm font-medium bg-black/30 p-3 rounded-2xl w-max backdrop-blur-md border border-white/10 text-white animate-in fade-in duration-500 mx-auto mb-4"><span className="text-neutral-300 text-xs font-bold">{currentBannerText}</span></div>
              <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar px-2">
                  {['all','stock','top','to_rate','ordered','new'].map(f => (
