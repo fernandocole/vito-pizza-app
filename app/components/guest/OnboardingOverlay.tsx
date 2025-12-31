@@ -1,122 +1,40 @@
-import { ArrowRight, Check } from 'lucide-react';
-import { useState, TouchEvent } from 'react';
+import { Languages, Download, LayoutTemplate, Flame, Palette, PartyPopper, ChevronRight, Check } from 'lucide-react';
 
-export const OnboardingOverlay = ({ show, step, setStep, complete, rotarIdioma, lang, t, userName }: any) => {
-    
-    // Estados para el SWIPE (Deslizamiento)
-    const [touchStart, setTouchStart] = useState<number | null>(null);
-    const [touchEnd, setTouchEnd] = useState<number | null>(null);
-    const minSwipeDistance = 50; 
-
+export const OnboardingOverlay = ({ show, step, setStep, complete, rotarIdioma, lang, t }: any) => {
     if (!show) return null;
-
-    // Lógica de Swipe
-    const onTouchStart = (e: TouchEvent) => {
-        setTouchEnd(null);
-        setTouchStart(e.targetTouches[0].clientX);
-    };
-
-    const onTouchMove = (e: TouchEvent) => {
-        setTouchEnd(e.targetTouches[0].clientX);
-    };
-
-    const onTouchEnd = () => {
-        if (!touchStart || !touchEnd) return;
-        const distance = touchStart - touchEnd;
-        const isLeftSwipe = distance > minSwipeDistance;
-        const isRightSwipe = distance < -minSwipeDistance;
-
-        if (isLeftSwipe) {
-            if (step < 2) setStep(step + 1);
-            else complete();
-        }
-        if (isRightSwipe) {
-            if (step > 0) setStep(step - 1);
-        }
-    };
 
     return (
         <div 
-            className="fixed inset-0 z-[100] bg-neutral-950 flex flex-col items-center justify-center p-6 text-white overflow-hidden"
-            onTouchStart={onTouchStart}
-            onTouchMove={onTouchMove}
-            onTouchEnd={onTouchEnd}
+          className="fixed inset-0 z-[100] bg-white/95 backdrop-blur-xl flex flex-col items-center justify-center p-8 text-center text-neutral-900 animate-in fade-in duration-500 select-none"
         >
-            {/* Botón Idioma Minimalista (Banderita) */}
-            <div className="absolute top-6 right-6 z-50">
-                <button 
-                    onClick={rotarIdioma} 
-                    className="text-2xl opacity-80 hover:opacity-100 transition-opacity active:scale-95"
-                >
-                    {lang === 'es' ? '🇪🇸' : lang === 'en' ? '🇺🇸' : '🇮🇹'}
+            <div className="absolute top-6 right-6">
+                <button onClick={rotarIdioma} className="bg-neutral-100 p-2 rounded-full font-bold text-xs shadow-sm border flex items-center gap-2">
+                    <Languages size={14}/> {lang.toUpperCase()}
                 </button>
             </div>
 
-            {/* Contenido Central */}
-            <div className="w-full max-w-sm flex-1 flex flex-col justify-center relative">
-                
-                {/* Paso 1: Bienvenida */}
-                {step === 0 && (
-                    <div className="animate-in fade-in slide-in-from-bottom-8 duration-500 flex flex-col items-center text-center">
-                        <div className="mb-8 relative">
-                             {/* Efecto de luz de fondo */}
-                            <div className="w-48 h-48 rounded-full bg-gradient-to-tr from-purple-500/20 to-orange-500/20 blur-3xl absolute inset-0 animate-pulse m-auto"></div>
-                            <img src="/logo.png" className="w-48 h-auto object-contain relative z-10 drop-shadow-2xl mx-auto" alt="Welcome" />
-                        </div>
-                        <h2 className="text-3xl font-bold mb-4">Bienvenido, {userName}! 👋</h2>
-                        <p className="text-lg text-neutral-400 leading-relaxed px-2">
-                            Esta web te servirá para estar organizados, pidiendo y calificando en tiempo real.
-                        </p>
-                    </div>
-                )}
-
-                {/* Paso 2: Explicación Pedidos */}
-                {step === 1 && (
-                    <div className="animate-in fade-in slide-in-from-right-8 duration-500 flex flex-col items-center text-center">
-                        <div className="mb-8 relative flex justify-center items-center h-48">
-                            <div className="w-40 h-40 rounded-full bg-orange-500/10 blur-2xl absolute animate-pulse"></div>
-                            <span className="text-9xl relative z-10 drop-shadow-xl">🍕</span>
-                        </div>
-                        <h2 className="text-3xl font-bold mb-4">{t.step1Title}</h2>
-                        <p className="text-lg text-neutral-400 leading-relaxed px-4">
-                            {t.step1Desc}
-                        </p>
-                    </div>
-                )}
-
-                {/* Paso 3: Explicación Calificación */}
-                {step === 2 && (
-                    <div className="animate-in fade-in slide-in-from-right-8 duration-500 flex flex-col items-center text-center">
-                        <div className="mb-8 relative flex justify-center items-center h-48">
-                            <div className="w-40 h-40 rounded-full bg-yellow-500/10 blur-2xl absolute animate-pulse"></div>
-                            <span className="text-9xl relative z-10 drop-shadow-xl">⭐</span>
-                        </div>
-                        <h2 className="text-3xl font-bold mb-4">{t.step2Title}</h2>
-                        <p className="text-lg text-neutral-400 leading-relaxed px-4">
-                            {t.step2Desc}
-                        </p>
-                    </div>
-                )}
+            <div className="max-w-md w-full relative h-[70vh] flex flex-col justify-center">
+                {step === 0 && (<div className="flex flex-col items-center gap-6 animate-in slide-in-from-right-10 duration-500"><img src="/logo.png" alt="Logo" className="h-40 w-auto object-contain drop-shadow-xl" /><h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-teal-500 to-emerald-700">{t.onb_wel_title}</h1><p className="text-neutral-500 text-lg leading-relaxed px-4">{t.onb_wel_desc}</p></div>)}
+                {step === 1 && (<div className="flex flex-col items-center gap-6 animate-in slide-in-from-right-10 duration-500"><div className="w-32 h-32 rounded-full bg-teal-50 flex items-center justify-center mb-2 shadow-inner"><Download size={64} className="text-teal-500 animate-bounce" strokeWidth={1.5} /></div><h1 className="text-3xl font-bold text-neutral-800">{t.onb_inst_title}</h1><p className="text-neutral-500 text-lg leading-relaxed px-4">{t.onb_inst_desc}</p></div>)}
+                {step === 2 && (<div className="flex flex-col items-center gap-4 animate-in slide-in-from-right-10 duration-500 text-left w-full"><h1 className="text-3xl font-bold text-neutral-800 text-center w-full mb-2">{t.onb_how_title}</h1><div className="bg-white p-3 rounded-2xl flex items-center gap-4 w-full border border-neutral-100 shadow-sm"><div className="bg-teal-50 p-3 rounded-xl text-teal-600"><LayoutTemplate size={24}/></div><div className="flex-1"><p className="font-bold text-base text-neutral-800 mb-1">{t.feat_prog_title}</p><div className="h-1.5 w-full bg-neutral-100 rounded-full overflow-hidden"><div className="h-full w-1/2 bg-teal-500 rounded-full"></div></div><p className="text-sm text-neutral-500 mt-1">{t.feat_prog_desc}</p></div></div><div className="bg-white p-3 rounded-2xl flex items-center gap-4 w-full border border-neutral-100 shadow-sm"><div className="bg-orange-50 p-3 rounded-xl text-orange-600"><Flame size={24}/></div><div className="flex-1"><p className="font-bold text-base text-neutral-800 mb-1">{t.feat_oven_title}</p><span className="text-[9px] bg-red-600 text-white px-2 py-0.5 rounded-full font-bold">EN HORNO</span><p className="text-sm text-neutral-500 mt-1">{t.feat_oven_desc}</p></div></div><div className="bg-white p-3 rounded-2xl flex items-center gap-4 w-full border border-neutral-100 shadow-sm"><div className="bg-purple-50 p-3 rounded-xl text-purple-600"><Palette size={24}/></div><div className="flex-1"><p className="font-bold text-base text-neutral-800 mb-1">{t.feat_ctrl_title}</p><div className="flex gap-2 mb-1"><div className="w-4 h-4 rounded-full bg-neutral-200"></div><div className="w-4 h-4 rounded-full bg-neutral-200"></div><div className="w-4 h-4 rounded-full bg-neutral-200"></div></div><p className="text-sm text-neutral-500">{t.feat_ctrl_desc}</p></div></div></div>)}
+                {step === 3 && (<div className="flex flex-col items-center gap-6 animate-in slide-in-from-right-10 duration-500"><div className="w-32 h-32 rounded-full bg-yellow-50 flex items-center justify-center mb-2 shadow-inner"><PartyPopper size={64} className="text-yellow-500" strokeWidth={1.5} /></div><h1 className="text-3xl font-bold text-neutral-800">{t.onb_enjoy_title}</h1><p className="text-neutral-500 text-lg leading-relaxed px-4">{t.onb_enjoy_desc}</p></div>)}
             </div>
 
-            {/* Controles Inferiores (Puntos y Botón) */}
-            <div className="w-full max-w-sm mt-8 pb-8">
-                {/* Indicadores de página */}
-                <div className="flex justify-center gap-3 mb-8">
-                    {[0, 1, 2].map(i => (
-                        <div key={i} className={`h-2 rounded-full transition-all duration-500 ${i === step ? 'w-8 bg-white' : 'w-2 bg-white/20'}`} />
+            {/* NAVIGATION */}
+            <div className="fixed bottom-10 left-0 right-0 flex flex-col items-center gap-6 px-8">
+                <div className="flex gap-2">
+                    {[0, 1, 2, 3].map(i => (
+                        <div key={i} className={`h-1.5 rounded-full transition-all duration-300 ${i === step ? 'bg-teal-600 w-8' : 'bg-neutral-200 w-2'}`}></div>
                     ))}
                 </div>
-
                 <button 
-                    onClick={() => step < 2 ? setStep(step + 1) : complete()}
-                    className="w-full py-4 rounded-2xl bg-white text-black font-bold text-lg shadow-[0_0_20px_rgba(255,255,255,0.3)] active:scale-95 transition-all flex items-center justify-center gap-2 hover:bg-neutral-100"
+                    onClick={() => {
+                        if (step < 3) setStep((prev: number) => prev + 1);
+                        else complete();
+                    }}
+                    className="bg-neutral-900 text-white w-full py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-black transition-all shadow-xl active:scale-95"
                 >
-                    {step < 2 ? (
-                        <>{t.nextBtn} <ArrowRight size={20}/></>
-                    ) : (
-                        <>{t.startBtn} <Check size={20}/></>
-                    )}
+                    {step === 3 ? t.onb_btn_start : t.onb_btn_next} {step < 3 ? <ChevronRight size={18} /> : <Check size={18}/>}
                 </button>
             </div>
         </div>
