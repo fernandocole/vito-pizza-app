@@ -3,14 +3,11 @@ import { useState, TouchEvent } from 'react';
 
 export const OnboardingOverlay = ({ show, step, setStep, complete, rotarIdioma, lang, t, userName }: any) => {
     
-    // Estados para el SWIPE (Deslizamiento)
+    // --- Lógica de Swipe (Deslizar) ---
     const [touchStart, setTouchStart] = useState<number | null>(null);
     const [touchEnd, setTouchEnd] = useState<number | null>(null);
     const minSwipeDistance = 50;
 
-    if (!show) return null;
-
-    // Lógica de Swipe
     const onTouchStart = (e: TouchEvent) => {
         setTouchEnd(null);
         setTouchStart(e.targetTouches[0].clientX);
@@ -34,15 +31,18 @@ export const OnboardingOverlay = ({ show, step, setStep, complete, rotarIdioma, 
             if (step > 0) setStep((prev: number) => prev - 1);
         }
     };
+    // ----------------------------------
+
+    if (!show) return null;
 
     return (
         <div 
           className="fixed inset-0 z-[100] bg-white/95 backdrop-blur-xl flex flex-col items-center justify-center p-8 text-center text-neutral-900 animate-in fade-in duration-500 select-none"
-          onTouchStart={onTouchStart}
+          onTouchStart={onTouchStart} // Eventos agregados
           onTouchMove={onTouchMove}
           onTouchEnd={onTouchEnd}
         >
-            <div className="absolute top-6 right-6 z-50">
+            <div className="absolute top-6 right-6">
                 <button onClick={rotarIdioma} className="bg-neutral-100 p-2 rounded-full font-bold text-xs shadow-sm border flex items-center gap-2">
                     <Languages size={14}/> {lang.toUpperCase()}
                 </button>
@@ -52,6 +52,8 @@ export const OnboardingOverlay = ({ show, step, setStep, complete, rotarIdioma, 
                 {step === 0 && (
                     <div className="flex flex-col items-center gap-6 animate-in slide-in-from-right-10 duration-500">
                         <img src="/logo.png" alt="Logo" className="h-40 w-auto object-contain drop-shadow-xl" />
+                        
+                        {/* TEXTOS MODIFICADOS SEGÚN PEDIDO */}
                         <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-teal-500 to-emerald-700">
                             Bienvenido, {userName}!
                         </h1>
