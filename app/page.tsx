@@ -33,6 +33,7 @@ const THEMES = [
 type LangType = 'es' | 'en' | 'it';
 type MensajeTipo = { texto: string, tipo: 'info' | 'alerta' | 'exito' };
 
+// Textos locales para la landing page
 const landingTexts: Record<string, { sub: string, btn: string, admin: string }> = {
     es: { sub: "¡Espero que la pases lindo hoy!", btn: "Invitados de Honor", admin: "Acceso Admin" },
     en: { sub: "Hope you have a great time today!", btn: "Guests of Honor", admin: "Admin Access" },
@@ -52,10 +53,10 @@ export default function VitoPizzaApp() {
   // @ts-ignore
   const t = dictionary[lang];
 
-  // --- ESTADOS ---
+  // ESTADO DE FLUJO
   const [flowStep, setFlowStep] = useState<'loading' | 'landing' | 'name' | 'password' | 'onboarding' | 'app'>('loading');
   const [guestPassInput, setGuestPassInput] = useState(''); 
-  const [showPassword, setShowPassword] = useState(true); 
+  const [showPassword, setShowPassword] = useState(false); 
 
   const [loadingConfig, setLoadingConfig] = useState(true); 
   const [accessGranted, setAccessGranted] = useState(false);
@@ -89,8 +90,9 @@ export default function VitoPizzaApp() {
   const STOCK_SIZES = ['text-[10px]', 'text-xs', 'text-sm', 'text-base', 'text-lg'];
 
   const [isDarkMode, setIsDarkMode] = useState(false); 
-  const [currentTheme, setCurrentTheme] = useState(THEMES[1]);
+  const [currentTheme, setCurrentTheme] = useState(THEMES[8]);
   const [showThemeSelector, setShowThemeSelector] = useState(false);
+  const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
 
   const [bannerIndex, setBannerIndex] = useState(0);
 
@@ -133,86 +135,58 @@ export default function VitoPizzaApp() {
   const prevCocinandoData = useRef<Record<string, boolean>>({});
   const firstLoadRef = useRef(true);
 
-  // --- HELPERS (DEFINIDOS AQUÍ PARA EVITAR ERRORES DE HOISTING) ---
-  
-  const mostrarMensaje = (txt: string, tipo: 'info' | 'alerta' | 'exito') => { 
-      setMensaje({ texto: txt, tipo }); 
-      if (tipo !== 'alerta') { setTimeout(() => setMensaje(null), 2500); } 
+  // --- DEFINICIÓN DE ESTILOS (BASE) ---
+  // SE MUEVE AQUÍ PARA ESTAR DISPONIBLE ANTES DE SU USO EN CUALQUIER LUGAR
+  const base = isDarkMode ? {
+      bg: "bg-neutral-950", text: "text-white", subtext: "text-neutral-500",
+      card: "bg-neutral-900 border-neutral-800", innerCard: "bg-white/5 border border-white/5 text-neutral-300", 
+      input: "bg-transparent text-white placeholder-neutral-600", inputContainer: "bg-neutral-900 border-neutral-800",
+      buttonSec: "bg-black/20 text-white hover:bg-black/40 border-white/10", progressBg: "bg-black/40 border-white/5",
+      progressTrack: "bg-neutral-800 border-black/50", badge: "bg-white/10 text-white border border-white/10",
+      activeChip: "bg-white text-black font-bold", inactiveChip: "bg-neutral-900 text-neutral-400 border border-neutral-800",
+      bar: "bg-neutral-900/50 backdrop-blur-md border-white/10 shadow-lg text-white border"
+  } : {
+      bg: "bg-gray-50", text: "text-gray-900", subtext: "text-gray-500",
+      card: "bg-white border-gray-200 shadow-md", innerCard: "bg-neutral-100 border border-transparent text-gray-600",
+      input: "bg-transparent text-gray-900 placeholder-gray-400", inputContainer: "bg-white border-gray-200 shadow-sm",
+      buttonSec: "bg-gray-200 text-gray-600 hover:text-black border-gray-300", progressBg: "bg-gray-100 border-gray-200",
+      progressTrack: "bg-gray-300 border-white/50", badge: "bg-black/5 text-gray-700 border border-black/5",
+      activeChip: "bg-black text-white font-bold", inactiveChip: "bg-white text-gray-500 border border-gray-200",
+      bar: "bg-white/50 backdrop-blur-md border-gray-300 shadow-lg text-gray-900 border"
   };
 
   const getBtnClass = (isActive: boolean) => {
       const common = "p-2 rounded-full transition-all duration-300 flex items-center justify-center bg-transparent ";
       const scale = isActive ? "scale-110" : "hover:scale-105";
-      if (isDarkMode) {
-          return `${common} ${scale} ${isActive ? 'text-white' : 'text-neutral-200 hover:text-white'}`; 
-      } else {
-          return `${common} ${scale} ${isActive ? 'text-black' : 'text-neutral-800 hover:text-black'}`; 
-      }
+      return isDarkMode ? `${common} ${scale} ${isActive ? 'text-white' : 'text-neutral-200 hover:text-white'}` : `${common} ${scale} ${isActive ? 'text-black' : 'text-neutral-800 hover:text-black'}`;
   };
 
+  // --- HELPERS ---
+  const mostrarMensaje = (txt: string, tipo: 'info' | 'alerta' | 'exito') => { setMensaje({ texto: txt, tipo }); if (tipo !== 'alerta') { setTimeout(() => setMensaje(null), 2500); } }
+
   const formatTime = (seconds: number) => {
-      const m = Math.floor(seconds / 60);
-      const s = seconds % 60;
-      return `${m}:${s.toString().padStart(2, '0')}`;
+      const m = Math.floor(seconds / 60); const s = seconds % 60; return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
   const getWelcomeMessage = () => {
       let msg = translatedWelcome || config.mensaje_bienvenida;
       if (!msg) return null;
-      msg = msg.replace(/\[nombre\]/gi, nombreInvitado || 'Invitado');
-      msg = msg.replace(/\[fecha\]/gi, new Date().toLocaleDateString());
-      msg = msg.replace(/\[hora\]/gi, new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-      msg = msg.replace(/\[pizzas\]/gi, String(pizzas.length));
+      msg = msg.replace(/\[nombre\]/gi, nombreInvitado || 'Invitado').replace(/\[fecha\]/gi, new Date().toLocaleDateString()).replace(/\[hora\]/gi, new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })).replace(/\[pizzas\]/gi, String(pizzas.length));
       return msg;
   };
 
   const getEmptyStateMessage = () => {
-    switch(filter) {
-        case 'stock': return t.emptyStock;
-        case 'top': return t.emptyTop;
-        case 'to_rate': return t.emptyRate;
-        case 'ordered': return t.emptyOrdered;
-        case 'new': return t.emptyNew;
-        default: return t.emptyDefault;
-    }
+    switch(filter) { case 'stock': return t.emptyStock; case 'top': return t.emptyTop; case 'to_rate': return t.emptyRate; case 'ordered': return t.emptyOrdered; case 'new': return t.emptyNew; default: return t.emptyDefault; }
   };
 
   const sendNotification = async (title: string, body: string, url: string = '/') => {
     if ('serviceWorker' in navigator && navigator.serviceWorker.ready) {
-        try {
-            const registration = await navigator.serviceWorker.ready;
-            registration.showNotification(title, {
-                body: body, icon: '/icon.png', badge: '/icon.png', vibrate: [200, 100, 200], data: { url: url }
-            } as any);
-            return;
-        } catch (e) {
-            console.log("Fallo SW notification, intentando standard");
-        }
+        try { const registration = await navigator.serviceWorker.ready; registration.showNotification(title, { body: body, icon: '/icon.png', badge: '/icon.png', vibrate: [200, 100, 200], data: { url: url } } as any); return; } catch (e) {}
     }
-    if (Notification.permission === 'granted') {
-        new Notification(title, { body, icon: '/icon.png' });
-    }
+    if (Notification.permission === 'granted') { new Notification(title, { body, icon: '/icon.png' }); }
   };
 
-  const toggleNotificaciones = () => { 
-      if (notifEnabled) { 
-          setNotifEnabled(false); 
-          localStorage.setItem('vito-notif-enabled', 'false'); 
-          mostrarMensaje(t.notifOff, 'info'); 
-      } else { 
-          Notification.requestPermission().then(perm => { 
-              if (perm === 'granted') { 
-                  setNotifEnabled(true); 
-                  localStorage.setItem('vito-notif-enabled', 'true'); 
-                  mostrarMensaje(t.notifOn, 'info'); 
-                  sendNotification("Il Forno di Vito", "¡Notificaciones activadas correctamente!");
-              } else { 
-                  alert("Activa las notificaciones en la configuración de tu navegador."); 
-              } 
-          }); 
-      } 
-  };
-
+  const toggleNotificaciones = () => { if (notifEnabled) { setNotifEnabled(false); localStorage.setItem('vito-notif-enabled', 'false'); mostrarMensaje(t.notifOff, 'info'); } else { Notification.requestPermission().then(perm => { if (perm === 'granted') { setNotifEnabled(true); localStorage.setItem('vito-notif-enabled', 'true'); mostrarMensaje(t.notifOn, 'info'); sendNotification("Il Forno di Vito", "¡Notificaciones activadas correctamente!"); } else { alert("Activa las notificaciones en la configuración de tu navegador."); } }); } };
   const toggleDarkMode = () => { const n = !isDarkMode; setIsDarkMode(n); localStorage.setItem('vito-dark-mode', String(n)); };
   const toggleOrden = () => { const n = orden === 'estado' ? 'nombre' : (orden === 'nombre' ? 'ranking' : 'estado'); setOrden(n); localStorage.setItem('vito-orden', n); };
   const toggleCompact = () => { const n = !isCompact; setIsCompact(n); localStorage.setItem('vito-compact', String(n)); };
@@ -222,25 +196,15 @@ export default function VitoPizzaApp() {
   const handleNameChange = (val: string) => { setNombreInvitado(val); };
   const changeTheme = (t: typeof THEMES[0]) => { setCurrentTheme(t); localStorage.setItem('vito-guest-theme', t.name); setShowThemeSelector(false); };
   const rotarIdioma = () => { let nextLang: LangType = 'es'; if (lang === 'es') nextLang = 'en'; else if (lang === 'en') nextLang = 'it'; setLang(nextLang); localStorage.setItem('vito-lang', nextLang); };
-  
-  const translateText = async (text: string, targetLang: string) => {
-    try {
-        const response = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURI(text)}`);
-        const data = await response.json();
-        return data[0][0][0] || text;
-    } catch (error) {
-        console.error("Error traduciendo", error);
-        return text;
-    }
-  };
+  const translateText = async (text: string, targetLang: string) => { try { const response = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURI(text)}`); const data = await response.json(); return data[0][0][0] || text; } catch (error) { return text; } };
 
-  // --- EFECTOS DE CARGA ---
+  // --- EFECTOS ---
   useEffect(() => {
     if ('serviceWorker' in navigator) { navigator.serviceWorker.register('/sw.js').catch(error => console.log('SW error:', error)); }
     const hasSeenOnboarding = localStorage.getItem('vito-onboarding-seen');
     if (!hasSeenOnboarding) setShowOnboarding(true);
     const savedName = localStorage.getItem('vito-guest-name'); if (savedName) setNombreInvitado(savedName);
-    const savedTheme = localStorage.getItem('vito-guest-theme'); if (savedTheme) setCurrentTheme(THEMES.find(t => t.name === savedTheme) || THEMES[1]); else setCurrentTheme(THEMES[1]);
+    const savedTheme = localStorage.getItem('vito-guest-theme'); if (savedTheme) setCurrentTheme(THEMES.find(t => t.name === savedTheme) || THEMES[8]); else setCurrentTheme(THEMES[8]);
     const savedMode = localStorage.getItem('vito-dark-mode'); if (savedMode !== null) setIsDarkMode(savedMode === 'true'); else setIsDarkMode(false);
     const savedLang = localStorage.getItem('vito-lang'); if (savedLang) setLang(savedLang as LangType);
     const savedNotif = localStorage.getItem('vito-notif-enabled'); if (savedNotif === 'true' && typeof Notification !== 'undefined' && Notification.permission === 'granted') setNotifEnabled(true);
@@ -248,35 +212,14 @@ export default function VitoPizzaApp() {
     const savedCompact = localStorage.getItem('vito-compact'); if (savedCompact) setIsCompact(savedCompact === 'true');
     const savedFilter = localStorage.getItem('vito-filter'); if (savedFilter) setFilter(savedFilter as any);
     const savedPass = localStorage.getItem('vito-guest-pass-val'); if(savedPass) setGuestPassInput(savedPass);
-
     const interval = setInterval(() => { setBannerIndex((prev) => prev + 1); }, 3000);
-
     const handleBeforeInstallPrompt = (e: any) => { e.preventDefault(); setDeferredPrompt(e); setIsInstallable(true); };
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
     const presenceChannel = supabase.channel('online-users');
-    presenceChannel.on('presence', { event: 'sync' }, () => {
-        const state = presenceChannel.presenceState();
-        const count = Object.values(state).reduce((acc: number, presences: any) => {
-            const isGuest = presences.some((p: any) => p.role === 'guest');
-            return acc + (isGuest ? 1 : 0);
-        }, 0);
-        setOnlineUsers(count);
-      }).subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          await presenceChannel.track({
-            online_at: new Date().toISOString(),
-            role: 'guest'
-          });
-        }
-      });
-
-    return () => {
-        clearInterval(interval);
-        window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-        supabase.removeChannel(presenceChannel);
-    };
-  }, []);
+    presenceChannel.on('presence', { event: 'sync' }, () => { const state = presenceChannel.presenceState(); const count = Object.values(state).reduce((acc: number, presences: any) => { const isGuest = presences.some((p: any) => p.role === 'guest'); return acc + (isGuest ? 1 : 0); }, 0); setOnlineUsers(count); }).subscribe(async (status) => { if (status === 'SUBSCRIBED') { await presenceChannel.track({ online_at: new Date().toISOString(), role: 'guest', name: nombreInvitado || 'Invitado' }); } });
+    return () => { clearInterval(interval); window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt); supabase.removeChannel(presenceChannel); };
+  }, [nombreInvitado]); 
 
   useEffect(() => {
       const logAccess = async () => {
@@ -286,38 +229,14 @@ export default function VitoPizzaApp() {
           let browserName = "Unknown"; if (userAgent.indexOf("Chrome") > -1) browserName = "Chrome"; else if (userAgent.indexOf("Safari") > -1) browserName = "Safari"; else if (userAgent.indexOf("Firefox") > -1) browserName = "Firefox";
           let ipData = { ip: null, city: null, country_name: null }; try { const res = await fetch('https://ipapi.co/json/'); if (res.ok) ipData = await res.json(); } catch (e) {}
           const { data: existingLog } = await supabase.from('access_logs').select('id').eq('session_id', sessionId).gt('created_at', new Date(new Date().setHours(0,0,0,0)).toISOString()).single();
-          if (!existingLog) { await supabase.from('access_logs').insert([{ session_id: sessionId, device: deviceType, browser: browserName, ip: ipData.ip, ciudad: ipData.city, pais: ipData.country_name, invitado_nombre: nombreInvitado || null }]); } 
-          else { if (nombreInvitado) { await supabase.from('access_logs').update({ invitado_nombre: nombreInvitado }).eq('id', existingLog.id); } }
+          if (!existingLog) { await supabase.from('access_logs').insert([{ session_id: sessionId, device: deviceType, browser: browserName, ip: ipData.ip, ciudad: ipData.city, pais: ipData.country_name, invitado_nombre: nombreInvitado || null }]); } else { if (nombreInvitado) { await supabase.from('access_logs').update({ invitado_nombre: nombreInvitado }).eq('id', existingLog.id); } }
       };
       logAccess();
   }, [nombreInvitado]);
 
-  useEffect(() => {
-      if (lang === 'es' || pizzas.length === 0) return;
-      const translateAll = async () => {
-          const newTrans = { ...autoTranslations };
-          let hasChanges = false;
-          for (const p of pizzas) {
-              if (!newTrans[p.id]) newTrans[p.id] = {};
-              if (!newTrans[p.id][lang]) {
-                  const tName = await translateText(p.nombre, lang);
-                  const tDesc = await translateText(p.descripcion || "", lang);
-                  newTrans[p.id][lang] = { name: tName, desc: tDesc };
-                  hasChanges = true;
-              }
-          }
-          if (hasChanges) setAutoTranslations(newTrans);
-          if (config.mensaje_bienvenida) {
-              let safeMsg = config.mensaje_bienvenida.replace(/\n/g, ' XX_BR_XX ').replace(/\[nombre\]/gi, 'XX_NAME_XX').replace(/\[fecha\]/gi, 'XX_DATE_XX').replace(/\[hora\]/gi, 'XX_TIME_XX').replace(/\[pizzas\]/gi, 'XX_COUNT_XX');
-              let tMsg = await translateText(safeMsg, lang);
-              tMsg = tMsg.replace(/XX_BR_XX/gi, '\n').replace(/XX _ BR _ XX/gi, '\n').replace(/XX_NAME_XX/gi, '[nombre]').replace(/XX _ NAME _ XX/gi, '[nombre]').replace(/XX_DATE_XX/gi, '[fecha]').replace(/XX _ DATE _ XX/gi, '[fecha]').replace(/XX_TIME_XX/gi, '[hora]').replace(/XX _ TIME _ XX/gi, '[hora]').replace(/XX_COUNT_XX/gi, '[pizzas]').replace(/XX _ COUNT _ XX/gi, '[pizzas]');
-              setTranslatedWelcome(tMsg);
-          }
-      };
-      translateAll();
-  }, [lang, pizzas, autoTranslations, config.mensaje_bienvenida]);
+  useEffect(() => { if (lang === 'es' || pizzas.length === 0) return; const translateAll = async () => { const newTrans = { ...autoTranslations }; let hasChanges = false; for (const p of pizzas) { if (!newTrans[p.id]) newTrans[p.id] = {}; if (!newTrans[p.id][lang]) { const tName = await translateText(p.nombre, lang); const tDesc = await translateText(p.descripcion || "", lang); newTrans[p.id][lang] = { name: tName, desc: tDesc }; hasChanges = true; } } if (hasChanges) setAutoTranslations(newTrans); if (config.mensaje_bienvenida) { let safeMsg = config.mensaje_bienvenida.replace(/\n/g, ' XX_BR_XX ').replace(/\[nombre\]/gi, 'XX_NAME_XX').replace(/\[fecha\]/gi, 'XX_DATE_XX').replace(/\[hora\]/gi, 'XX_TIME_XX').replace(/\[pizzas\]/gi, 'XX_COUNT_XX'); let tMsg = await translateText(safeMsg, lang); tMsg = tMsg.replace(/XX_BR_XX/gi, '\n').replace(/XX _ BR _ XX/gi, '\n').replace(/XX_NAME_XX/gi, '[nombre]').replace(/XX _ NAME _ XX/gi, '[nombre]').replace(/XX_DATE_XX/gi, '[fecha]').replace(/XX _ DATE _ XX/gi, '[fecha]').replace(/XX_TIME_XX/gi, '[hora]').replace(/XX _ TIME _ XX/gi, '[hora]').replace(/XX_COUNT_XX/gi, '[pizzas]').replace(/XX _ COUNT _ XX/gi, '[pizzas]'); setTranslatedWelcome(tMsg); } }; translateAll(); }, [lang, pizzas, autoTranslations, config.mensaje_bienvenida]);
 
-  // --- LOGICA FLUJO DE ACCESO ---
+  // --- LOGICA FLUJO ACCESO ---
   const checkOnboarding = () => { const seen = localStorage.getItem('vito-onboarding-seen'); if (!seen) { setFlowStep('onboarding'); setShowOnboarding(true); } else { setFlowStep('app'); } };
   const handleNameSubmit = () => { if (!nombreInvitado.trim()) return alert("Por favor ingresa tu nombre"); localStorage.setItem('vito-guest-name', nombreInvitado); if (dbPass && dbPass !== '') { setFlowStep('password'); } else { checkOnboarding(); } };
   const handlePasswordSubmit = () => { if (guestPassInput === dbPass) { localStorage.setItem('vito-guest-pass-val', guestPassInput); checkOnboarding(); } else { alert("Contraseña incorrecta"); } };
@@ -388,7 +307,6 @@ export default function VitoPizzaApp() {
   const mySummary = useMemo(() => { let t = 0, w = 0, o = 0, r = 0; pizzas.forEach(p => { const h = miHistorial[p.id]; if(h) { const pen = h.pendientes; if (pen > 0) { if (p.cocinando) o += pen; else w += pen; } r += h.comidos; t += pen; } }); return { total: t, wait: w, oven: o, ready: r }; }, [miHistorial, pizzas]);
   const currentBannerText = useMemo(() => { if (cargando) return t.loading; const msgs = [`${invitadosActivos} ${t.status}`]; const pData = pizzas.map(p => { const vals = allRatings.filter(v => v.pizza_id === p.id); const avg = vals.length > 0 ? vals.reduce((a, b) => a + b.rating, 0) / vals.length : 0; const totS = (p.stock || 0) * (p.porciones_individuales || config.porciones_por_pizza); const us = pedidos.filter(ped => ped.pizza_id === p.id).reduce((a, c) => a + c.cantidad_porciones, 0); let dName = p.nombre; if (lang !== 'es' && autoTranslations[p.id] && autoTranslations[p.id][lang]) { dName = autoTranslations[p.id][lang].name; } return { ...p, displayName: dName, stock: Math.max(0, totS - us), avg, count: vals.length }; }); pData.forEach(p => { if (p.stock === 0) msgs.push(`${p.displayName}: ${t.soldOut} 😭`); else if (p.stock <= 5) msgs.push(`${t.only} ${p.stock} ${t.of} ${p.displayName}! 🏃`); }); const best = [...pData].sort((a,b) => b.avg - a.avg)[0]; if (best && best.avg >= 4.5 && best.count > 1) msgs.push(`${t.topRated} ${best.displayName} (${best.avg.toFixed(1)}★)`); const pop = pData.filter(p => p.avg > 4.7 && p.count > 2); pop.forEach(p => msgs.push(`${t.hotPick} ${p.displayName}!`)); return msgs[bannerIndex % msgs.length]; }, [invitadosActivos, pizzas, pedidos, bannerIndex, cargando, t, config, allRatings, lang, autoTranslations]);
 
-  // --- EFECTOS USANDO VARIABLES YA DECLARADAS ---
   useEffect(() => {
     if (enrichedPizzas.length === 0) return;
     let lista = [...enrichedPizzas];
@@ -408,7 +326,13 @@ export default function VitoPizzaApp() {
   async function modificarPedido(p: any, acc: 'sumar' | 'restar') { if (!nombreInvitado.trim()) { alert(t.errorName); return; } if (usuarioBloqueado) { alert(`${t.blocked}: ${motivoBloqueo || ''}`); return; } if (acc === 'sumar') { if (p.stockRestante <= 0) { alert("Sin stock :("); return; } setOrderToConfirm(p); } else { if (p.cocinando) { mostrarMensaje(`🔥 ¡Ya está ${getCookingText(p.tipo)}! No se puede cancelar.`, 'alerta'); return; } const pending = pedidos.filter(pd => pd.pizza_id === p.id && pd.invitado_nombre.toLowerCase() === nombreInvitado.toLowerCase().trim() && pd.estado === 'pendiente'); if (pending.length > 0) { const toDelete = pending[0]; const newPedidos = pedidos.filter(x => x.id !== toDelete.id); setPedidos(newPedidos); mostrarMensaje(`${t.successCancel} ${p.displayName}`, 'info'); await supabase.from('pedidos').delete().eq('id', toDelete.id); fetchDatos(); } } }
   const proceedWithOrder = async () => { if(!orderToConfirm) return; const newOrder = { id: `temp-${Date.now()}`, invitado_nombre: nombreInvitado, pizza_id: orderToConfirm.id, cantidad_porciones: 1, estado: 'pendiente', created_at: new Date().toISOString() }; setPedidos(prev => [...prev, newOrder]); setOrderToConfirm(null); mostrarMensaje(`${t.successOrder} ${orderToConfirm.displayName}!`, 'exito'); const { error } = await supabase.from('pedidos').insert([{ invitado_nombre: nombreInvitado, pizza_id: orderToConfirm.id, cantidad_porciones: 1, estado: 'pendiente' }]); if (error) { setPedidos(prev => prev.filter(p => p.id !== newOrder.id)); alert("Error al pedir. Intenta de nuevo."); } else { fetchDatos(); } }
 
-  const base = isDarkMode ? { bg: "bg-neutral-950", text: "text-white", subtext: "text-neutral-500", card: "bg-neutral-900 border-neutral-800", innerCard: "bg-white/5 border border-white/5 text-neutral-300", input: "bg-transparent text-white placeholder-neutral-600", inputContainer: "bg-neutral-900 border-neutral-800", buttonSec: "bg-black/20 text-white hover:bg-black/40 border-white/10", progressBg: "bg-black/40 border-white/5", progressTrack: "bg-neutral-800 border-black/50", badge: "bg-white/10 text-white border border-white/10", activeChip: "bg-white text-black font-bold", inactiveChip: "bg-neutral-900 text-neutral-400 border border-neutral-800", bar: "bg-neutral-900/50 backdrop-blur-md border-white/10 shadow-lg text-white border" } : { bg: "bg-gray-50", text: "text-gray-900", subtext: "text-gray-500", card: "bg-white border-gray-200 shadow-md", innerCard: "bg-neutral-100 border border-transparent text-gray-600", input: "bg-transparent text-gray-900 placeholder-gray-400", inputContainer: "bg-white border-gray-200 shadow-sm", buttonSec: "bg-gray-200 text-gray-600 hover:text-black border-gray-300", progressBg: "bg-gray-100 border-gray-200", progressTrack: "bg-gray-300 border-white/50", badge: "bg-black/5 text-gray-700 border border-black/5", activeChip: "bg-black text-white font-bold", inactiveChip: "bg-white text-gray-500 border border-gray-200", bar: "bg-white/50 backdrop-blur-md border-gray-300 shadow-lg text-gray-900 border" };
+  // NUEVO: Toggle Expand Logic
+  const toggleExpand = (id: string) => { setExpandedCards(prev => ({...prev, [id]: !prev[id]})); };
+
+
+  // --------------------------------------------------------------------------------------
+  // RENDERIZADO CONDICIONAL POR PASOS (FLOW)
+  // --------------------------------------------------------------------------------------
 
   if (loadingConfig || flowStep === 'loading') {
       return (<div className={`min-h-screen flex items-center justify-center p-4 ${base.bg}`}><div className={`animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 ${isDarkMode ? 'border-white' : 'border-black'}`}></div></div>);
@@ -486,9 +410,9 @@ export default function VitoPizzaApp() {
                       />
                       <button 
                           onClick={() => setShowPassword(!showPassword)} 
-                          className="absolute right-4 top-4 opacity-50"
+                          className="absolute right-4 top-4 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white"
                       >
-                          {showPassword ? <EyeOff /> : <Eye />}
+                          {showPassword ? <Eye size={24}/> : <EyeOff size={24}/>}
                       </button>
                   </div>
                   <button onClick={handlePasswordSubmit} className={`w-full py-4 rounded-xl font-bold ${currentTheme.color} text-white shadow-lg`}>
@@ -533,6 +457,17 @@ export default function VitoPizzaApp() {
          <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mt-20 -mr-20 blur-3xl"></div>
          <div className="relative z-10 pt-16">
              <div className="mb-6">
+                 {/* Mensaje de Bloqueo */}
+                 {usuarioBloqueado && (
+                    <div className="mb-4 bg-red-500/20 border border-red-500/50 p-4 rounded-xl flex items-center gap-3 animate-pulse">
+                        <AlertCircle className="text-red-500" size={24} />
+                        <div>
+                            <p className="font-bold text-white text-sm">Cuenta Restringida</p>
+                            <p className="text-white/80 text-xs">{motivoBloqueo || "Contacta al administrador."}</p>
+                        </div>
+                    </div>
+                 )}
+
                  {(() => {
                      const msg = getWelcomeMessage();
                      if (msg) {
@@ -598,7 +533,28 @@ export default function VitoPizzaApp() {
              orderedIds.map(id => {
                const pizza = enrichedPizzas.find(p => p.id === id);
                if (!pizza) return null;
-               return (<FoodCard key={pizza.id} pizza={pizza} base={base} isCompact={isCompact} isDarkMode={isDarkMode} currentTheme={currentTheme} zoomLevel={zoomLevel} t={t} DESC_SIZES={DESC_SIZES} STOCK_SIZES={STOCK_SIZES} setImageToView={setImageToView} miHistorial={miHistorial} misValoraciones={misValoraciones} openRating={openRating} modificarPedido={modificarPedido} />);
+               
+               return (
+                   <FoodCard 
+                        key={pizza.id}
+                        pizza={pizza}
+                        base={base}
+                        isCompact={isCompact}
+                        isDarkMode={isDarkMode}
+                        currentTheme={currentTheme}
+                        zoomLevel={zoomLevel}
+                        t={t}
+                        DESC_SIZES={DESC_SIZES}
+                        STOCK_SIZES={STOCK_SIZES}
+                        setImageToView={setImageToView}
+                        miHistorial={miHistorial}
+                        misValoraciones={misValoraciones}
+                        openRating={openRating}
+                        modificarPedido={modificarPedido}
+                        isExpanded={expandedCards[pizza.id] || false}
+                        onToggleExpand={() => toggleExpand(pizza.id)}
+                   />
+               );
            })}
         </div>
       </div>
