@@ -1,4 +1,4 @@
-import { ArrowRight, Check, Globe } from 'lucide-react';
+import { ArrowRight, Check } from 'lucide-react';
 import { useState, TouchEvent } from 'react';
 
 export const OnboardingOverlay = ({ show, step, setStep, complete, rotarIdioma, lang, t, userName }: any) => {
@@ -6,7 +6,7 @@ export const OnboardingOverlay = ({ show, step, setStep, complete, rotarIdioma, 
     // Estados para el SWIPE (Deslizamiento)
     const [touchStart, setTouchStart] = useState<number | null>(null);
     const [touchEnd, setTouchEnd] = useState<number | null>(null);
-    const minSwipeDistance = 50; // Distancia mínima para considerar un swipe
+    const minSwipeDistance = 50; 
 
     if (!show) return null;
 
@@ -27,12 +27,10 @@ export const OnboardingOverlay = ({ show, step, setStep, complete, rotarIdioma, 
         const isRightSwipe = distance < -minSwipeDistance;
 
         if (isLeftSwipe) {
-            // Deslizar a la izquierda (Siguiente)
             if (step < 2) setStep(step + 1);
             else complete();
         }
         if (isRightSwipe) {
-            // Deslizar a la derecha (Anterior)
             if (step > 0) setStep(step - 1);
         }
     };
@@ -44,67 +42,75 @@ export const OnboardingOverlay = ({ show, step, setStep, complete, rotarIdioma, 
             onTouchMove={onTouchMove}
             onTouchEnd={onTouchEnd}
         >
-            {/* Botón Idioma (Estilo Minimalista) */}
+            {/* Botón Idioma Minimalista (Banderita) */}
             <div className="absolute top-6 right-6 z-50">
                 <button 
                     onClick={rotarIdioma} 
-                    className="w-10 h-10 rounded-full flex items-center justify-center bg-white/10 backdrop-blur-md border border-white/10 active:scale-95 transition-all"
+                    className="text-2xl opacity-80 hover:opacity-100 transition-opacity active:scale-95"
                 >
                     {lang === 'es' ? '🇪🇸' : lang === 'en' ? '🇺🇸' : '🇮🇹'}
                 </button>
             </div>
 
-            {/* Contenido */}
+            {/* Contenido Central */}
             <div className="w-full max-w-sm flex-1 flex flex-col justify-center relative">
                 
-                {/* Animación de entrada para cada paso */}
-                <div key={step} className="animate-in fade-in slide-in-from-bottom-8 duration-500 flex flex-col items-center text-center">
-                    
-                    {/* Imagen / Icono */}
-                    <div className="mb-8 relative">
-                        <div className="w-48 h-48 rounded-full bg-gradient-to-tr from-purple-500/20 to-orange-500/20 blur-3xl absolute inset-0 animate-pulse"></div>
-                        {step === 0 && <img src="/logo.png" className="w-40 h-40 object-contain relative z-10 drop-shadow-2xl" alt="Welcome" />}
-                        {step === 1 && <div className="text-8xl relative z-10">🍕</div>}
-                        {step === 2 && <div className="text-8xl relative z-10">⭐</div>}
+                {/* Paso 1: Bienvenida */}
+                {step === 0 && (
+                    <div className="animate-in fade-in slide-in-from-bottom-8 duration-500 flex flex-col items-center text-center">
+                        <div className="mb-8 relative">
+                             {/* Efecto de luz de fondo */}
+                            <div className="w-48 h-48 rounded-full bg-gradient-to-tr from-purple-500/20 to-orange-500/20 blur-3xl absolute inset-0 animate-pulse m-auto"></div>
+                            <img src="/logo.png" className="w-48 h-auto object-contain relative z-10 drop-shadow-2xl mx-auto" alt="Welcome" />
+                        </div>
+                        <h2 className="text-3xl font-bold mb-4">Bienvenido, {userName}! 👋</h2>
+                        <p className="text-lg text-neutral-400 leading-relaxed px-2">
+                            Esta web te servirá para estar organizados, pidiendo y calificando en tiempo real.
+                        </p>
                     </div>
+                )}
 
-                    {/* Texto Dinámico */}
-                    {step === 0 && (
-                        <>
-                            <h2 className="text-3xl font-bold mb-4">Bienvenido, {userName}! 👋</h2>
-                            <p className="text-lg text-neutral-400 leading-relaxed">
-                                Esta web te servirá para estar organizados, pidiendo y calificando en tiempo real.
-                            </p>
-                        </>
-                    )}
+                {/* Paso 2: Explicación Pedidos */}
+                {step === 1 && (
+                    <div className="animate-in fade-in slide-in-from-right-8 duration-500 flex flex-col items-center text-center">
+                        <div className="mb-8 relative flex justify-center items-center h-48">
+                            <div className="w-40 h-40 rounded-full bg-orange-500/10 blur-2xl absolute animate-pulse"></div>
+                            <span className="text-9xl relative z-10 drop-shadow-xl">🍕</span>
+                        </div>
+                        <h2 className="text-3xl font-bold mb-4">{t.step1Title}</h2>
+                        <p className="text-lg text-neutral-400 leading-relaxed px-4">
+                            {t.step1Desc}
+                        </p>
+                    </div>
+                )}
 
-                    {step === 1 && (
-                        <>
-                            <h2 className="text-3xl font-bold mb-4">{t.step1Title}</h2>
-                            <p className="text-lg text-neutral-400 leading-relaxed">{t.step1Desc}</p>
-                        </>
-                    )}
-
-                    {step === 2 && (
-                        <>
-                            <h2 className="text-3xl font-bold mb-4">{t.step2Title}</h2>
-                            <p className="text-lg text-neutral-400 leading-relaxed">{t.step2Desc}</p>
-                        </>
-                    )}
-                </div>
+                {/* Paso 3: Explicación Calificación */}
+                {step === 2 && (
+                    <div className="animate-in fade-in slide-in-from-right-8 duration-500 flex flex-col items-center text-center">
+                        <div className="mb-8 relative flex justify-center items-center h-48">
+                            <div className="w-40 h-40 rounded-full bg-yellow-500/10 blur-2xl absolute animate-pulse"></div>
+                            <span className="text-9xl relative z-10 drop-shadow-xl">⭐</span>
+                        </div>
+                        <h2 className="text-3xl font-bold mb-4">{t.step2Title}</h2>
+                        <p className="text-lg text-neutral-400 leading-relaxed px-4">
+                            {t.step2Desc}
+                        </p>
+                    </div>
+                )}
             </div>
 
-            {/* Controles Inferiores */}
-            <div className="w-full max-w-sm mt-8">
-                <div className="flex justify-center gap-2 mb-8">
+            {/* Controles Inferiores (Puntos y Botón) */}
+            <div className="w-full max-w-sm mt-8 pb-8">
+                {/* Indicadores de página */}
+                <div className="flex justify-center gap-3 mb-8">
                     {[0, 1, 2].map(i => (
-                        <div key={i} className={`h-1.5 rounded-full transition-all duration-300 ${i === step ? 'w-8 bg-white' : 'w-2 bg-white/20'}`} />
+                        <div key={i} className={`h-2 rounded-full transition-all duration-500 ${i === step ? 'w-8 bg-white' : 'w-2 bg-white/20'}`} />
                     ))}
                 </div>
 
                 <button 
                     onClick={() => step < 2 ? setStep(step + 1) : complete()}
-                    className="w-full py-4 rounded-2xl bg-white text-black font-bold text-lg shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2"
+                    className="w-full py-4 rounded-2xl bg-white text-black font-bold text-lg shadow-[0_0_20px_rgba(255,255,255,0.3)] active:scale-95 transition-all flex items-center justify-center gap-2 hover:bg-neutral-100"
                 >
                     {step < 2 ? (
                         <>{t.nextBtn} <ArrowRight size={20}/></>
