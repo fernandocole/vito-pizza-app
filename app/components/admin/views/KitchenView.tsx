@@ -71,9 +71,6 @@ export const KitchenView = ({
                         const displayNames = activeOrders.map((ped: any) => ped.invitado_nombre).join(', ');
                         
                         const config = getStatusConfig(p);
-                        
-                        // Lógica para saber si alcanza para llenar el horno (1 unidad completa)
-                        const alcanzaParaUna = p.enEspera >= p.target;
 
                         return (
                             <div key={p.id} className={`${base.card} rounded-3xl border relative overflow-hidden transition-all ${p.cocinando ? 'border-red-600/30 shadow-md' : ''} ${isCompact ? 'p-3' : 'p-5'}`}>
@@ -136,26 +133,15 @@ export const KitchenView = ({
                                     {/* IZQUIERDA: MOVER AL HORNO */}
                                     {p.enEspera > 0 ? (
                                         <div className="flex-1 flex gap-2">
-                                            {alcanzaParaUna ? (
-                                                <>
-                                                    {/* BOTÓN 1 UNIDAD AL HORNO */}
-                                                    <button onClick={() => toggleCocinando(p, 'una')} className={singleActionBtnClass}>
-                                                        {config.icon} 1
-                                                    </button>
-                                                    
-                                                    {p.enEspera > p.target && (
-                                                        <button onClick={() => toggleCocinando(p, 'todas')} className={`flex-[1.5] ${config.color} text-white text-[10px] font-bold rounded-xl flex items-center justify-center gap-1 py-3 shadow-lg active:scale-95`}>
-                                                            {config.icon} ¡Todos!
-                                                        </button>
-                                                    )}
-                                                </>
-                                            ) : (
-                                                /* --- ESTADO: AÚN NO SE PUEDE PONER AL HORNO --- */
-                                                <div className={`w-full py-3 rounded-xl border-2 border-dashed ${isDarkMode ? 'border-neutral-700 text-neutral-500' : 'border-gray-300 text-gray-400'} bg-transparent flex items-center justify-center select-none`}>
-                                                    <span className="text-[10px] font-bold uppercase tracking-wider text-center px-4">
-                                                        Faltan para completar 1
-                                                    </span>
-                                                </div>
+                                            {/* BOTÓN 1 UNIDAD AL HORNO (Estilo Corregido) */}
+                                            <button onClick={() => toggleCocinando(p, 'una')} className={singleActionBtnClass}>
+                                                {config.icon} 1
+                                            </button>
+                                            
+                                            {p.enEspera > 1 && (
+                                                <button onClick={() => toggleCocinando(p, 'todas')} className={`flex-[1.5] ${config.color} text-white text-[10px] font-bold rounded-xl flex items-center justify-center gap-1 py-3 shadow-lg active:scale-95`}>
+                                                    {config.icon} ¡Todos!
+                                                </button>
                                             )}
                                         </div>
                                     ) : (
@@ -172,7 +158,7 @@ export const KitchenView = ({
                                             <div className="flex-[1.5] flex gap-2">
                                                 {p.enHorno > 0 ? (
                                                     <>
-                                                        {/* BOTÓN 1 UNIDAD LISTA */}
+                                                        {/* BOTÓN 1 UNIDAD LISTA (Estilo Corregido) */}
                                                         <button onClick={() => entregar(p, 'una', false)} className={singleActionBtnClass}>
                                                             <CheckCircle size={14} /> <span>1 Listo</span>
                                                         </button>
