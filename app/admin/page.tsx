@@ -8,7 +8,7 @@ import {
   Flame, Clock, CheckCircle, Hourglass, Eye, EyeOff, X, Layers, Trash2, Plus
 } from 'lucide-react';
 
-// Imports de Vistas
+// Imports de Vistasb
 import { KitchenView } from '@/app/components/admin/views/KitchenView';
 import { OrdersView } from '@/app/components/admin/views/OrdersView';
 import { InventoryView } from '@/app/components/admin/views/InventoryView';
