@@ -10,14 +10,15 @@ import {
 
 // Imports de Vistas
 
-import { KitchenView } from './components/admin/views/KitchenView';
-import { OrdersView } from './components/admin/views/OrdersView';
-import { InventoryView } from './components/admin/views/InventoryView';
-import { MenuView } from './components/admin/views/MenuView';
-import { RankingView } from './components/admin/views/RankingView';
-import { UsersView } from './components/admin/views/UsersView';
-import { ConfigView } from './components/admin/views/ConfigView';
-import { LogsView } from './components/admin/views/LogsView';
+
+import { KitchenView } from '@/app/components/admin/views/KitchenView';
+import { OrdersView } from '@/app/components/admin/views/OrdersView';
+import { InventoryView } from '@/app/components/admin/views/InventoryView';
+import { MenuView } from '@/app/components/admin/views/MenuView';
+import { RankingView } from '@/app/components/admin/views/RankingView';
+import { UsersView } from '@/app/components/admin/views/UsersView';
+import { ConfigView } from '@/app/components/admin/views/ConfigView';
+import { LogsView } from '@/app/components/admin/views/LogsView';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
